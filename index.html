@@ -13,6 +13,7 @@
         <p class="main-menu-subtitle">Defeat the Wasteland Tyrant and save your character!</p>
         <div class="main-menu-lp">Legacy Points: <span id="main-menu-lp-value">0</span></div>
         <button id="main-menu-new-game" class="main-menu-btn">New Game</button>
+        <button id="main-menu-dev-mode" class="main-menu-btn main-menu-btn-secondary">Dev Mode</button>
         <button id="main-menu-legacy-vault" class="main-menu-btn main-menu-btn-secondary">Legacy Vault</button>
         <button id="main-menu-talent-tree" class="main-menu-btn main-menu-btn-secondary">Talent Tree</button>
         <section class="hall-of-champions-section">
@@ -31,6 +32,7 @@
           <div class="skill-slot" data-slot="2"><span class="skill-key">3</span><div class="skill-icon" id="skill-icon-2">—</div><div class="skill-name" id="skill-name-2">Empty</div><div class="skill-cd-ring" id="skill-cd-2"></div></div>
           <div class="skill-slot" data-slot="3"><span class="skill-key">4</span><div class="skill-icon" id="skill-icon-3">—</div><div class="skill-name" id="skill-name-3">Empty</div><div class="skill-cd-ring" id="skill-cd-3"></div></div>
         </div>
+        <div id="blessings-bar" class="blessings-bar hidden"></div>
       </div>
       <aside class="inventory-panel">
         <section class="map-name-section">
@@ -81,6 +83,8 @@
       </div>
       <div id="boss-health-label" class="boss-health-label">Boss</div>
     </div>
+
+    <div id="victory-portal-countdown" class="victory-portal-countdown hidden"></div>
 
     <div id="victory-overlay" class="victory-overlay hidden">
       <div class="victory-box">
@@ -242,8 +246,13 @@
           <section class="inventory-overlay-section">
             <h2>Craft</h2>
             <p class="crafting-hint">Select an equipment item above, then select a cube.</p>
-            <div id="crafting-selected-item" class="crafting-selected">No item selected</div>
-            <div id="crafting-selected-cube" class="crafting-selected">No cube selected</div>
+            <div class="crafting-selection-row">
+              <div class="crafting-selection-col">
+                <div id="crafting-selected-item" class="crafting-selected">No item selected</div>
+                <div id="crafting-selected-cube" class="crafting-selected">No cube selected</div>
+              </div>
+              <div id="crafting-item-stats" class="crafting-item-stats hidden"></div>
+            </div>
             <div id="crafting-preview" class="crafting-preview hidden"></div>
             <button id="crafting-confirm" class="crafting-confirm-btn" disabled>Craft</button>
           </section>
@@ -266,7 +275,22 @@
         </header>
         <div class="dev-panel-actions">
           <button id="dev-give-all" class="dev-button">Give All Cards</button>
-          <button id="dev-max-stats" class="dev-button dev-button-danger">Max Stats</button>
+          <button id="dev-give-all-cubes" class="dev-button">Give All Cubes</button>
+          <button id="dev-random-item" class="dev-button">Random Item (Magic/Rare)</button>
+        </div>
+        <div class="dev-panel-section">
+          <h3>Stats</h3>
+          <button id="dev-max-stats" class="dev-button">Max Stats</button>
+          <div id="dev-stats-sliders" class="dev-stats-sliders"></div>
+        </div>
+        <div class="dev-panel-section">
+          <h3>Spawn Elite with Affix</h3>
+          <div class="dev-spawn-elite-row">
+            <select id="dev-affix-select" class="dev-affix-select">
+              <option value="">-- Select affix --</option>
+            </select>
+            <button id="dev-spawn-elite" class="dev-button">Spawn Elite</button>
+          </div>
         </div>
         <div class="dev-panel-section">
           <h3>Spawn Upgrade Cards</h3>
