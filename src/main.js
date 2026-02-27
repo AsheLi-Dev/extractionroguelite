@@ -13,6 +13,15 @@ class Vec2 {
   }
 }
 
+function pointToSegmentDist(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy || 1;
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const projX = x1 + t * dx, projY = y1 + t * dy;
+  return Math.sqrt((px - projX) ** 2 + (py - projY) ** 2);
+}
+
 class Input {
   constructor() {
     this.keys = new Set();
@@ -175,21 +184,34 @@ const EVENT_DEFS = [
   }
 ];
 
+const SKILL_CATEGORIES = { projectile: "Projectile", melee: "Melee", aura: "Aura" };
+
 const SKILL_DEFS = [
-  { id: "fireball", name: "Fireball", icon: "🔥", baseCd: 3, desc: "Slow projectile, explodes for area damage + burning ground 3s", unlock: "always" },
-  { id: "iceShard", name: "Ice Shard", icon: "❄️", baseCd: 2, desc: "Fast piercing projectile, slows 30% for 2s", unlock: "always" },
-  { id: "lightningBolt", name: "Lightning Bolt", icon: "⚡", baseCd: 2.5, desc: "Instant strike, chains to 1 enemy for 50%", unlock: "always" },
-  { id: "rapidFire", name: "Rapid Fire", icon: "🔫", baseCd: 8, desc: "3 projectiles/sec at nearest enemy for 3s", unlock: "always" },
-  { id: "shieldBash", name: "Shield Bash", icon: "🛡️", baseCd: 4, desc: "Cone knockback + stun 0.5s", unlock: "always" },
-  { id: "healPulse", name: "Heal Pulse", icon: "💚", baseCd: 10, desc: "Restore 15% max health", unlock: "always" },
-  { id: "iceRain", name: "Ice Rain", icon: "🌨️", baseCd: 12, desc: "Ice storm 4s, continuous damage, slow 50%", unlock: "scavengerFull" },
-  { id: "lightningSpear", name: "Lightning Spear", icon: "🔱", baseCd: 8, desc: "Charge 0.5s, piercing spear, stun 1s", unlock: "diff3" },
-  { id: "meteor", name: "Meteor", icon: "☄️", baseCd: 15, desc: "1s delay, massive area damage, burning 5s", unlock: "diff4" },
-  { id: "voidRift", name: "Void Rift", icon: "🌀", baseCd: 14, desc: "Pull enemies 3s then explode", unlock: "diff5" },
-  { id: "timeWarp", name: "Time Warp", icon: "⏱️", baseCd: 20, desc: "Slow enemies 50% for 4s", unlock: "mastermind" },
-  { id: "phoenixStrike", name: "Phoenix Strike", icon: "🦅", baseCd: 25, desc: "Explosion + 3s invincibility", unlock: "secondWindUsed" },
-  { id: "chainFrost", name: "Chain Frost", icon: "🧊", baseCd: 18, desc: "Freeze all enemies 2s", unlock: "iceShard5" },
-  { id: "stormCall", name: "Storm Call", icon: "⛈️", baseCd: 20, desc: "Lightning storm 6s", unlock: "lightningOnlyRun" }
+  { id: "fireball", name: "Fireball", icon: "🔥", baseCd: 3, desc: "Slow projectile, explodes for area damage + burning ground 3s", unlock: "always", category: "projectile" },
+  { id: "iceShard", name: "Ice Shard", icon: "❄️", baseCd: 2, desc: "Fast piercing projectile, slows 30% for 2s", unlock: "always", category: "projectile" },
+  { id: "lightningBolt", name: "Lightning Bolt", icon: "⚡", baseCd: 2.5, desc: "Instant strike, chains to 1 enemy for 50%", unlock: "always", category: "projectile" },
+  { id: "rapidFire", name: "Rapid Fire", icon: "🔫", baseCd: 8, desc: "3 projectiles/sec at nearest enemy for 3s", unlock: "always", category: "projectile" },
+  { id: "shieldBash", name: "Shield Bash", icon: "🛡️", baseCd: 4, desc: "Cone knockback + stun 0.5s", unlock: "always", category: "projectile" },
+  { id: "healPulse", name: "Heal Pulse", icon: "💚", baseCd: 10, desc: "Restore 15% max health", unlock: "always", category: "projectile" },
+  { id: "iceRain", name: "Ice Rain", icon: "🌨️", baseCd: 12, desc: "Ice storm 4s, continuous damage, slow 50%", unlock: "scavengerFull", category: "projectile" },
+  { id: "lightningSpear", name: "Lightning Spear", icon: "🔱", baseCd: 8, desc: "Charge 0.5s, piercing spear, stun 1s", unlock: "diff3", category: "projectile" },
+  { id: "meteor", name: "Meteor", icon: "☄️", baseCd: 15, desc: "1s delay, massive area damage, burning 5s", unlock: "diff4", category: "projectile" },
+  { id: "voidRift", name: "Void Rift", icon: "🌀", baseCd: 14, desc: "Pull enemies 3s then explode", unlock: "diff5", category: "projectile" },
+  { id: "timeWarp", name: "Time Warp", icon: "⏱️", baseCd: 20, desc: "Slow enemies 50% for 4s", unlock: "mastermind", category: "projectile" },
+  { id: "phoenixStrike", name: "Phoenix Strike", icon: "🦅", baseCd: 25, desc: "Explosion + 3s invincibility", unlock: "secondWindUsed", category: "projectile" },
+  { id: "chainFrost", name: "Chain Frost", icon: "🧊", baseCd: 18, desc: "Freeze all enemies 2s", unlock: "iceShard5", category: "projectile" },
+  { id: "stormCall", name: "Storm Call", icon: "⛈️", baseCd: 20, desc: "Lightning storm 6s", unlock: "lightningOnlyRun", category: "projectile" },
+  { id: "bladeDash", name: "Blade Dash", icon: "⚔️", baseCd: 5, desc: "Dash forward damaging all enemies in path", unlock: "always", category: "melee" },
+  { id: "whirlwind", name: "Whirlwind", icon: "🔄", baseCd: 10, desc: "Spin 2s hitting nearby enemies, move at half speed", unlock: "always", category: "melee" },
+  { id: "groundSlam", name: "Ground Slam", icon: "💥", baseCd: 6, desc: "Shockwave damaging and knocking back nearby enemies", unlock: "always", category: "melee" },
+  { id: "bladeStorm", name: "Blade Storm", icon: "🗡️", baseCd: 12, desc: "8 spinning blades bounce off walls, pierce enemies 3s", unlock: "diff2", category: "melee" },
+  { id: "earthquake", name: "Earthquake", icon: "🌋", baseCd: 18, desc: "Map shake 3s, damage and slow all on screen", unlock: "diff4", category: "melee" },
+  { id: "frostAura", name: "Frost Aura", icon: "❄️", baseCd: 0, desc: "Toggle: slow nearby 25%, 0.5% HP/s", unlock: "always", category: "aura", auraUpkeep: 0.005 },
+  { id: "flameAura", name: "Flame Aura", icon: "🔥", baseCd: 0, desc: "Toggle: burn nearby enemies, 0.5% HP/s", unlock: "always", category: "aura", auraUpkeep: 0.005 },
+  { id: "thunderAura", name: "Thunder Aura", icon: "⚡", baseCd: 0, desc: "Toggle: lightning to nearest every 1.5s, 1% HP/s", unlock: "always", category: "aura", auraUpkeep: 0.01 },
+  { id: "barrierAura", name: "Barrier Aura", icon: "🛡️", baseCd: 0, desc: "Toggle: -15% damage taken, 1.5% HP/s", unlock: "fortified", category: "aura", auraUpkeep: 0.015 },
+  { id: "voidAura", name: "Void Aura", icon: "🌀", baseCd: 0, desc: "Toggle: pull enemies toward you, 1% HP/s", unlock: "diff3", category: "aura", auraUpkeep: 0.01 },
+  { id: "soulAura", name: "Soul Aura", icon: "💜", baseCd: 0, desc: "Toggle: 50% damage to healing, 2% HP/s", unlock: "vampiric50", category: "aura", auraUpkeep: 0.02 }
 ];
 
 function getLegacyPoints() {
@@ -276,9 +298,12 @@ function isSkillUnlocked(skillDef) {
   if (skillDef.unlock === "scavengerFull") {
     return ["luckyFind", "treasureHunter", "hoarder", "jackpot"].every((t) => hasTalent(t));
   }
+  if (skillDef.unlock === "diff2") return !!u.diff2;
   if (skillDef.unlock === "diff3") return !!u.diff3;
   if (skillDef.unlock === "diff4") return !!u.diff4;
   if (skillDef.unlock === "diff5") return !!u.diff5;
+  if (skillDef.unlock === "fortified") return hasTalent("fortified");
+  if (skillDef.unlock === "vampiric50") return (u.vampiricTriggers || 0) >= 50;
   if (skillDef.unlock === "mastermind") return hasTalent("mastermind");
   if (skillDef.unlock === "secondWindUsed") return !!u.secondWindUsed;
   if (skillDef.unlock === "iceShard5") return !!u.iceShard5;
@@ -353,7 +378,7 @@ function pickRandomConditions(count) {
 
 // -------- Map definitions --------
 
-const MAP_WIDTH = 1200;
+const MAP_WIDTH = 3600;
 const MAP_HEIGHT = 900;
 const WALL_THICKNESS = 32;
 
@@ -369,7 +394,7 @@ const MAP_DEFS = [
     exits: [
       { x: MAP_WIDTH - WALL_THICKNESS - 80, y: MAP_HEIGHT / 2 - 60, w: 80, h: 120, targetMapId: 1, spawnSide: "left" }
     ],
-    enemyCount: 3,
+    enemyCount: 6,
     enemyScale: { hp: 1, attack: 1, speed: 1 },
     lootQuality: 0,
   },
@@ -385,7 +410,7 @@ const MAP_DEFS = [
       { x: 0, y: MAP_HEIGHT / 2 - 60, w: WALL_THICKNESS + 60, h: 120, targetMapId: 0, spawnSide: "right" },
       { x: MAP_WIDTH - WALL_THICKNESS - 80, y: MAP_HEIGHT / 2 - 60, w: 80, h: 120, targetMapId: 2, spawnSide: "left" }
     ],
-    enemyCount: 4,
+    enemyCount: 8,
     enemyScale: { hp: 1.2, attack: 1.15, speed: 1.1 },
     lootQuality: 0.2,
   },
@@ -401,7 +426,7 @@ const MAP_DEFS = [
       { x: 0, y: MAP_HEIGHT / 2 - 60, w: WALL_THICKNESS + 60, h: 120, targetMapId: 1, spawnSide: "right" },
       { x: MAP_WIDTH - WALL_THICKNESS - 80, y: MAP_HEIGHT / 2 - 60, w: 80, h: 120, targetMapId: 3, spawnSide: "left" }
     ],
-    enemyCount: 5,
+    enemyCount: 10,
     enemyScale: { hp: 1.5, attack: 1.3, speed: 1.2 },
     lootQuality: 0.4,
   },
@@ -417,7 +442,7 @@ const MAP_DEFS = [
       { x: 0, y: MAP_HEIGHT / 2 - 60, w: WALL_THICKNESS + 60, h: 120, targetMapId: 2, spawnSide: "right" },
       { x: MAP_WIDTH - WALL_THICKNESS - 80, y: MAP_HEIGHT / 2 - 60, w: 80, h: 120, targetMapId: 4, spawnSide: "left" }
     ],
-    enemyCount: 6,
+    enemyCount: 12,
     enemyScale: { hp: 2, attack: 1.5, speed: 1.3 },
     lootQuality: 0.6,
   },
@@ -432,7 +457,7 @@ const MAP_DEFS = [
     exits: [
       { x: 0, y: MAP_HEIGHT / 2 - 60, w: WALL_THICKNESS + 60, h: 120, targetMapId: 3, spawnSide: "right" }
     ],
-    enemyCount: 8,
+    enemyCount: 16,
     enemyScale: { hp: 2.5, attack: 1.8, speed: 1.5 },
     lootQuality: 0.85,
   },
@@ -510,11 +535,6 @@ class World {
 // -------- Hazard patches (ground conditions) --------
 
 const HAZARD_RADIUS = 95;
-const HAZARD_POSITIONS = [
-  [180, 200], [420, 180], [680, 220], [920, 350], [1100, 500],
-  [250, 450], [500, 520], [750, 600], [950, 720], [400, 750],
-  [600, 350], [300, 650], [850, 400], [150, 550], [1050, 200],
-];
 
 class HazardSystem {
   constructor(world, conditions) {
@@ -570,13 +590,13 @@ class HazardSystem {
 
     types.forEach((type, ti) => {
       if (!this.conditions.some((c) => c.id === type)) return;
-      const count = 7;
+      const count = 21;
       for (let i = 0; i < count; i++) {
-        const idx = (ti * 17 + i * 11) % HAZARD_POSITIONS.length;
-        const [px, py] = HAZARD_POSITIONS[idx];
-        const x = Math.max(margin, Math.min(px, this.world.width - margin - 1));
-        const y = Math.max(margin, Math.min(py, this.world.height - margin - 1));
-        this.patches.push({ type, x, y, radius: HAZARD_RADIUS, id: this.patches.length });
+        const x = margin + (i / (count - 1)) * w + (Math.random() - 0.5) * 80;
+        const y = margin + Math.random() * h;
+        const clampedX = Math.max(margin, Math.min(x, this.world.width - margin - 1));
+        const clampedY = Math.max(margin, Math.min(y, this.world.height - margin - 1));
+        this.patches.push({ type, x: clampedX, y: clampedY, radius: HAZARD_RADIUS, id: this.patches.length });
       }
     });
   }
@@ -600,7 +620,9 @@ class HazardSystem {
       const sx = p.x + ox;
       const sy = p.y + oy;
 
-      if (sx + p.radius < 0 || sx - p.radius > 800 || sy + p.radius < 0 || sy - p.radius > 600) continue;
+      const vw = camera.viewWidth || 800;
+      const vh = camera.viewHeight || 600;
+      if (sx + p.radius < 0 || sx - p.radius > vw || sy + p.radius < 0 || sy - p.radius > vh) continue;
 
       ctx.save();
 
@@ -782,6 +804,28 @@ const ENEMY_TYPES = [
 
 const BOSS_XP = 200;
 
+const AFFIX_DEFS = [
+  { id: "swift", name: "Swift", icon: "⚡", color: "#fbbf24" },
+  { id: "volatile", name: "Volatile", icon: "💥", color: "#f97316" },
+  { id: "reflective", name: "Reflective", icon: "🪞", color: "#67e8f9" },
+  { id: "regenerating", name: "Regenerating", icon: "💚", color: "#22c55e" },
+  { id: "evasive", name: "Evasive", icon: "👟", color: "#a78bfa" },
+  { id: "auraBearer", name: "Aura Bearer", icon: "⭕", color: "#ec4899" },
+  { id: "martyr", name: "Martyr", icon: "💀", color: "#78716c" },
+  { id: "undying", name: "Undying", icon: "🔄", color: "#7c3aed" },
+  { id: "weakening", name: "Weakening", icon: "📉", color: "#ef4444" },
+  { id: "orbiting", name: "Orbiting", icon: "🔥", color: "#f59e0b" },
+  { id: "lasering", name: "Lasering", icon: "📡", color: "#06b6d4" },
+  { id: "phantom", name: "Phantom", icon: "👻", color: "#94a3b8" },
+  { id: "cursing", name: "Cursing", icon: "☠", color: "#8b5cf6" },
+  { id: "erratic", name: "Erratic", icon: "〰", color: "#e879f9" },
+  { id: "rooted", name: "Rooted", icon: "⛓", color: "#64748b" }
+];
+
+function getAffixDef(id) {
+  return AFFIX_DEFS.find((a) => a.id === id) || { id, name: id, icon: "?", color: "#94a3b8" };
+}
+
 function getXpForLevel(level) {
   if (level <= 1) return 0;
   if (level === 2) return 100;
@@ -818,6 +862,9 @@ class Enemy {
 
     // Flash red briefly when hit
     this.hitFlashTimer = 0;
+
+    // Only chase after player enters detection range; once activated, chase forever
+    this.activated = false;
   }
 
   get center() {
@@ -837,17 +884,72 @@ class Enemy {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
-  update(dt, player, gameTime = 0, globalSlowMult = 1) {
+  update(dt, player, gameTime = 0, globalSlowMult = 1, detectionRange = 200, game = null) {
+    if (this._undyingRespawnTime != null && gameTime < this._undyingRespawnTime) {
+      if (this.attackTimer > 0) this.attackTimer -= dt;
+      if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
+      return;
+    }
+    if (this._undyingRespawnTime != null && gameTime >= this._undyingRespawnTime) {
+      this._undyingRespawnTime = null;
+    }
     if (this.stunUntil != null && gameTime < this.stunUntil) {
       if (this.attackTimer > 0) this.attackTimer -= dt;
       if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
       return;
     }
+    const hasAffix = (id) => this.affixes && this.affixes.includes(id);
     let speedMult = globalSlowMult;
     if (this.slowUntil != null && gameTime < this.slowUntil) speedMult *= (this.slowMult ?? 0.7);
+    if (hasAffix("swift")) {
+      speedMult *= 1.2;
+      this._swiftTrail = this._swiftTrail || [];
+      this._swiftTrail.push({ x: this.position.x, y: this.position.y });
+      if (this._swiftTrail.length > 8) this._swiftTrail.shift();
+    } else this._swiftTrail = null;
+    if (this._auraBuffed) speedMult *= 1.2;
     const cx = this.position.x + this.size / 2;
     const cy = this.position.y + this.size / 2;
     const margin = 60;
+
+    if (hasAffix("rooted")) {
+      if (this.attackTimer > 0) this.attackTimer -= dt;
+      if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
+      return;
+    }
+
+    if (hasAffix("erratic")) {
+      this._erraticTimer = (this._erraticTimer ?? 0) + dt;
+      if (this._erraticTimer >= 2) {
+        this._erraticTimer = 0;
+        this._erraticTrail = this._erraticTrail || [];
+        for (let i = 0; i < 4; i++) this._erraticTrail.push({ x: this.position.x, y: this.position.y });
+        if (this._erraticTrail.length > 12) this._erraticTrail = this._erraticTrail.slice(-12);
+        const angle = Math.random() * Math.PI * 2;
+        const dashDist = 80;
+        this.position.x += Math.cos(angle) * dashDist;
+        this.position.y += Math.sin(angle) * dashDist;
+      }
+    }
+
+    if (hasAffix("evasive") && this.activated) {
+      this._evasiveTrail = this._evasiveTrail || [];
+      this._evasiveTrail.push({ x: this.position.x, y: this.position.y });
+      if (this._evasiveTrail.length > 6) this._evasiveTrail.shift();
+      const px = player.position.x + player.size / 2;
+      const py = player.position.y + player.size / 2;
+      const dx = cx - px;
+      const dy = cy - py;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const fleeSpeed = Math.min(this.speed * 1.5, player.speed || 100);
+      this.position.x += (dx / dist) * fleeSpeed * speedMult * dt;
+      this.position.y += (dy / dist) * fleeSpeed * speedMult * dt;
+      const w = this.worldBounds?.width ?? 3600;
+      const h = this.worldBounds?.height ?? 900;
+      this.position.x = Math.max(margin, Math.min(this.position.x, w - margin - this.size));
+      this.position.y = Math.max(margin, Math.min(this.position.y, h - margin - this.size));
+    } else this._evasiveTrail = null;
+    if (hasAffix("evasive") && !this.activated) this._evasiveTrail = null;
     if (this.isFiery) {
       this.wanderTimer = (this.wanderTimer || 0) - dt;
       if (this.wanderTimer <= 0) {
@@ -862,16 +964,21 @@ class Enemy {
       let dy = this.wanderDirection.y;
       this.position.x += dx * this.speed * speedMult * dt;
       this.position.y += dy * this.speed * speedMult * dt;
-      this.position.x = Math.max(margin, Math.min(this.position.x, 1200 - margin - this.size));
-      this.position.y = Math.max(margin, Math.min(this.position.y, 900 - margin - this.size));
+      const w = this.worldBounds?.width ?? 3600;
+      const h = this.worldBounds?.height ?? 900;
+      this.position.x = Math.max(margin, Math.min(this.position.x, w - margin - this.size));
+      this.position.y = Math.max(margin, Math.min(this.position.y, h - margin - this.size));
     } else {
       const px = player.position.x + player.size / 2;
       const py = player.position.y + player.size / 2;
       const dx = px - cx;
       const dy = py - cy;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      this.position.x += (dx / dist) * this.speed * speedMult * dt;
-      this.position.y += (dy / dist) * this.speed * speedMult * dt;
+      if (!this.activated && dist <= detectionRange) this.activated = true;
+      if (this.activated) {
+        this.position.x += (dx / dist) * this.speed * speedMult * dt;
+        this.position.y += (dy / dist) * this.speed * speedMult * dt;
+      }
     }
 
     if (this.attackTimer > 0) this.attackTimer -= dt;
@@ -893,6 +1000,7 @@ class Enemy {
     this.health -= amount;
     this.hitFlashTimer = 0.12;
     if (this.health < 0) this.health = 0;
+    this.activated = true;
   }
 
   get isDead() {
@@ -902,25 +1010,205 @@ class Enemy {
   draw(ctx, camera) {
     const sx = Math.floor(this.position.x - camera.position.x);
     const sy = Math.floor(this.position.y - camera.position.y);
+    const half = this.size / 2;
+    const hasAffix = (id) => this.affixes?.includes(id);
 
-    // Body
-    ctx.fillStyle = this.hitFlashTimer > 0 ? "#ffffff" : this.color;
+    const isMiniBoss = this.enemyTier === "miniBoss" || this.isMiniBoss;
+    const isElite = this.enemyTier === "elite" || this.isElite;
+
+    if (hasAffix("phantom")) ctx.globalAlpha = 0.5;
+    if (this._undyingRespawnTime != null) {
+      ctx.shadowColor = "#7c3aed";
+      ctx.shadowBlur = 20;
+    }
+    if (hasAffix("weakening") && this.hitFlashTimer > 0) {
+      ctx.shadowColor = "#ef4444";
+      ctx.shadowBlur = 8;
+    }
+
+    let fillColor = this.hitFlashTimer > 0 ? "#ffffff" : this.color;
+    if (isMiniBoss) {
+      fillColor = this.hitFlashTimer > 0 ? "#ffffff" : "#a855f7";
+    }
+
+    if (isElite) {
+      ctx.shadowColor = "#60a5fa";
+      ctx.shadowBlur = 12;
+    }
+    ctx.fillStyle = fillColor;
     ctx.fillRect(sx, sy, this.size, this.size);
+    if (isElite) {
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "#60a5fa";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx, sy, this.size, this.size);
+    } else if (isMiniBoss) {
+      ctx.strokeStyle = "#facc15";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx, sy, this.size, this.size);
+    } else {
+      ctx.strokeStyle = "rgba(0,0,0,0.5)";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(sx, sy, this.size, this.size);
+    }
+    if (this._undyingRespawnTime != null || (hasAffix("weakening") && this.hitFlashTimer > 0)) ctx.shadowBlur = 0;
 
-    ctx.strokeStyle = "rgba(0,0,0,0.5)";
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(sx, sy, this.size, this.size);
+    if (hasAffix("martyr")) {
+      ctx.strokeStyle = "rgba(80,60,40,0.8)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 4; i++) {
+        const ax = sx + 4 + (i % 2) * (this.size - 8);
+        const ay = sy + 4 + Math.floor(i / 2) * (this.size - 8);
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax + 6, ay + 6);
+        ctx.lineTo(ax + 2, ay + 10);
+        ctx.stroke();
+      }
+    }
+    if (hasAffix("rooted")) {
+      ctx.strokeStyle = "#64748b";
+      ctx.lineWidth = 2;
+      const cx = sx + this.size / 2;
+      const cy = sy + this.size;
+      ctx.beginPath();
+      ctx.moveTo(cx - 8, cy);
+      ctx.lineTo(cx - 12, cy + 15);
+      ctx.moveTo(cx + 8, cy);
+      ctx.lineTo(cx + 12, cy + 15);
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx, cy + 18);
+      ctx.stroke();
+    }
+    if (hasAffix("regenerating")) {
+      this._regenParticles = this._regenParticles || [];
+      if (Math.random() < 0.3) this._regenParticles.push({ x: sx + this.size / 2 + (Math.random() - 0.5) * this.size, y: sy + this.size, life: 0.5 });
+      this._regenParticles = this._regenParticles.filter((p) => {
+        p.life -= 0.016;
+        if (p.life <= 0) return false;
+        ctx.fillStyle = `rgba(34,197,94,${p.life * 2})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y - p.life * 20, 3, 0, Math.PI * 2);
+        ctx.fill();
+        return true;
+      });
+    }
+    if (hasAffix("swift") && this._swiftTrail) {
+      for (let i = 0; i < this._swiftTrail.length; i++) {
+        const t = this._swiftTrail[i];
+        const tsx = Math.floor(t.x - camera.position.x);
+        const tsy = Math.floor(t.y - camera.position.y);
+        ctx.fillStyle = `rgba(251,191,36,${0.15 * (i / this._swiftTrail.length)})`;
+        ctx.fillRect(tsx, tsy, this.size, this.size);
+      }
+    }
+    if (hasAffix("erratic") && this._erraticTrail) {
+      for (let i = 0; i < this._erraticTrail.length; i++) {
+        const t = this._erraticTrail[i];
+        const tsx = Math.floor(t.x - camera.position.x);
+        const tsy = Math.floor(t.y - camera.position.y);
+        ctx.fillStyle = `rgba(232,121,249,${0.2 * (1 - i / this._erraticTrail.length)})`;
+        ctx.fillRect(tsx, tsy, this.size, this.size);
+      }
+    }
+    if (hasAffix("evasive") && this._evasiveTrail) {
+      for (let i = 0; i < this._evasiveTrail.length; i++) {
+        const t = this._evasiveTrail[i];
+        const tsx = Math.floor(t.x - camera.position.x);
+        const tsy = Math.floor(t.y - camera.position.y);
+        ctx.fillStyle = `rgba(167,139,250,${0.2 * (i / this._evasiveTrail.length)})`;
+        ctx.fillRect(tsx + 2, tsy + this.size - 4, 4, 4);
+      }
+    }
+    if (hasAffix("auraBearer")) {
+      const cx = sx + this.size / 2;
+      const cy = sy + this.size / 2;
+      ctx.strokeStyle = "rgba(236,72,153,0.6)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 40, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (hasAffix("orbiting") && this._orbitingAngle != null) {
+      const cx = sx + this.size / 2;
+      const cy = sy + this.size / 2;
+      const orbRadius = 35;
+      for (let i = 0; i < 4; i++) {
+        const a = this._orbitingAngle + (i / 4) * Math.PI * 2;
+        const ox = cx + Math.cos(a) * orbRadius;
+        const oy = cy + Math.sin(a) * orbRadius;
+        ctx.fillStyle = "#f59e0b";
+        ctx.beginPath();
+        ctx.arc(ox, oy, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (hasAffix("lasering")) {
+      const cx = sx + this.size / 2;
+      const cy = sy + this.size / 2;
+      const a = this._laserAngle ?? 0;
+      const beamLen = 150;
+      const bx = cx + Math.cos(a) * beamLen;
+      const by = cy + Math.sin(a) * beamLen;
+      ctx.strokeStyle = "rgba(6,182,212,0.7)";
+      ctx.lineWidth = 20;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+    }
+    if (hasAffix("reflective")) {
+      ctx.fillStyle = "rgba(200,230,255,0.2)";
+      ctx.fillRect(sx, sy, this.size, this.size);
+    }
+    if (hasAffix("volatile") && (this._volatileTimer ?? 0) > 1.2) {
+      ctx.fillStyle = `rgba(249,115,22,${0.4 * Math.sin(this._volatileTimer * 20)})`;
+      ctx.beginPath();
+      ctx.arc(sx + this.size / 2, sy + this.size / 2, this.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (hasAffix("phantom")) ctx.globalAlpha = 1;
 
-    // Health bar
     const barW = this.size;
-    const barH = 5;
-    const barY = sy - 8;
+    const barH = isMiniBoss ? 7 : 5;
+    const barY = sy - (isMiniBoss ? 12 : 8);
     ctx.fillStyle = "#1f2937";
     ctx.fillRect(sx, barY, barW, barH);
     const pct = Math.max(0, this.health / this.maxHealth);
     const hpColor = pct > 0.5 ? "#4ade80" : pct > 0.25 ? "#facc15" : "#ef4444";
     ctx.fillStyle = hpColor;
     ctx.fillRect(sx, barY, Math.round(barW * pct), barH);
+    if (isMiniBoss) {
+      ctx.strokeStyle = "#facc15";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx, barY, barW, barH);
+    }
+
+    if (this.affixes && this.affixes.length > 0) {
+      const iconSize = 14;
+      const iconY = barY - iconSize - 2;
+      const totalW = this.affixes.length * (iconSize + 2);
+      let iconX = sx + (barW - totalW) / 2 + iconSize / 2 + 1;
+      this._affixRects = [];
+      for (const affixId of this.affixes) {
+        const def = getAffixDef(affixId);
+        const rx = iconX - iconSize / 2 - 1;
+        ctx.fillStyle = def.color;
+        ctx.beginPath();
+        ctx.arc(iconX, iconY + iconSize / 2, iconSize / 2 + 1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(0,0,0,0.5)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = "#fff";
+        ctx.font = `${iconSize - 2}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(def.icon, iconX, iconY + iconSize / 2);
+        this._affixRects.push({ x: rx, y: iconY, w: iconSize + 2, h: iconSize + 2, name: def.name });
+        iconX += iconSize + 2;
+      }
+    }
   }
 }
 
@@ -1171,33 +1459,65 @@ class EnemySystem {
 
   randomPosition(size) {
     const margin = this.world.wallThickness + size + 40;
-    const x = margin + Math.random() * (this.world.width - margin * 2);
+    const safeZoneEnd = this.world.width / 5;
+    const minX = Math.max(margin, safeZoneEnd);
+    const x = minX + Math.random() * (this.world.width - margin - minX);
     const y = margin + Math.random() * (this.world.height - margin * 2);
     return new Vec2(x, y);
   }
 
-  spawnOne() {
+  spawnOne(forceTier = null) {
     let base = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
     if (this.hasCond("eliteSpawn")) {
       const idx = ENEMY_TYPES.findIndex((e) => e.name === base.name);
       base = ENEMY_TYPES[Math.min(idx + 1, ENEMY_TYPES.length - 1)] || base;
     }
+    const tier = forceTier || (Math.random() < 0.79 ? "minion" : "elite");
     const s = this.mapDef.enemyScale || { hp: 1, attack: 1, speed: 1 };
-    let hp = Math.round(base.maxHealth * this.diffMult * s.hp);
-    let atk = Math.round(base.attack * this.diffMult * s.attack);
+    const tierMult = { minion: { hp: 0.5, atk: 1, xp: 0.7, size: 0.7 }, elite: { hp: 1, atk: 1.2, xp: 1.4, size: 1 }, miniBoss: { hp: 5, atk: 2, xp: 5, size: 1.4 } };
+    const tm = tierMult[tier];
+    let hp = Math.round(base.maxHealth * this.diffMult * s.hp * tm.hp);
+    let atk = Math.round(base.attack * this.diffMult * s.attack * tm.atk);
     let spd = Math.round(base.speed * s.speed);
+    const size = Math.max(16, Math.round(base.size * tm.size));
     if (this.hasCond("enemyHp")) hp = Math.round(hp * 1.15);
     if (this.hasCond("enemyDmg")) atk = Math.round(atk * 1.15);
     if (this.hasCond("enemySpeed")) spd = Math.round(spd * 1.2);
-    const typeDef = { ...base, maxHealth: hp, attack: atk, speed: spd };
-    const pos = this.randomPosition(typeDef.size);
+    const typeDef = { ...base, maxHealth: hp, attack: atk, speed: spd, size };
+    const pos = this.randomPosition(size);
     const enemy = new Enemy(pos.x, pos.y, typeDef);
+    enemy.worldBounds = { width: this.world.width, height: this.world.height };
+    enemy.enemyTier = tier;
+    enemy.tierXpMult = tm.xp;
+    if (tier === "elite") enemy.isElite = true;
+    if (tier === "miniBoss") enemy.isMiniBoss = true;
     if (this.hasCond("enemyRegen")) enemy.regenRate = 2;
+    if (this.hasCond("eliteSpawn") && tier !== "miniBoss") enemy.isElite = true;
+    enemy.affixes = [];
+    if (tier === "elite") {
+      const pool = [...AFFIX_DEFS];
+      for (let i = 0; i < 2 && pool.length > 0; i++) {
+        const idx = Math.floor(Math.random() * pool.length);
+        enemy.affixes.push(pool.splice(idx, 1)[0].id);
+      }
+    } else if (tier === "miniBoss") {
+      const pool = [...AFFIX_DEFS];
+      for (let i = 0; i < 4 && pool.length > 0; i++) {
+        const idx = Math.floor(Math.random() * pool.length);
+        enemy.affixes.push(pool.splice(idx, 1)[0].id);
+      }
+    }
+    if (enemy.affixes?.includes("regenerating")) enemy.regenRate = (enemy.regenRate || 0) + 3;
     this.enemies.push(enemy);
   }
 
   spawnBoss() {
-    const pos = this.randomPosition(BOSS_SIZE);
+    const margin = this.world.wallThickness + BOSS_SIZE + 40;
+    const rightThirdStart = this.world.width * 0.6;
+    const rightThirdEnd = this.world.width - margin;
+    const x = rightThirdStart + Math.random() * (rightThirdEnd - rightThirdStart);
+    const y = margin + Math.random() * (this.world.height - margin * 2);
+    const pos = new Vec2(x, y);
     const boss = new Boss(pos.x, pos.y);
     boss.maxHealth = Math.round(boss.maxHealth * this.diffMult);
     boss.health = boss.maxHealth;
@@ -1229,27 +1549,15 @@ class EnemySystem {
     if (this.mapDef.id === 4) {
       this.spawnBoss();
     } else {
-      const count = (this.mapDef.enemyCount || 4) + Math.floor(Math.random() * 2);
-      for (let i = 0; i < count; i++) {
+      const count = 20 + Math.floor(Math.random() * 11);
+      this.spawnOne("miniBoss");
+      for (let i = 0; i < count - 1; i++) {
         this.spawnOne();
       }
     }
   }
 
   update(dt) {
-    if (this.boss) return;
-    this.respawnQueue = this.respawnQueue.filter((timer) => {
-      timer.delay -= dt;
-      if (timer.delay <= 0) {
-        this.spawnOne();
-        return false;
-      }
-      return true;
-    });
-  }
-
-  queueRespawn(delaySeconds = 6) {
-    this.respawnQueue.push({ delay: delaySeconds });
   }
 
   draw(ctx, camera) {
@@ -1269,42 +1577,178 @@ class EnemySystem {
 
 const DEV_MODE_ENABLED = true;
 
+// Rarity system: base stat by type, modifiers, names
+const EQUIPMENT_BASE_STAT = {
+  Helmet: "maxHealth",
+  Weapon: "attack",
+  Boots: "speed",
+  "Body Armour": "defense"
+};
+
+const EQUIPMENT_BASE_NAMES = {
+  Helmet: ["Leather Cap", "Cloth Hood", "Hide Cap", "Iron Helmet", "Steel Helmet", "Battle Helm", "Knight's Helm", "Dragon Helm"],
+  Boots: ["Leather Boots", "Iron Greaves", "Steel Greaves", "Wind Boots", "Swift Boots", "Shadow Striders"],
+  "Body Armour": ["Leather Armour", "Hide Armour", "Chainmail Vest", "Scale Armour", "Plate Armour", "Battle Plate", "Fortress Armour"],
+  Weapon: ["Wooden Staff", "Iron Sword", "Steel Sword", "Battle Axe", "War Hammer", "Legendary Blade"]
+};
+
+const EQUIPMENT_BASE_RANGES = {
+  Helmet: { min: 3, max: 25 },
+  Weapon: { min: 4, max: 22 },
+  Boots: { min: 35, max: 130 },
+  "Body Armour": { min: 2, max: 12 }
+};
+
+const WEIGHT_OPTIONS = { Helmet: ["light", "medium", "heavy"], "Body Armour": ["light", "medium", "heavy"] };
+
+const MODIFIER_POOL = [
+  { id: "attackPercent", label: "Attack Damage", statKey: "attack" },
+  { id: "attackSpeedPercent", label: "Attack Speed", statKey: "attackSpeed" },
+  { id: "maxHealthPercent", label: "Max Health", statKey: "maxHealth" },
+  { id: "defensePercent", label: "Defense", statKey: "defense" },
+  { id: "speedPercent", label: "Movement Speed", statKey: "speed" },
+  { id: "xpGainedPercent", label: "XP Gained", statKey: "xpGained" },
+  { id: "skillDamagePercent", label: "Skill Damage", statKey: "skillDamage" },
+  { id: "cooldownReductionPercent", label: "Cooldown Reduction", statKey: "cooldownRecovery" }
+];
+
+const NAME_PREFIXES = ["Twisted", "Cursed", "Blessed", "Ancient", "Rotten", "Void", "Storm", "Frost", "Flame", "Shadow"];
+const NAME_SUFFIXES = ["of the Fox", "of the Bear", "of Power", "of Swiftness", "of the Titan", "of the Wolf", "of the Owl", "of the Serpent"];
+
+const RARITY_COLORS = { common: "#e2e8f0", magic: "#60a5fa", rare: "#facc15" };
+
+// -------- Crafting Cubes --------
+
+const MODIFIER_CUBE_TIERS = [
+  { min: 0.1, max: 0.25 },
+  { min: 0.2, max: 0.35 },
+  { min: 0.3, max: 0.45 }
+];
+
+const MODIFIER_CUBES = [
+  { id: "attackCube", label: "Attack Cube", modifierId: "attackPercent", modifierLabel: "Attack Damage" },
+  { id: "speedCube", label: "Speed Cube", modifierId: "speedPercent", modifierLabel: "Movement Speed" },
+  { id: "healthCube", label: "Health Cube", modifierId: "maxHealthPercent", modifierLabel: "Max Health" },
+  { id: "defenseCube", label: "Defense Cube", modifierId: "defensePercent", modifierLabel: "Defense" },
+  { id: "swiftnessCube", label: "Swiftness Cube", modifierId: "attackSpeedPercent", modifierLabel: "Attack Speed" },
+  { id: "wisdomCube", label: "Wisdom Cube", modifierId: "xpGainedPercent", modifierLabel: "XP Gained" },
+  { id: "powerCube", label: "Power Cube", modifierId: "skillDamagePercent", modifierLabel: "Skill Damage" },
+  { id: "focusCube", label: "Focus Cube", modifierId: "cooldownReductionPercent", modifierLabel: "Cooldown Reduction" }
+];
+
+const UPGRADE_CUBES = [
+  { id: "magicCube", label: "Magic Cube", targetRarity: "common", newRarity: "magic", addsModifiers: 2 },
+  { id: "rareCube", label: "Rare Cube", targetRarity: "magic", newRarity: "rare", addsModifiers: 2 },
+  { id: "reforgeCube", label: "Reforge Cube", targetRarity: null, rerolls: true }
+];
+
+function rollModifierForTier(tier) {
+  const r = MODIFIER_CUBE_TIERS[tier - 1] || MODIFIER_CUBE_TIERS[0];
+  return r.min + Math.random() * (r.max - r.min);
+}
+
+function getModifierPoolEntry(modifierId) {
+  return MODIFIER_POOL.find((m) => m.id === modifierId) || MODIFIER_POOL.find((m) => `${m.statKey}Percent` === modifierId);
+}
+
+function getRarityRoll(lootQuality, qualityBonus) {
+  const roll = Math.random();
+  const bias = Math.min(1, lootQuality + GLOBAL_LUCK + qualityBonus);
+  if (roll < 0.02 + bias * 0.08) return "rare";
+  if (roll < 0.15 + bias * 0.25) return "magic";
+  return "common";
+}
+
+function rollModifierValue() {
+  return 0.1 + Math.random() * 0.4;
+}
+
+function generateEquipmentItem(type, lootQuality, qualityBonus = 0, forceRarity = null) {
+  const rarity = forceRarity || getRarityRoll(lootQuality, qualityBonus);
+  const baseKey = EQUIPMENT_BASE_STAT[type];
+  const range = EQUIPMENT_BASE_RANGES[type];
+  const scale = 0.4 + 0.6 * (0.5 + lootQuality / 2);
+  const baseValue = Math.round(range.min + (range.max - range.min) * scale);
+  const baseStat = { [baseKey]: baseValue };
+
+  let weight = null;
+  if (WEIGHT_OPTIONS[type]) {
+    const opts = WEIGHT_OPTIONS[type];
+    weight = opts[Math.floor(Math.random() * opts.length)];
+  }
+
+  const modifiers = [];
+  if (rarity === "magic") {
+    const pool = [...MODIFIER_POOL];
+    for (let i = 0; i < 2; i++) {
+      const idx = Math.floor(Math.random() * pool.length);
+      const m = pool.splice(idx, 1)[0];
+      modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: rollModifierValue() });
+    }
+  } else if (rarity === "rare") {
+    const pool = [...MODIFIER_POOL];
+    for (let i = 0; i < 4; i++) {
+      const idx = Math.floor(Math.random() * pool.length);
+      const m = pool.splice(idx, 1)[0];
+      modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: rollModifierValue() });
+    }
+  }
+
+  const baseNames = EQUIPMENT_BASE_NAMES[type];
+  const baseName = baseNames[Math.floor(Math.random() * baseNames.length)];
+
+  let name;
+  if (rarity === "common") {
+    name = baseName;
+  } else if (rarity === "magic") {
+    if (Math.random() < 0.5) {
+      name = `${NAME_PREFIXES[Math.floor(Math.random() * NAME_PREFIXES.length)]} ${baseName}`;
+    } else {
+      name = `${baseName} ${NAME_SUFFIXES[Math.floor(Math.random() * NAME_SUFFIXES.length)]}`;
+    }
+  } else {
+    name = `${NAME_PREFIXES[Math.floor(Math.random() * NAME_PREFIXES.length)]} ${baseName} ${NAME_SUFFIXES[Math.floor(Math.random() * NAME_SUFFIXES.length)]}`;
+  }
+
+  const stats = { ...baseStat };
+  for (const m of modifiers) {
+    if (m.statKey === "attackSpeed") {
+      stats.attackSpeed = (stats.attackSpeed || 1) * (1 + m.value);
+    } else if (m.statKey === "cooldownRecovery") {
+      stats.cooldownRecovery = (stats.cooldownRecovery || 1) * (1 - m.value);
+    } else {
+      const key = ["attack", "maxHealth", "defense", "speed"].includes(m.statKey) ? `${m.statKey}Percent` : m.statKey;
+      stats[key] = (stats[key] || 0) + m.value;
+    }
+  }
+
+  return {
+    type,
+    name,
+    rarity,
+    baseStat,
+    weight,
+    modifiers,
+    stats
+  };
+}
+
 const LOOT_DEFS = [
   {
     type: "Helmet",
-    items: [
-      { name: "Leather Cap", stats: { defense: 2 } },
-      { name: "Iron Helmet", stats: { defense: 5 } },
-      { name: "Steel Helmet", stats: { defense: 8 } },
-      { name: "Dragon Helm", stats: { defense: 12 } }
-    ]
+    items: [] // Generated dynamically
   },
   {
     type: "Boots",
-    items: [
-      { name: "Leather Boots", stats: { speed: 40 } },
-      { name: "Iron Greaves", stats: { speed: 60 } },
-      { name: "Steel Greaves", stats: { speed: 90 } },
-      { name: "Wind Boots", stats: { speed: 120 } }
-    ]
+    items: []
   },
   {
     type: "Body Armour",
-    items: [
-      { name: "Leather Armour", stats: { maxHealth: 20 } },
-      { name: "Chainmail Vest", stats: { maxHealth: 40 } },
-      { name: "Plate Armour", stats: { maxHealth: 60 } },
-      { name: "Dragon Scale", stats: { maxHealth: 80 } }
-    ]
+    items: []
   },
   {
     type: "Weapon",
-    items: [
-      { name: "Wooden Staff", stats: { attack: 4 } },
-      { name: "Iron Sword", stats: { attack: 8 } },
-      { name: "Steel Sword", stats: { attack: 12 } },
-      { name: "Legendary Blade", stats: { attack: 18 } }
-    ]
+    items: []
   },
   {
     type: "Upgrade Card",
@@ -1375,6 +1819,14 @@ const LOOT_COLORS = {
   "Upgrade Card": "#22c55e"
 };
 
+const LOOT_ICONS = {
+  Helmet: "🪖",
+  Boots: "👢",
+  "Body Armour": "🛡️",
+  Weapon: "⚔️",
+  "Upgrade Card": "🃏"
+};
+
 let GLOBAL_LUCK = 0;
 
 function getUpgradeCardDefs() {
@@ -1392,7 +1844,11 @@ class LootItem {
     this.stats = definition.stats || {};
     this.cardKey = definition.cardKey || null;
     this.description = definition.description || "";
-    this.color = LOOT_COLORS[this.type] || "#fbbf24";
+    this.weight = definition.weight || null;
+    this.rarity = definition.rarity || null;
+    this.modifiers = definition.modifiers || [];
+    this.baseStat = definition.baseStat || null;
+    this.color = this.rarity ? RARITY_COLORS[this.rarity] : (LOOT_COLORS[this.type] || "#fbbf24");
     this.burstFrom = burstFromX != null && burstFromY != null ? { x: burstFromX, y: burstFromY } : null;
     this.burstProgress = 0;
   }
@@ -1419,10 +1875,19 @@ class LootItem {
     const sy = Math.floor(pos.y - camera.position.y);
     const half = this.size / 2;
     const pulse = 0.75 + 0.25 * Math.sin(timeSeconds * 4 + this.id);
+    const icon = LOOT_ICONS[this.type] || "✨";
 
     ctx.save();
     ctx.translate(sx + half, sy + half);
     ctx.scale(pulse, pulse);
+
+    if (this.rarity === "magic") {
+      ctx.shadowColor = "#60a5fa";
+      ctx.shadowBlur = 14;
+    } else if (this.rarity === "rare") {
+      ctx.shadowColor = "#facc15";
+      ctx.shadowBlur = 16;
+    }
 
     const gradient = ctx.createRadialGradient(0, 0, 2, 0, 0, half);
     gradient.addColorStop(0, this.color);
@@ -1432,10 +1897,15 @@ class LootItem {
     ctx.arc(0, 0, half, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = this.color;
-    ctx.beginPath();
-    ctx.arc(0, 0, half * 0.6, 0, Math.PI * 2);
-    ctx.fill();
+    if (this.rarity === "magic" || this.rarity === "rare") {
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `${Math.round(this.size * 1.1)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(icon, 0, 0);
 
     ctx.restore();
   }
@@ -1479,35 +1949,40 @@ class LootSystem {
 
   getLootDefinition(qualityBonus = 0) {
     const group = LOOT_DEFS[Math.floor(Math.random() * LOOT_DEFS.length)];
-    const itemDef = group.items[Math.floor(Math.random() * group.items.length)];
 
-    const qualityBias = Math.min(1, this.mapLootQuality + GLOBAL_LUCK + qualityBonus);
-    let chosen = itemDef;
-    if (qualityBias > 0 && group.type !== "Upgrade Card" && group.items.length > 1) {
-      const strong = group.items[group.items.length - 1];
-      if (Math.random() < qualityBias) {
-        chosen = strong;
-      }
+    if (group.type === "Upgrade Card") {
+      const card = group.items[Math.floor(Math.random() * group.items.length)];
+      return {
+        type: "Upgrade Card",
+        name: card.name,
+        stats: {},
+        cardKey: card.cardKey,
+        description: card.description,
+        weight: null
+      };
     }
 
-    return {
-      type: group.type,
-      name: chosen.name,
-      stats: chosen.stats,
-      cardKey: chosen.cardKey,
-      description: chosen.description
-    };
+    return generateEquipmentItem(group.type, this.mapLootQuality, qualityBonus);
   }
 
   spawnGuaranteedWeaponAt(centerX, centerY) {
-    const weaponGroup = LOOT_DEFS.find((g) => g.type === "Weapon");
-    if (!weaponGroup) return;
-    const best = weaponGroup.items[weaponGroup.items.length - 1];
-    const def = { type: "Weapon", name: best.name, stats: best.stats };
+    const def = generateEquipmentItem("Weapon", Math.min(1, this.mapLootQuality + 0.5), 0.5);
     const size = 20;
     const margin = this.world.wallThickness + 15;
     const landX = centerX - size / 2 + (Math.random() - 0.5) * 30;
     const landY = centerY - size / 2 + (Math.random() - 0.5) * 30;
+    const clampedX = Math.max(margin, Math.min(landX, this.world.width - margin - size));
+    const clampedY = Math.max(margin, Math.min(landY, this.world.height - margin - size));
+    const item = new LootItem(this.nextId++, clampedX, clampedY, def, centerX, centerY);
+    item.size = size;
+    this.items.push(item);
+  }
+
+  spawnEquipmentAt(centerX, centerY, def) {
+    const size = 20;
+    const margin = this.world.wallThickness + 15;
+    const landX = centerX - size / 2 + (Math.random() - 0.5) * 20;
+    const landY = centerY - size / 2 + (Math.random() - 0.5) * 20;
     const clampedX = Math.max(margin, Math.min(landX, this.world.width - margin - size));
     const clampedY = Math.max(margin, Math.min(landY, this.world.height - margin - size));
     const item = new LootItem(this.nextId++, clampedX, clampedY, def, centerX, centerY);
@@ -1569,6 +2044,15 @@ class Game {
     this.skills = runConfig.skills || [null, null, null, null];
     this.skillCooldowns = [0, 0, 0, 0];
     this.skillEffects = [];
+    this.activeAuras = new Set();
+    this.whirlwindActive = false;
+    this.bladeDashActive = false;
+    this.bladeDashTimer = 0;
+    this.bladeDashDirection = new Vec2(0, 0);
+    this.bladeDashSpeed = 600;
+    this.bladeDashMult = 0.8;
+    this.bladeDashHitIds = new Set();
+    this.earthquakeShakeUntil = 0;
     this.iceShardHitsThisRun = 0;
     this.damageSkillsUsedThisRun = new Set();
     this.phoenixInvulnUntil = 0;
@@ -1597,8 +2081,13 @@ class Game {
       type: item.type,
       stats: item.stats || {},
       cardKey: item.cardKey || null,
-      description: item.description || ""
+      description: item.description || "",
+      weight: item.weight || null,
+      rarity: item.rarity || null,
+      modifiers: item.modifiers || [],
+      baseStat: item.baseStat || null
     }));
+    this.cubeInventory = {};
     this.inventoryListEl = document.getElementById("inventory-list");
     this.equippedListEl = document.getElementById("equipped-list");
     this.upgradeCardListEl = document.getElementById("upgrade-card-list");
@@ -1641,6 +2130,12 @@ class Game {
     this.levelHealthMult = 1;
     this.levelSpeedMult = 1;
     this.levelAttackSpeedMult = 1;
+    this.equipmentAttackSpeedMult = 1;
+    this.equipmentCooldownRecovery = 1;
+    this.equipmentXpGainedMult = 1;
+    this.equipmentSkillDamageMult = 1;
+    this.equipmentSpeedMult = 1;
+    this.equipmentDashCooldownMult = 1;
 
     this.swiftFeetTimer = 0;
     this.ironSkinTimer = 0;
@@ -1660,10 +2155,9 @@ class Game {
     this.currentMap = MAP_DEFS[0];
     this.world.setTheme(this.currentMap);
 
-    this.player = new Player(
-      this.world.width / 2 - 24,
-      this.world.height / 2 - 24
-    );
+    const margin = this.world.wallThickness + 60;
+    const centerY = this.world.height / 2 - 24;
+    this.player = new Player(margin, centerY);
 
     this.lootSystem = new LootSystem(this.world);
     let lootQual = this.currentMap.lootQuality;
@@ -1678,8 +2172,19 @@ class Game {
     this.toxicGroundTimer = 0;
     this.burningGroundTimer = 0;
     this.stunTimer = 0;
+    this.playerSlowUntil = 0;
+    this.playerSlowMult = 1;
+    this.playerBurnUntil = 0;
+    this.playerBurnDamage = 0;
+    this.playerWeakenUntil = 0;
+    this.playerSlowUntil = 0;
+    this.playerBurnUntil = 0;
+    this.playerBurnDmg = 0;
+    this.playerCursedWeakenUntil = 0;
+    this.lastDamagingEnemy = null;
 
     this.mapNameEl = document.getElementById("map-name");
+    this.enemyCountEl = document.getElementById("enemy-count");
     this.xpBarFillEl = document.getElementById("xp-bar-fill");
     this.xpLabelEl = document.getElementById("xp-label");
     this.playerLevelEl = document.getElementById("player-level");
@@ -1695,6 +2200,7 @@ class Game {
     this.dashDuration = 0.3;
     this.dashInvincibleStart = 0.1;
     this.dashInvincibleDuration = 0.1;
+    this.baseDashCooldownTime = 0.8;
     this.dashCooldownTime = 0.8;
     this.dashSpeedMult = 3;
     this.dashActive = false;
@@ -1708,6 +2214,7 @@ class Game {
 
     this.gameOver = false;
     this.paused = false;
+    this.inventoryOverlayOpen = false;
     this.gameOverEl = document.getElementById("game-over");
     this.pauseToggleEl = document.getElementById("pause-toggle");
     this.bossHealthBarEl = document.getElementById("boss-health-bar");
@@ -1747,7 +2254,56 @@ class Game {
       this.pauseToggleEl.addEventListener("click", () => this.togglePause());
     }
 
+    const inventoryBtn = document.getElementById("inventory-button");
+    if (inventoryBtn) {
+      inventoryBtn.addEventListener("click", () => {
+        if (this.inventoryOverlayOpen) this.closeInventoryOverlay();
+        else this.showInventoryOverlay();
+      });
+    }
+
+    const inventoryCloseBtn = document.getElementById("inventory-overlay-close");
+    if (inventoryCloseBtn) {
+      inventoryCloseBtn.addEventListener("click", () => this.closeInventoryOverlay());
+    }
+
+    this.craftingSelectedItem = null;
+    this.craftingSelectedCube = null;
+    this.craftingItemSource = null;
+
+    const tabItems = document.getElementById("inventory-tab-items");
+    const tabCrafting = document.getElementById("inventory-tab-crafting");
+    const contentItems = document.getElementById("inventory-overlay-items");
+    const contentCrafting = document.getElementById("inventory-overlay-crafting");
+    if (tabItems && tabCrafting) {
+      tabItems.addEventListener("click", () => {
+        tabItems.classList.add("active");
+        tabCrafting.classList.remove("active");
+        if (contentItems) contentItems.classList.remove("hidden");
+        if (contentCrafting) contentCrafting.classList.add("hidden");
+      });
+      tabCrafting.addEventListener("click", () => {
+        tabCrafting.classList.add("active");
+        tabItems.classList.remove("active");
+        if (contentCrafting) contentCrafting.classList.remove("hidden");
+        if (contentItems) contentItems.classList.add("hidden");
+        this.populateCraftingTab();
+      });
+    }
+
+    const craftConfirm = document.getElementById("crafting-confirm");
+    if (craftConfirm) {
+      craftConfirm.addEventListener("click", () => this.executeCraft());
+    }
+
     window.addEventListener("keydown", (e) => {
+      if (e.key === "i" || e.key === "I") {
+        if (!e.repeat && !this.gameOver && !this.levelUpChoices && !this.currentEvent) {
+          if (this.inventoryOverlayOpen) this.closeInventoryOverlay();
+          else this.showInventoryOverlay();
+        }
+        return;
+      }
       if (e.key === "Escape" || e.key === "p" || e.key === "P") {
         this.togglePause();
       }
@@ -1762,7 +2318,9 @@ class Game {
     window.addEventListener("mouseup", (e) => { if (e.button === 0) this.mouseHeld = false; });
     this.canvas.addEventListener("mousemove", (e) => {
       this.lastMouseWorld = this.getWorldPositionFromScreen(e.clientX, e.clientY);
+      this.updateAffixTooltip(e.clientX, e.clientY);
     });
+    this.canvas.addEventListener("mouseleave", () => this.hideAffixTooltip());
     window.addEventListener("keydown", (e) => {
       if (e.key === " " && !e.repeat) {
         e.preventDefault();
@@ -1881,11 +2439,410 @@ class Game {
 
   togglePause() {
     if (this.gameOver) return;
+    if (this.inventoryOverlayOpen) {
+      this.closeInventoryOverlay();
+      return;
+    }
     this.paused = !this.paused;
     if (this.pauseToggleEl) {
       this.pauseToggleEl.textContent = this.paused ? "▶ Resume" : "⏸ Pause";
       this.pauseToggleEl.classList.toggle("paused", this.paused);
     }
+  }
+
+  showInventoryOverlay() {
+    if (this.gameOver || this.levelUpChoices || this.currentEvent) return;
+    this.inventoryOverlayOpen = true;
+    this.paused = true;
+    if (this.pauseToggleEl) {
+      this.pauseToggleEl.textContent = "▶ Resume";
+      this.pauseToggleEl.classList.add("paused");
+    }
+    const overlay = document.getElementById("inventory-overlay");
+    if (overlay) overlay.classList.remove("hidden");
+    this.populateInventoryOverlay();
+  }
+
+  closeInventoryOverlay() {
+    this.inventoryOverlayOpen = false;
+    this.paused = false;
+    if (this.pauseToggleEl) {
+      this.pauseToggleEl.textContent = "⏸ Pause";
+      this.pauseToggleEl.classList.remove("paused");
+    }
+    const overlay = document.getElementById("inventory-overlay");
+    if (overlay) overlay.classList.add("hidden");
+    hideItemTooltip();
+  }
+
+  populateInventoryOverlay() {
+    const equippedList = document.getElementById("inventory-overlay-equipped-list");
+    const cardsList = document.getElementById("inventory-overlay-cards-list");
+    const invList = document.getElementById("inventory-overlay-inventory-list");
+    if (!equippedList || !cardsList || !invList) return;
+
+    equippedList.innerHTML = "";
+    const slots = ["Helmet", "Body Armour", "Weapon", "Boots"];
+    for (const slot of slots) {
+      const li = document.createElement("li");
+      const item = this.equipment[slot];
+      if (item) {
+        const color = getItemRarityColor(item);
+        const baseKey = EQUIPMENT_BASE_STAT[slot];
+        const baseVal = item.stats?.[baseKey] ?? 0;
+        li.innerHTML = `<span style="color:${color}">${escapeHtml(item.name)}</span> (+${baseVal})`;
+      } else {
+        li.textContent = `${slot}: None`;
+      }
+      if (item) {
+        li.dataset.hasItem = "1";
+        li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
+        li.addEventListener("mouseleave", hideItemTooltip);
+        li.addEventListener("click", () => {
+          if (item) {
+            this.inventory.push(item);
+            this.equipment[slot] = null;
+            this.updateInventoryUI();
+            this.updateEquippedUI();
+            this.populateInventoryOverlay();
+            this.recalculateStats();
+          }
+        });
+      } else {
+        li.classList.add("inventory-overlay-empty");
+      }
+      equippedList.appendChild(li);
+    }
+
+    const cardsTitle = document.getElementById("inventory-overlay-cards-title");
+    if (cardsTitle) cardsTitle.textContent = `Upgrade Cards (${this.activeUpgradeCards.length}/${this.maxUpgradeCards})`;
+
+    cardsList.innerHTML = "";
+    if (this.activeUpgradeCards.length === 0) {
+      const li = document.createElement("li");
+      li.className = "inventory-overlay-empty";
+      li.textContent = "No upgrade cards equipped";
+      cardsList.appendChild(li);
+    } else {
+      for (const card of this.activeUpgradeCards) {
+        const li = document.createElement("li");
+        li.textContent = card.name;
+        li.addEventListener("mouseenter", (e) => showItemTooltip(e, card, this));
+        li.addEventListener("mouseleave", hideItemTooltip);
+        li.addEventListener("click", () => {
+          const idx = this.activeUpgradeCards.indexOf(card);
+          if (idx >= 0) {
+            this.inventory.push(card);
+            this.activeUpgradeCards.splice(idx, 1);
+            this.updateInventoryUI();
+            this.updateUpgradeCardsUI();
+            this.populateInventoryOverlay();
+            this.recalculateStats();
+          }
+        });
+        cardsList.appendChild(li);
+      }
+    }
+
+    invList.innerHTML = "";
+    if (this.inventory.length === 0) {
+      const li = document.createElement("li");
+      li.className = "inventory-overlay-empty";
+      li.textContent = "No items in inventory";
+      invList.appendChild(li);
+    } else {
+      for (const item of this.inventory) {
+        const li = document.createElement("li");
+        if (item.type !== "Upgrade Card") {
+          const color = getItemRarityColor(item);
+          const baseKey = EQUIPMENT_BASE_STAT[item.type];
+          const baseVal = item.stats?.[baseKey] ?? 0;
+          li.innerHTML = `<span style="color:${color}">${escapeHtml(item.name)}</span> (${escapeHtml(item.type)}) +${baseVal}`;
+        } else {
+          li.textContent = item.name;
+        }
+        li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
+        li.addEventListener("mouseleave", hideItemTooltip);
+        li.addEventListener("click", () => this.handleInventoryItemClick(item));
+        invList.appendChild(li);
+      }
+    }
+    this.populateCraftingTab();
+  }
+
+  getCraftableEquipmentItems() {
+    const items = [];
+    for (const slot of ["Helmet", "Body Armour", "Weapon", "Boots"]) {
+      const item = this.equipment[slot];
+      if (item) items.push({ item, source: "equipped", slot });
+    }
+    for (let i = 0; i < this.inventory.length; i++) {
+      const item = this.inventory[i];
+      if (item.type !== "Upgrade Card" && (item.type === "Helmet" || item.type === "Body Armour" || item.type === "Weapon" || item.type === "Boots")) {
+        items.push({ item, source: "inventory", index: i });
+      }
+    }
+    return items;
+  }
+
+  populateCraftingTab() {
+    const grid = document.getElementById("cube-inventory-grid");
+    const itemList = document.getElementById("crafting-item-list");
+    if (!grid || !itemList) return;
+
+    grid.innerHTML = "";
+    const allCubes = [];
+    for (const cube of MODIFIER_CUBES) {
+      for (let t = 1; t <= 3; t++) {
+        allCubes.push({ ...cube, tier: t, key: `${cube.id}T${t}` });
+      }
+    }
+    for (const cube of UPGRADE_CUBES) {
+      for (let t = 1; t <= 3; t++) {
+        allCubes.push({ ...cube, tier: t, key: `${cube.id}T${t}` });
+      }
+    }
+    for (const c of allCubes) {
+      const count = this.cubeInventory[c.key] || 0;
+      const div = document.createElement("div");
+      div.className = `cube-slot tier-${c.tier} ${this.craftingSelectedCube === c.key ? "selected" : ""} ${count === 0 ? "disabled" : ""}`;
+      div.dataset.cubeKey = c.key;
+      const icon = c.id.includes("magic") ? "◆" : c.id.includes("rare") ? "✦" : c.id.includes("reforge") ? "◇" : "▪";
+      div.innerHTML = `
+        <span class="cube-icon">${icon} T${c.tier}</span>
+        <span class="cube-slot-name">${escapeHtml(c.label)}</span>
+        <span class="cube-slot-count">×${count}</span>
+      `;
+      if (count > 0) {
+        div.addEventListener("click", () => this.selectCraftingCube(c.key));
+      }
+      grid.appendChild(div);
+    }
+
+    itemList.innerHTML = "";
+    const craftables = this.getCraftableEquipmentItems();
+    for (const { item, source, slot, index } of craftables) {
+      const li = document.createElement("li");
+      const color = getItemRarityColor(item);
+      const baseKey = EQUIPMENT_BASE_STAT[item.type];
+      const baseVal = item.stats?.[baseKey] ?? 0;
+      const loc = source === "equipped" ? `${slot}` : "Inventory";
+      li.innerHTML = `<span style="color:${color}">${escapeHtml(item.name)}</span> (+${baseVal}) [${loc}]`;
+      li.classList.toggle("selected", this.craftingSelectedItem === item && this.craftingItemSource?.source === source && (source === "inventory" ? this.craftingItemSource.index === index : this.craftingItemSource.slot === slot));
+      li.addEventListener("click", () => this.selectCraftingItem(item, source, slot, index));
+      li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
+      li.addEventListener("mouseleave", hideItemTooltip);
+      itemList.appendChild(li);
+    }
+
+    this.updateCraftingPreview();
+  }
+
+  selectCraftingItem(item, source, slot, index) {
+    this.craftingSelectedItem = item;
+    this.craftingItemSource = { source, slot, index };
+    this.populateCraftingTab();
+  }
+
+  selectCraftingCube(cubeKey) {
+    if ((this.cubeInventory[cubeKey] || 0) === 0) return;
+    this.craftingSelectedCube = cubeKey;
+    this.populateCraftingTab();
+  }
+
+  updateCraftingPreview() {
+    const itemEl = document.getElementById("crafting-selected-item");
+    const cubeEl = document.getElementById("crafting-selected-cube");
+    const previewEl = document.getElementById("crafting-preview");
+    const confirmBtn = document.getElementById("crafting-confirm");
+    if (!itemEl || !cubeEl || !previewEl || !confirmBtn) return;
+
+    if (this.craftingSelectedItem) {
+      itemEl.textContent = this.craftingSelectedItem.name;
+      itemEl.classList.add("has-item");
+    } else {
+      itemEl.textContent = "No item selected";
+      itemEl.classList.remove("has-item");
+    }
+
+    if (this.craftingSelectedCube) {
+      const [base, tierStr] = this.craftingSelectedCube.match(/(.+)T(\d)$/) || [];
+      const tier = tierStr ? parseInt(tierStr, 10) : 1;
+      const modCube = MODIFIER_CUBES.find((c) => `${c.id}T${tier}` === this.craftingSelectedCube || this.craftingSelectedCube.startsWith(c.id));
+      const upgCube = UPGRADE_CUBES.find((c) => this.craftingSelectedCube === `${c.id}T${tier}`);
+      const cubeLabel = modCube ? `${modCube.label} T${tier}` : (upgCube ? `${upgCube.label} T${tier}` : this.craftingSelectedCube);
+      cubeEl.textContent = cubeLabel;
+      cubeEl.classList.add("has-cube");
+    } else {
+      cubeEl.textContent = "No cube selected";
+      cubeEl.classList.remove("has-cube");
+    }
+
+    let preview = "";
+    let canCraft = false;
+    if (this.craftingSelectedItem && this.craftingSelectedCube) {
+      const [cubeId, tierStr] = this.craftingSelectedCube.match(/(.+)T(\d)$/)?.slice(1) || [null, "1"];
+      const tier = parseInt(tierStr || "1", 10);
+      const modCube = MODIFIER_CUBES.find((c) => this.craftingSelectedCube.startsWith(c.id));
+      const upgCube = UPGRADE_CUBES.find((c) => this.craftingSelectedCube.startsWith(c.id));
+
+      if (modCube) {
+        const item = this.craftingSelectedItem;
+        if (item.type === "Upgrade Card") {
+          preview = "Modifier cubes can only be used on equipment.";
+        } else if (item.rarity === "common" || !item.rarity) {
+          preview = "Modifier cubes can only be used on Magic or Rare items. Use a Magic Cube first.";
+        } else {
+          const existing = item.modifiers?.find((m) => m.id === modCube.modifierId);
+          const maxMods = item.rarity === "common" ? 0 : item.rarity === "magic" ? 2 : 4;
+          const currentCount = item.modifiers?.length || 0;
+          const r = MODIFIER_CUBE_TIERS[tier - 1] || MODIFIER_CUBE_TIERS[0];
+          const range = (r.min * 100).toFixed(0) + "-" + (r.max * 100).toFixed(0) + "%";
+          if (existing) {
+            preview = `Replaces ${modCube.modifierLabel} with new value (${range}).`;
+          } else if (currentCount < maxMods) {
+            preview = `Adds ${modCube.modifierLabel} (${range}).`;
+          } else {
+            preview = `Replaces a random modifier with ${modCube.modifierLabel} (${range}).`;
+          }
+          canCraft = true;
+        }
+      } else if (upgCube) {
+        const item = this.craftingSelectedItem;
+        if (item.type === "Upgrade Card") {
+          preview = "Upgrade cubes can only be used on equipment.";
+        } else if (upgCube.id === "magicCube" && item.rarity !== "common") {
+          preview = "Magic Cube can only be used on White (common) items.";
+        } else if (upgCube.id === "rareCube" && item.rarity !== "magic") {
+          preview = "Rare Cube can only be used on Blue (magic) items.";
+        } else if (upgCube.id === "reforgeCube" && (item.rarity === "common" || !item.rarity)) {
+          preview = "Reforge Cube can only be used on Blue or Yellow items.";
+        } else {
+          if (upgCube.id === "magicCube") preview = "Upgrades to Blue and adds 2 random modifiers.";
+          else if (upgCube.id === "rareCube") preview = "Upgrades to Yellow and adds 2 more modifiers.";
+          else preview = "Rerolls all modifiers with new random values.";
+          canCraft = true;
+        }
+      }
+    }
+    previewEl.textContent = preview;
+    previewEl.classList.toggle("hidden", !preview);
+    confirmBtn.disabled = !canCraft;
+  }
+
+  executeCraft() {
+    if (!this.craftingSelectedItem || !this.craftingSelectedCube) return;
+    const cubeKey = this.craftingSelectedCube;
+    const count = this.cubeInventory[cubeKey] || 0;
+    if (count === 0) return;
+
+    const tier = parseInt(cubeKey.match(/T(\d)$/)?.[1] || "1", 10);
+    const modCube = MODIFIER_CUBES.find((c) => cubeKey.startsWith(c.id));
+    const upgCube = UPGRADE_CUBES.find((c) => cubeKey.startsWith(c.id));
+
+    if (modCube) {
+      const item = this.craftingSelectedItem;
+      if (item.rarity === "common" || !item.rarity) return;
+      this.applyModifierCube(item, modCube, tier);
+    } else if (upgCube) {
+      this.applyUpgradeCube(this.craftingSelectedItem, upgCube, tier);
+    }
+
+    this.cubeInventory[cubeKey] = count - 1;
+    if (this.cubeInventory[cubeKey] === 0) delete this.cubeInventory[cubeKey];
+    this.craftingSelectedCube = null;
+    this.recalculateStats();
+    this.updateEquippedUI();
+    this.populateInventoryOverlay();
+    this.populateCraftingTab();
+  }
+
+  applyModifierCube(item, cubeDef, tier) {
+    item.modifiers = item.modifiers || [];
+    const value = rollModifierForTier(tier);
+    const poolEntry = MODIFIER_POOL.find((m) => m.id === cubeDef.modifierId);
+    const modEntry = { id: cubeDef.modifierId, label: cubeDef.modifierLabel, statKey: poolEntry?.statKey || cubeDef.modifierId.replace("Percent", ""), value };
+
+    const existingIdx = item.modifiers.findIndex((m) => m.id === cubeDef.modifierId);
+    const maxMods = item.rarity === "magic" ? 2 : item.rarity === "rare" ? 4 : 0;
+    if (existingIdx >= 0) {
+      item.modifiers[existingIdx] = { ...modEntry };
+    } else if (item.modifiers.length < maxMods) {
+      item.modifiers.push(modEntry);
+    } else {
+      const replaceIdx = Math.floor(Math.random() * item.modifiers.length);
+      item.modifiers[replaceIdx] = modEntry;
+    }
+    this.rebuildItemStats(item);
+  }
+
+  applyUpgradeCube(item, cubeDef, tier) {
+    if (cubeDef.id === "magicCube") {
+      item.rarity = "magic";
+      item.modifiers = item.modifiers || [];
+      const pool = [...MODIFIER_POOL];
+      for (let i = 0; i < 2; i++) {
+        const idx = Math.floor(Math.random() * pool.length);
+        const m = pool.splice(idx, 1)[0];
+        const val = rollModifierForTier(tier);
+        item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val });
+      }
+      const hasPrefix = NAME_PREFIXES.some((p) => item.name.startsWith(p + " "));
+      const hasSuffix = NAME_SUFFIXES.some((s) => item.name.includes(" " + s));
+      if (!hasPrefix && !hasSuffix) {
+        if (Math.random() < 0.5) {
+          item.name = `${NAME_PREFIXES[Math.floor(Math.random() * NAME_PREFIXES.length)]} ${item.name}`;
+        } else {
+          item.name = `${item.name} ${NAME_SUFFIXES[Math.floor(Math.random() * NAME_SUFFIXES.length)]}`;
+        }
+      }
+    } else if (cubeDef.id === "rareCube") {
+      item.rarity = "rare";
+      item.modifiers = item.modifiers || [];
+      const pool = [...MODIFIER_POOL].filter((p) => !item.modifiers.some((m) => m.id === p.id));
+      for (let i = 0; i < 2; i++) {
+        if (pool.length === 0) break;
+        const idx = Math.floor(Math.random() * pool.length);
+        const m = pool.splice(idx, 1)[0];
+        const val = rollModifierForTier(tier);
+        item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val });
+      }
+      const hasPrefix = NAME_PREFIXES.some((p) => item.name.startsWith(p + " "));
+      const hasSuffix = NAME_SUFFIXES.some((s) => item.name.includes(" " + s));
+      if (!hasPrefix) item.name = `${NAME_PREFIXES[Math.floor(Math.random() * NAME_PREFIXES.length)]} ${item.name}`;
+      if (!hasSuffix) item.name = `${item.name} ${NAME_SUFFIXES[Math.floor(Math.random() * NAME_SUFFIXES.length)]}`;
+    } else if (cubeDef.id === "reforgeCube") {
+      item.modifiers = [];
+      const pool = [...MODIFIER_POOL];
+      const count = item.rarity === "magic" ? 2 : 4;
+      for (let i = 0; i < count; i++) {
+        const idx = Math.floor(Math.random() * pool.length);
+        const m = pool.splice(idx, 1)[0];
+        const val = rollModifierForTier(tier);
+        item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val });
+      }
+    }
+    this.rebuildItemStats(item);
+  }
+
+  rebuildItemStats(item) {
+    const baseKey = EQUIPMENT_BASE_STAT[item.type];
+    if (!item.baseStat && item.stats) {
+      item.baseStat = { [baseKey]: item.stats[baseKey] ?? 0 };
+    }
+    const baseVal = item.baseStat?.[baseKey] ?? item.stats?.[baseKey] ?? 0;
+    const stats = { [baseKey]: baseVal };
+    for (const m of item.modifiers || []) {
+      if (m.statKey === "attackSpeed") {
+        stats.attackSpeed = (stats.attackSpeed || 1) * (1 + m.value);
+      } else if (m.statKey === "cooldownRecovery") {
+        stats.cooldownRecovery = (stats.cooldownRecovery || 1) * (1 - m.value);
+      } else {
+        const key = ["attack", "maxHealth", "defense", "speed"].includes(m.statKey) ? `${m.statKey}Percent` : m.statKey;
+        stats[key] = (stats[key] || 0) + m.value;
+      }
+    }
+    item.stats = stats;
   }
 
   showGameOver() {
@@ -1953,6 +2910,7 @@ class Game {
       equipment: JSON.parse(JSON.stringify(this.equipment)),
       activeUpgradeCards: JSON.parse(JSON.stringify(this.activeUpgradeCards)),
       inventory: JSON.parse(JSON.stringify(this.inventory)),
+      cubeInventory: JSON.parse(JSON.stringify(this.cubeInventory)),
       stats: { ...this.currentStats },
       savedAt: Date.now()
     };
@@ -1961,7 +2919,7 @@ class Game {
     localStorage.setItem("spaceShooter_characters", JSON.stringify(saved));
     if (hasTalent("conqueror") && this.difficulty >= 4) {
       const def = this.lootSystem.getLootDefinition(0.9);
-      addConquerorBonusItem({ name: def.name, type: def.type, stats: def.stats || {} });
+      addConquerorBonusItem({ name: def.name, type: def.type, stats: def.stats || {}, weight: def.weight || null });
     }
 
     document.getElementById("victory-overlay").classList.add("hidden");
@@ -2029,7 +2987,18 @@ class Game {
       this.burningGroundTimer = 0;
       this.playerInWeakeningPatch = false;
     }
+    if (this.whirlwindActive) effectiveSpeed *= 0.5;
+    effectiveSpeed *= this.equipmentSpeedMult || 1;
+    if (this.playerSlowUntil > this.time) effectiveSpeed *= (this.playerSlowMult ?? 0.7);
     this.player.speed = effectiveSpeed;
+
+    if (this.playerBurnUntil > this.time) {
+      this.playerBurnAccum = (this.playerBurnAccum ?? 0) + dt;
+      if (this.playerBurnAccum >= 0.5) {
+        this.playerBurnAccum = 0;
+        this.onPlayerDamaged(this.playerBurnDmg || 4, false);
+      }
+    } else this.playerBurnAccum = 0;
 
     if (this.stunTimer > 0) {
       this.stunTimer -= dt;
@@ -2064,6 +3033,28 @@ class Game {
         this.dashCooldown = this.dashCooldownTime;
         this.dashTrail = [];
       }
+    } else if (this.bladeDashActive) {
+      this.bladeDashTimer -= dt;
+      const margin = this.world.wallThickness;
+      const moveDist = this.bladeDashSpeed * dt;
+      let nx = this.player.position.x + this.bladeDashDirection.x * moveDist;
+      let ny = this.player.position.y + this.bladeDashDirection.y * moveDist;
+      nx = Math.max(margin, Math.min(nx, this.world.width - margin - this.player.size));
+      ny = Math.max(margin, Math.min(ny, this.world.height - margin - this.player.size));
+      this.player.position.set(nx, ny);
+      const cx = this.player.position.x + this.player.size / 2;
+      const cy = this.player.position.y + this.player.size / 2;
+      const hit = this.enemiesInRadius(cx, cy, 40);
+      for (const e of hit) {
+        if (!this.bladeDashHitIds.has(e.id)) {
+          this.bladeDashHitIds.add(e.id);
+          this.dealDamageToEnemy(e, this.computeSkillDamage(e, this.bladeDashMult));
+        }
+      }
+      if (this.bladeDashTimer <= 0) {
+        this.bladeDashActive = false;
+        this.bladeDashHitIds.clear();
+      }
     } else if (this.stunTimer <= 0) {
       this.player.update(dt, this.input, this.world);
     }
@@ -2084,6 +3075,8 @@ class Game {
     this.updateUpgradeCardEffects(dt);
     if (this.hazardSystem) this.hazardSystem.update(dt, this);
     this.updateCombat(dt);
+    this.resolveCollisions();
+    this.updateAuras(dt);
 
     if (this.exitTransitionCooldown > 0) this.exitTransitionCooldown -= dt;
     this.checkExits();
@@ -2348,17 +3341,20 @@ class Game {
   }
 
   grantEventRareEquipment() {
-    const groups = LOOT_DEFS.filter((g) => g.type !== "Upgrade Card");
-    const group = groups[Math.floor(Math.random() * groups.length)];
-    const best = group.items[group.items.length - 1];
-    const def = { type: group.type, name: best.name, stats: best.stats };
+    const types = ["Helmet", "Boots", "Body Armour", "Weapon"];
+    const type = types[Math.floor(Math.random() * types.length)];
+    const def = generateEquipmentItem(type, this.currentMap?.lootQuality ?? 0.5, 0.65);
     this.inventory.push({
       id: 50000 + Math.floor(Math.random() * 10000),
       name: def.name,
       type: def.type,
       stats: def.stats || {},
       cardKey: null,
-      description: ""
+      description: "",
+      weight: def.weight,
+      rarity: def.rarity,
+      modifiers: def.modifiers || [],
+      baseStat: def.baseStat || null
     });
     this.updateInventoryUI();
   }
@@ -2404,6 +3400,7 @@ class Game {
     enemy.isFiery = true;
     enemy.wanderDirection = new Vec2(Math.random() - 0.5, Math.random() - 0.5);
     enemy.wanderTimer = 0;
+    enemy.worldBounds = { width: this.world.width, height: this.world.height };
     this.enemySystem.enemies.push(enemy);
     this.fierySpawned = true;
   }
@@ -2416,15 +3413,23 @@ class Game {
       this.lootSystem.spawnBurstAt(cx, cy, 4, 0.9);
       this.grantXP(80);
     } else {
-      for (let i = 0; i < 8; i++) {
-        this.enemySystem.spawnOne();
-      }
+      this.lootSystem.spawnBurstAt(cx, cy, 3, 0.5);
+      this.grantXP(40);
     }
   }
 
   updateMapUI() {
     if (!this.mapNameEl) return;
     this.mapNameEl.textContent = `${this.currentMap.name} (Map ${this.currentMap.number})`;
+    this.updateEnemyCountUI();
+  }
+
+  updateEnemyCountUI() {
+    if (!this.enemyCountEl) return;
+    const es = this.enemySystem;
+    const count = es.enemies.length + (es.boss ? 1 : 0);
+    this.enemyCountEl.textContent = `Enemies: ${count}`;
+    this.enemyCountEl.classList.toggle("hidden", this.currentMap?.id === 4 && !es.boss);
   }
 
   updateXpUI() {
@@ -2440,7 +3445,8 @@ class Game {
   }
 
   grantXP(amount) {
-    this.xp += amount;
+    const mult = this.equipmentXpGainedMult ?? 1;
+    this.xp += Math.round(amount * mult);
     this.updateXpUI();
     this.checkLevelUp();
   }
@@ -2530,6 +3536,37 @@ class Game {
     return this.getWorldPositionFromScreen(e.clientX, e.clientY);
   }
 
+  updateAffixTooltip(clientX, clientY) {
+    const tt = document.getElementById("affix-tooltip");
+    if (!tt || !this.lastMouseWorld || !this.enemySystem) return;
+    const viewX = this.lastMouseWorld.x - this.camera.position.x;
+    const viewY = this.lastMouseWorld.y - this.camera.position.y;
+    let hit = null;
+    for (const enemy of this.enemySystem.enemies) {
+      if (!enemy._affixRects) continue;
+      for (const r of enemy._affixRects) {
+        if (viewX >= r.x && viewX <= r.x + r.w && viewY >= r.y && viewY <= r.y + r.h) {
+          hit = r.name;
+          break;
+        }
+      }
+      if (hit) break;
+    }
+    if (hit) {
+      tt.textContent = hit;
+      tt.classList.remove("hidden");
+      tt.style.left = (clientX + 12) + "px";
+      tt.style.top = (clientY + 12) + "px";
+    } else {
+      tt.classList.add("hidden");
+    }
+  }
+
+  hideAffixTooltip() {
+    const tt = document.getElementById("affix-tooltip");
+    if (tt) tt.classList.add("hidden");
+  }
+
   onCanvasMouseDown(e) {
     if (e.button !== 0 || this.gameOver || this.paused || this.levelUpChoices) return;
     this.mouseHeld = true;
@@ -2570,7 +3607,9 @@ class Game {
   }
 
   firePlayerProjectile(targetX, targetY) {
-    let effectiveCooldown = this.playerAttackCooldown / (this.levelAttackSpeedMult || 1);
+    let atkSpdMult = (this.levelAttackSpeedMult || 1) * (this.equipmentAttackSpeedMult || 1);
+    if (this.playerWeakenUntil > this.time) atkSpdMult *= 0.9;
+    let effectiveCooldown = this.playerAttackCooldown / atkSpdMult;
     if (this.hasUpgradeCard("berserker")) {
       const ratio =
         this.currentStats.maxHealth > 0
@@ -2592,19 +3631,48 @@ class Game {
     const surviving = [];
     const es = this.enemySystem;
     for (const proj of this.playerProjectiles) {
+      if (proj._reflectAt && this.time >= proj._reflectAt) {
+        const px = this.player.position.x + this.player.size / 2;
+        const py = this.player.position.y + this.player.size / 2;
+        const dx = px - (proj.position.x + proj.size / 2);
+        const dy = py - (proj.position.y + proj.size / 2);
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const speed = 400;
+        const dmg = proj._reflectDamage ?? proj.damage;
+        const refProj = new Projectile(proj.position.x, proj.position.y, (dx / dist) * speed, (dy / dist) * speed, dmg, 8, "#67e8f9");
+        refProj._reflected = true;
+        refProj._sourceEnemy = proj._reflectEnemy;
+        es.projectiles.push(refProj);
+        continue;
+      }
+      if (proj._reflectAt) {
+        surviving.push(proj);
+        continue;
+      }
       proj.update(dt, this);
       if (proj.isExpired()) continue;
 
       let hit = false;
       for (const enemy of es.enemies) {
         if (enemy.isDead) continue;
+        if (enemy._undyingRespawnTime && this.time < enemy._undyingRespawnTime) continue;
+        if (proj._reflectEnemy === enemy) continue;
         if (proj.intersects(enemy)) {
           hit = true;
-          let dmg = proj.damage;
-          if (hasTalent("executioner") && enemy.health < enemy.maxHealth * 0.3) {
-            dmg = Math.round(dmg * 1.25);
+          if (enemy.affixes?.includes("reflective")) {
+            proj._reflectAt = this.time + 0.3;
+            proj._reflectEnemy = enemy;
+            proj._reflectDamage = proj.damage;
+            proj.position.x = enemy.position.x + enemy.size / 2 - proj.size / 2;
+            proj.position.y = enemy.position.y + enemy.size / 2 - proj.size / 2;
+            surviving.push(proj);
+          } else {
+            let dmg = proj.damage;
+            if (hasTalent("executioner") && enemy.health < enemy.maxHealth * 0.3) {
+              dmg = Math.round(dmg * 1.25);
+            }
+            this.dealDamageToEnemy(enemy, dmg);
           }
-          this.dealDamageToEnemy(enemy, dmg);
           break;
         }
       }
@@ -2619,6 +3687,77 @@ class Game {
       if (!hit && !proj.isExpired()) surviving.push(proj);
     }
     this.playerProjectiles = surviving;
+  }
+
+  updateEnemyAffixes(dt, enemy) {
+    const has = (id) => enemy.affixes?.includes(id);
+    const es = this.enemySystem;
+    const px = this.player.position.x + this.player.size / 2;
+    const py = this.player.position.y + this.player.size / 2;
+    const ex = enemy.position.x + enemy.size / 2;
+    const ey = enemy.position.y + enemy.size / 2;
+
+    if (has("volatile")) {
+      enemy._volatileTimer = (enemy._volatileTimer ?? 0) + dt;
+      if (enemy._volatileTimer >= 1.5) {
+        enemy._volatileTimer = 0;
+        for (let i = 0; i < 8; i++) {
+          const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.3;
+          const speed = 120;
+          const proj = new Projectile(ex, ey, Math.cos(angle) * speed, Math.sin(angle) * speed, 6, 8, "#f97316");
+          es.projectiles.push(proj);
+        }
+      }
+    }
+
+    if (has("regenerating")) {
+      const regen = enemy.maxHealth * 0.02 * dt;
+      enemy.health = Math.min(enemy.maxHealth, enemy.health + regen);
+    }
+
+    if (has("auraBearer")) {
+      const auraRadius = 80;
+      for (const other of es.enemies) {
+        if (other === enemy || other.isDead) continue;
+        const dx = (other.position.x + other.size / 2) - ex;
+        const dy = (other.position.y + other.size / 2) - ey;
+        if (dx * dx + dy * dy <= auraRadius * auraRadius) {
+          other._auraBuffed = true;
+        }
+      }
+    }
+
+    if (has("orbiting")) {
+      enemy._orbitingAngle = (enemy._orbitingAngle ?? 0) + dt * 3;
+      const orbRadius = 35;
+      const orbCount = 4;
+      for (let i = 0; i < orbCount; i++) {
+        const a = enemy._orbitingAngle + (i / orbCount) * Math.PI * 2;
+        const ox = ex + Math.cos(a) * orbRadius;
+        const oy = ey + Math.sin(a) * orbRadius;
+        const orbSize = 10;
+        if (Math.abs(px - ox) < orbSize + this.player.size / 2 && Math.abs(py - oy) < orbSize + this.player.size / 2) {
+          this.onPlayerDamaged(4, true);
+        }
+      }
+    }
+
+    if (has("lasering")) {
+      enemy._laserAngle = (enemy._laserAngle ?? 0) + dt * 1.5;
+      const beamLen = 150;
+      const beamW = 20;
+      const bx = ex + Math.cos(enemy._laserAngle) * beamLen;
+      const by = ey + Math.sin(enemy._laserAngle) * beamLen;
+      const proj = { x1: ex, y1: ey, x2: bx, y2: by, w: beamW };
+      const dist = pointToSegmentDist(px, py, proj.x1, proj.y1, proj.x2, proj.y2);
+      if (dist < beamW) {
+        this.onPlayerDamaged(3 * dt * 10, true);
+      }
+    }
+
+    if (has("regenerating") && !enemy.isDead) {
+      enemy.health = Math.min(enemy.maxHealth, enemy.health + 3 * dt);
+    }
   }
 
   updateCombat(dt) {
@@ -2643,11 +3782,14 @@ class Game {
     if (es.boss) {
       const minionSurviving = [];
       const globalSlow = this.timeWarpUntil > this.time ? 0.5 : 1;
+      for (const e of es.enemies) e._auraBuffed = false;
       for (const enemy of es.enemies) {
-        enemy.update(dt, player, this.time, globalSlow);
+        enemy.update(dt, player, this.time, globalSlow, this.viewWidth / 4, this);
+        this.updateEnemyAffixes(dt, enemy);
         if (enemy.intersects(player)) {
           if (enemy.attackTimer <= 0) {
             enemy.attackTimer = enemy.attackCooldown;
+            this.lastDamagingEnemy = enemy;
             this.onPlayerDamaged(enemy.attack, true);
           }
         }
@@ -2658,16 +3800,17 @@ class Game {
         if (enemy.regenRate && !enemy.isDead) {
           enemy.health = Math.min(enemy.maxHealth, enemy.health + enemy.regenRate * dt);
         }
-        if (enemy.isDead) {
-          if (this.hasCondition("enemyExplode")) {
-            this.onPlayerDamaged(8, true);
-          }
-          this.dropLootFromEnemy(enemy);
-        } else {
-          minionSurviving.push(enemy);
+      if (enemy.isDead) {
+        if (this.hasCondition("enemyExplode")) {
+          this.onPlayerDamaged(8, true);
         }
+        const martyrMinions = this.dropLootFromEnemy(enemy);
+        minionSurviving.push(...(martyrMinions || []));
+      } else {
+        minionSurviving.push(enemy);
       }
-      es.enemies = minionSurviving;
+    }
+    es.enemies = minionSurviving;
       this.updateBoss(dt);
       this.updateProjectiles(dt);
       return;
@@ -2676,12 +3819,15 @@ class Game {
     // -------- Regular enemies --------
     const surviving = [];
     const globalSlow = this.timeWarpUntil > this.time ? 0.5 : 1;
+    for (const e of es.enemies) e._auraBuffed = false;
     for (const enemy of es.enemies) {
-      enemy.update(dt, player, this.time, globalSlow);
+      enemy.update(dt, player, this.time, globalSlow, this.viewWidth / 4, this);
+      this.updateEnemyAffixes(dt, enemy);
 
       if (enemy.intersects(player)) {
         if (enemy.attackTimer <= 0) {
           enemy.attackTimer = enemy.attackCooldown;
+          this.lastDamagingEnemy = enemy;
           this.onPlayerDamaged(enemy.attack, true);
         }
       }
@@ -2699,8 +3845,8 @@ class Game {
         if (this.hasCondition("enemyExplode")) {
           this.onPlayerDamaged(8, true);
         }
-        this.dropLootFromEnemy(enemy);
-        es.queueRespawn(6);
+        const martyrMinions = this.dropLootFromEnemy(enemy);
+        surviving.push(...(martyrMinions || []));
       } else {
         surviving.push(enemy);
       }
@@ -2708,17 +3854,120 @@ class Game {
 
     es.enemies = surviving;
     es.update(dt);
+    this.updateEnemyCountUI();
+  }
+
+  updateAuras(dt) {
+    if (this.activeAuras.size === 0) return;
+    const maxHp = this.currentStats.maxHealth;
+    if (maxHp <= 0) return;
+
+    let totalUpkeep = 0;
+    for (const auraId of this.activeAuras) {
+      const def = SKILL_DEFS.find((s) => s.id === auraId);
+      if (def && def.auraUpkeep) totalUpkeep += def.auraUpkeep * maxHp * dt;
+    }
+
+    if (totalUpkeep > 0) {
+      this.currentHealth -= totalUpkeep;
+      if (this.currentHealth <= 0) {
+        this.currentHealth = 0;
+        this.activeAuras.clear();
+        this.updateHealthBar();
+        this.updateSkillUI();
+        this.showGameOver();
+        return;
+      }
+      this.updateHealthBar();
+    }
+
+    const px = this.player.position.x + this.player.size / 2;
+    const py = this.player.position.y + this.player.size / 2;
+    const auraRadius = 100;
+
+    if (this.activeAuras.has("frostAura")) {
+      const hit = this.enemiesInRadius(px, py, auraRadius);
+      for (const e of hit) {
+        e.slowUntil = this.time + 0.5;
+        e.slowMult = 0.75;
+      }
+    }
+    if (this.activeAuras.has("flameAura")) {
+      this.flameAuraAccum = (this.flameAuraAccum || 0) + dt;
+      if (this.flameAuraAccum >= 0.2) {
+        this.flameAuraAccum = 0;
+        const hit = this.enemiesInRadius(px, py, auraRadius);
+        const dmg = Math.max(1, Math.round(this.currentStats.attack * 0.2));
+        for (const e of hit) this.dealDamageToEnemy(e, dmg);
+      }
+    }
+    if (this.activeAuras.has("thunderAura")) {
+      this.thunderAuraAccum = (this.thunderAuraAccum || 0) + dt;
+      if (this.thunderAuraAccum >= 1.5) {
+        this.thunderAuraAccum = 0;
+        const target = this.getNearestEnemy(px, py, 200);
+        if (target) {
+          const dmg = this.computeSkillDamage(target, 0.6);
+          this.dealDamageToEnemy(target, dmg);
+        }
+      }
+    }
+    if (this.activeAuras.has("voidAura")) {
+      const hit = this.enemiesInRadius(px, py, auraRadius * 1.5);
+      for (const e of hit) {
+        const ex = e.position.x + e.size / 2;
+        const ey = e.position.y + e.size / 2;
+        const dx = px - ex;
+        const dy = py - ey;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const pull = 60 * dt;
+        e.position.x += (dx / dist) * pull;
+        e.position.y += (dy / dist) * pull;
+      }
+    }
   }
 
   dealDamageToEnemy(enemy, amount) {
     let dmg = Math.round(amount);
     if (this.playerInWeakeningPatch) dmg = Math.max(1, Math.round(dmg * 0.7));
     if (this.hasCondition("enemyResist")) dmg = Math.max(1, Math.round(dmg * 0.8));
+    const has = (id) => enemy.affixes?.includes(id);
+
+    if (has("weakening")) {
+      this.playerWeakenUntil = this.time + 2;
+    }
+
+    if (has("rooted")) {
+      const base = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+      const size = Math.round(base.size * 0.7);
+      const offset = 25 + Math.random() * 20;
+      const angle = Math.random() * Math.PI * 2;
+      const mx = enemy.position.x + enemy.size / 2 + Math.cos(angle) * offset - size / 2;
+      const my = enemy.position.y + enemy.size / 2 + Math.sin(angle) * offset - size / 2;
+      const typeDef = { ...base, maxHealth: Math.round(base.maxHealth * 0.4), attack: base.attack, speed: base.speed, size };
+      const minion = new Enemy(mx, my, typeDef);
+      minion.worldBounds = enemy.worldBounds;
+      minion.activated = true;
+      this.enemySystem.enemies.push(minion);
+    }
+
     enemy.takeDamage(dmg);
+
+    if (enemy.isDead && has("undying") && !enemy._undyingUsed) {
+      enemy._undyingUsed = true;
+      enemy.health = Math.ceil(enemy.maxHealth * 0.5);
+      enemy._undyingRespawnTime = this.time + 0.8;
+    }
+
+    if (this.activeAuras.has("soulAura") && dmg > 0) {
+      const heal = Math.round(dmg * 0.5);
+      this.healPlayer(heal);
+    }
   }
 
   computeSkillDamage(enemy, multiplier = 1) {
-    let dmg = Math.round(this.currentStats.attack * multiplier);
+    const skillMult = this.equipmentSkillDamageMult ?? 1;
+    let dmg = Math.round(this.currentStats.attack * multiplier * skillMult);
     if (this.hasUpgradeCard("glassCannon")) dmg = Math.round(dmg * 1.5);
     if (this.hasUpgradeCard("doubleStrike")) {
       this.doubleStrikeCounter++;
@@ -2738,7 +3987,7 @@ class Game {
   }
 
   getSkillCooldownMult() {
-    let mult = 1 / (this.levelAttackSpeedMult || 1);
+    let mult = (1 / (this.levelAttackSpeedMult || 1)) * (this.equipmentCooldownRecovery ?? 1);
     if (this.hasUpgradeCard("berserker")) {
       const ratio = this.currentStats.maxHealth > 0 ? this.currentHealth / this.currentStats.maxHealth : 1;
       mult *= Math.max(0.4, ratio);
@@ -2749,9 +3998,19 @@ class Game {
   tryCastSkill(slot) {
     if (this.gameOver || this.paused || this.levelUpChoices) return;
     const skillId = this.skills[slot];
-    if (!skillId || this.skillCooldowns[slot] > 0) return;
-    this.executeSkill(skillId, slot);
+    if (!skillId) return;
     const def = SKILL_DEFS.find((s) => s.id === skillId);
+    if (def && def.category === "aura") {
+      if (this.activeAuras.has(skillId)) {
+        this.activeAuras.delete(skillId);
+      } else {
+        this.activeAuras.add(skillId);
+      }
+      this.updateSkillUI();
+      return;
+    }
+    if (this.skillCooldowns[slot] > 0) return;
+    this.executeSkill(skillId, slot);
     if (def) {
       const cdMult = this.getSkillCooldownMult();
       this.skillCooldowns[slot] = def.baseCd * cdMult;
@@ -2858,6 +4117,37 @@ class Game {
     } else if (skillId === "timeWarp") {
       this.timeWarpUntil = this.time + 4;
       this.skillEffects.push({ type: "timeWarp", t: 0, duration: 4 });
+    } else if (skillId === "bladeDash") {
+      this.damageSkillsUsedThisRun.add("bladeDash");
+      const dx = tx - px; const dy = ty - py;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      this.bladeDashActive = true;
+      this.bladeDashTimer = 0.25;
+      this.bladeDashHitIds.clear();
+      this.bladeDashDirection.set(dx / dist, dy / dist);
+      this.bladeDashSpeed = 600;
+      this.bladeDashMult = 0.8;
+      this.skillEffects.push({
+        type: "bladeDash",
+        x: px, y: py, dirX: dx / dist, dirY: dy / dist, t: 0, duration: 0.25,
+        mult: 0.8, speed: 600
+      });
+    } else if (skillId === "whirlwind") {
+      this.damageSkillsUsedThisRun.add("whirlwind");
+      this.whirlwindActive = true;
+      this.skillEffects.push({ type: "whirlwind", t: 0, duration: 2, mult: 0.4, radius: 80, hitInterval: 0.15 });
+    } else if (skillId === "groundSlam") {
+      this.damageSkillsUsedThisRun.add("groundSlam");
+      this.skillEffects.push({
+        type: "groundSlam",
+        x: px, y: py, t: 0, duration: 0.2, mult: 1, radius: 120, knockback: 150
+      });
+    } else if (skillId === "bladeStorm") {
+      this.damageSkillsUsedThisRun.add("bladeStorm");
+      this.skillEffects.push({ type: "bladeStorm", x: px, y: py, t: 0, duration: 3, mult: 0.5, bladeCount: 8 });
+    } else if (skillId === "earthquake") {
+      this.damageSkillsUsedThisRun.add("earthquake");
+      this.skillEffects.push({ type: "earthquake", t: 0, duration: 3, mult: 0.3, slowMult: 0.6, slowDuration: 3 });
     }
   }
 
@@ -3020,9 +4310,143 @@ class Game {
           }
         }
         surviving.push(eff);
+      } else if (eff.type === "bladeDash") {
+        if (eff.t >= eff.duration) continue;
+        surviving.push(eff);
+      } else if (eff.type === "whirlwind") {
+        if (eff.t >= eff.duration) {
+          this.whirlwindActive = false;
+          continue;
+        }
+        eff.lastHit = eff.lastHit || 0;
+        if (eff.t - eff.lastHit >= eff.hitInterval) {
+          eff.lastHit = eff.t;
+          const px = this.player.position.x + this.player.size / 2;
+          const py = this.player.position.y + this.player.size / 2;
+          const hit = this.enemiesInRadius(px, py, eff.radius);
+          for (const e of hit) this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+        }
+        surviving.push(eff);
+      } else if (eff.type === "groundSlam") {
+        if (eff.t >= eff.duration) {
+          const hit = this.enemiesInRadius(eff.x, eff.y, eff.radius);
+          for (const e of hit) {
+            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+            const dx = e.position.x + e.size / 2 - eff.x;
+            const dy = e.position.y + e.size / 2 - eff.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            e.position.x += (dx / dist) * eff.knockback;
+            e.position.y += (dy / dist) * eff.knockback;
+          }
+          continue;
+        }
+        surviving.push(eff);
+      } else if (eff.type === "bladeStorm") {
+        if (eff.t >= eff.duration) continue;
+        if (!eff.blades) {
+          eff.blades = [];
+          for (let i = 0; i < eff.bladeCount; i++) {
+            const angle = (i / eff.bladeCount) * Math.PI * 2;
+            eff.blades.push({ x: eff.x, y: eff.y, vx: Math.cos(angle) * 200, vy: Math.sin(angle) * 200, hitIds: new Set() });
+          }
+        }
+        const margin = this.world.wallThickness;
+        const w = this.world.width - margin * 2;
+        const h = this.world.height - margin * 2;
+        for (const b of eff.blades) {
+          b.x += b.vx * dt;
+          b.y += b.vy * dt;
+          if (b.x < margin || b.x > this.world.width - margin) b.vx *= -1;
+          if (b.y < margin || b.y > this.world.height - margin) b.vy *= -1;
+          b.x = Math.max(margin, Math.min(b.x, this.world.width - margin));
+          b.y = Math.max(margin, Math.min(b.y, this.world.height - margin));
+          const hit = this.enemiesInRadius(b.x, b.y, 25);
+          for (const e of hit) {
+            if (!b.hitIds.has(e.id)) {
+              b.hitIds.add(e.id);
+              this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+            }
+          }
+        }
+        surviving.push(eff);
+      } else if (eff.type === "earthquake") {
+        if (eff.t >= eff.duration) continue;
+        this.earthquakeShakeUntil = this.time + 0.1;
+        if (Math.floor(eff.t * 4) > Math.floor((eff.t - dt) * 4)) {
+          const es = this.enemySystem;
+          const all = [...es.enemies, ...(es.boss ? [es.boss] : [])].filter((e) => !e.isDead);
+          for (const e of all) {
+            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+            e.slowUntil = this.time + eff.slowDuration;
+            e.slowMult = eff.slowMult;
+          }
+        }
+        surviving.push(eff);
       }
     }
     this.skillEffects = surviving;
+  }
+
+  resolveSquareOverlap(a, b) {
+    const ax1 = a.position.x, ay1 = a.position.y, asz = a.size;
+    const bx1 = b.position.x, by1 = b.position.y, bsz = b.size;
+    const ax2 = ax1 + asz, ay2 = ay1 + asz;
+    const bx2 = bx1 + bsz, by2 = by1 + bsz;
+    const overlapX = Math.min(ax2, bx2) - Math.max(ax1, bx1);
+    const overlapY = Math.min(ay2, by2) - Math.max(ay1, by1);
+    if (overlapX <= 0 || overlapY <= 0) return;
+    const pushX = overlapX * 0.5;
+    const pushY = overlapY * 0.5;
+    const acx = ax1 + asz / 2, acy = ay1 + asz / 2;
+    const bcx = bx1 + bsz / 2, bcy = by1 + bsz / 2;
+    if (overlapX < overlapY) {
+      if (acx < bcx) {
+        a.position.x -= pushX;
+        b.position.x += pushX;
+      } else {
+        a.position.x += pushX;
+        b.position.x -= pushX;
+      }
+    } else {
+      if (acy < bcy) {
+        a.position.y -= pushY;
+        b.position.y += pushY;
+      } else {
+        a.position.y += pushY;
+        b.position.y -= pushY;
+      }
+    }
+  }
+
+  resolveCollisions() {
+    const player = this.player;
+    const es = this.enemySystem;
+    const margin = this.world.wallThickness;
+    const maxX = this.world.width - margin - player.size;
+    const maxY = this.world.height - margin - player.size;
+
+    const allEnemies = [...es.enemies, ...(es.boss ? [es.boss] : [])].filter((e) => !e.isDead);
+    const skipPlayerCollision = this.bladeDashActive;
+    for (let iter = 0; iter < 2; iter++) {
+      if (!skipPlayerCollision) {
+        for (const enemy of allEnemies) {
+          if (enemy.intersects(player)) this.resolveSquareOverlap(player, enemy);
+        }
+      }
+      for (let i = 0; i < allEnemies.length; i++) {
+        for (let j = i + 1; j < allEnemies.length; j++) {
+          if (allEnemies[i].intersects(allEnemies[j])) this.resolveSquareOverlap(allEnemies[i], allEnemies[j]);
+        }
+      }
+    }
+    player.position.x = Math.max(margin, Math.min(player.position.x, maxX));
+    player.position.y = Math.max(margin, Math.min(player.position.y, maxY));
+    for (const e of allEnemies) {
+      const emaxX = this.world.width - margin - e.size;
+      const emaxY = this.world.height - margin - e.size;
+      e.position.x = Math.max(margin, Math.min(e.position.x, emaxX));
+      e.position.y = Math.max(margin, Math.min(e.position.y, emaxY));
+    }
   }
 
   enemiesInRadius(cx, cy, r) {
@@ -3048,6 +4472,33 @@ class Game {
       if (dot > Math.cos(angle * Math.PI / 180)) out.push(e);
     }
     return out;
+  }
+
+  drawAuraEffects(ctx) {
+    if (this.activeAuras.size === 0) return;
+    const px = this.player.position.x + this.player.size / 2 - this.camera.position.x;
+    const py = this.player.position.y + this.player.size / 2 - this.camera.position.y;
+    const AURA_COLORS = {
+      frostAura: "rgba(147, 197, 253, 0.4)",
+      flameAura: "rgba(251, 146, 60, 0.5)",
+      thunderAura: "rgba(253, 224, 71, 0.4)",
+      barrierAura: "rgba(96, 165, 250, 0.35)",
+      voidAura: "rgba(139, 92, 246, 0.45)",
+      soulAura: "rgba(192, 132, 252, 0.5)"
+    };
+    const radius = 90 + Math.sin(this.time * 3) * 5;
+    for (const auraId of this.activeAuras) {
+      const color = AURA_COLORS[auraId] || "rgba(255,255,255,0.3)";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(px, py, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
   }
 
   drawSkillEffects(ctx) {
@@ -3156,6 +4607,39 @@ class Game {
       } else if (eff.type === "timeWarp") {
         ctx.fillStyle = `rgba(139, 92, 246, ${0.15 + 0.05 * Math.sin(this.time * 3)})`;
         ctx.fillRect(0, 0, this.viewWidth, this.viewHeight);
+      } else if (eff.type === "bladeDash" && this.bladeDashActive) {
+        const sx = this.player.position.x + this.player.size / 2 + ox;
+        const sy = this.player.position.y + this.player.size / 2 + oy;
+        ctx.strokeStyle = `rgba(251, 191, 36, ${0.8 - eff.t / eff.duration * 0.5})`;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(sx - 20, sy - 20, 40, 40);
+      } else if (eff.type === "whirlwind") {
+        const sx = this.player.position.x + this.player.size / 2 + ox;
+        const sy = this.player.position.y + this.player.size / 2 + oy;
+        ctx.strokeStyle = `rgba(34, 197, 94, ${0.5 + 0.2 * Math.sin(this.time * 15)})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(sx, sy, eff.radius || 80, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (eff.type === "groundSlam") {
+        const sx = eff.x + ox; const sy = eff.y + oy;
+        const expand = Math.min(1, eff.t / eff.duration) * (eff.radius || 120);
+        ctx.strokeStyle = `rgba(120, 53, 15, ${0.7 - eff.t / eff.duration * 0.5})`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(sx, sy, expand, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (eff.type === "bladeStorm" && eff.blades) {
+        for (const b of eff.blades) {
+          const sx = b.x + ox; const sy = b.y + oy;
+          ctx.fillStyle = `rgba(251, 191, 36, ${0.8})`;
+          ctx.beginPath();
+          ctx.arc(sx, sy, 8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (eff.type === "earthquake") {
+        ctx.fillStyle = `rgba(120, 53, 15, ${0.1 * Math.sin(this.time * 20)})`;
+        ctx.fillRect(0, 0, this.viewWidth, this.viewHeight);
       }
     }
   }
@@ -3178,19 +4662,27 @@ class Game {
       } else {
         slotEl.classList.remove("locked");
         if (iconEl) iconEl.textContent = def ? def.icon : "—";
-        if (nameEl) nameEl.textContent = def ? def.name : "Empty";
+        let nameText = def ? def.name : "Empty";
+        if (def && def.category === "aura" && this.activeAuras.has(skillId)) {
+          nameText += ` (ON)`;
+          if (def.auraUpkeep) nameText += ` -${(def.auraUpkeep * 100).toFixed(1)}% HP/s`;
+        }
+        if (nameEl) nameEl.textContent = nameText;
       }
       const cd = this.skillCooldowns[i] || 0;
       const baseCd = def ? def.baseCd : 1;
-      const pct = baseCd > 0 ? Math.min(1, cd / (baseCd * this.getSkillCooldownMult())) : 0;
+      const isAura = def && def.category === "aura";
+      const pct = !isAura && baseCd > 0 ? Math.min(1, cd / (baseCd * this.getSkillCooldownMult())) : 0;
       if (cdEl) {
         cdEl.style.background = pct > 0 ? `conic-gradient(#374151 0deg, #374151 ${pct * 360}deg, transparent ${pct * 360}deg)` : "none";
       }
+      slotEl.classList.toggle("aura-active", isAura && this.activeAuras.has(skillId));
     }
   }
 
   computePlayerDamage(enemy) {
     let dmg = this.currentStats.attack;
+    if (this.playerCursedWeakenUntil > this.time) dmg = Math.round(dmg * 0.8);
     if (this.hasUpgradeCard("glassCannon")) dmg = Math.round(dmg * 1.5);
     if (this.hasUpgradeCard("doubleStrike")) {
       this.doubleStrikeCounter++;
@@ -3263,8 +4755,6 @@ class Game {
         }
       } else if (boss.minionTimer <= 0) {
         boss.minionTimer = boss.minionCooldown;
-        es.spawnMinion();
-        if (boss.phase2) es.spawnMinion();
       } else {
         const moveSpeed = boss.speed * dt * globalSlow;
         boss.position.x += (dx / dist) * moveSpeed;
@@ -3299,17 +4789,20 @@ class Game {
         if (Math.random() < 0.2) {
         } else {
           if (Math.random() < 0.5) {
-            const groups = LOOT_DEFS.filter((g) => g.type !== "Upgrade Card");
-            const group = groups[Math.floor(Math.random() * groups.length)];
-            const idx = Math.min(group.items.length - 1, Math.floor(Math.random() * (group.items.length - 1)) + 1);
-            const item = group.items[idx];
+            const types = ["Helmet", "Boots", "Body Armour", "Weapon"];
+            const type = types[Math.floor(Math.random() * types.length)];
+            const def = generateEquipmentItem(type, this.currentMap?.lootQuality ?? 0.5, 0.5);
             this.inventory.push({
               id: 60000 + Math.floor(Math.random() * 10000),
-              name: item.name,
-              type: group.type,
-              stats: item.stats || {},
+              name: def.name,
+              type: def.type,
+              stats: def.stats || {},
               cardKey: null,
-              description: ""
+              description: "",
+              weight: def.weight,
+              rarity: def.rarity,
+              modifiers: def.modifiers || [],
+              baseStat: def.baseStat || null
             });
           } else {
             const rarityBonus = this.pendingMerchantInvestment.name.includes("Dragon") || this.pendingMerchantInvestment.name.includes("Legendary") ? 3 : 2;
@@ -3330,6 +4823,7 @@ class Game {
         setSkillUnlock("lightningOnlyRun", true);
       }
       es.boss = null;
+      this.updateEnemyCountUI();
       this.showVictory();
     }
   }
@@ -3341,26 +4835,45 @@ class Game {
     const maxXp = baseType.maxXp ?? 20;
     let xp = minXp + Math.floor(Math.random() * (maxXp - minXp + 1));
     const mult = DIFFICULTY_STAT_MULTIPLIER[this.difficulty] ?? 1;
-    xp = Math.max(1, Math.round(xp * mult));
+    const tierMult = enemy.tierXpMult ?? 1;
+    xp = Math.max(1, Math.round(xp * mult * tierMult));
     this.grantXP(xp);
   }
 
   dropLootFromEnemy(enemy) {
+    const martyrMinions = [];
+    if (enemy.affixes?.includes("martyr")) {
+      const base = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+      const ex = enemy.position.x + enemy.size / 2;
+      const ey = enemy.position.y + enemy.size / 2;
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 + Math.random() * 0.5;
+        const dist = 20 + Math.random() * 15;
+        const mx = ex + Math.cos(angle) * dist - 12;
+        const my = ey + Math.sin(angle) * dist - 12;
+        const typeDef = { ...base, maxHealth: Math.round(base.maxHealth * 0.35), attack: base.attack, speed: base.speed, size: 24 };
+        const minion = new Enemy(mx, my, typeDef);
+        minion.worldBounds = enemy.worldBounds;
+        minion.activated = true;
+        martyrMinions.push(minion);
+      }
+    }
     if (enemy.isCursedChestGuardian) {
+      this.tryDropCubeFromEnemy(enemy);
       this.cursedChestBlocked = false;
       this.grantXP(50);
       this.lootSystem.spawnBurstAt(enemy.position.x + enemy.size / 2, enemy.position.y + enemy.size / 2, 2, 0.6);
-      return;
+      return martyrMinions;
     }
     if (enemy.isFiery && !this.fieryKilled) {
+      this.tryDropCubeFromEnemy(enemy);
       this.fieryKilled = true;
       const ex = enemy.position.x + enemy.size / 2;
       const ey = enemy.position.y + enemy.size / 2;
       if (this.fieryTimer > 0) {
-        const groups = LOOT_DEFS.filter((g) => g.type !== "Upgrade Card");
-        const group = groups[Math.floor(Math.random() * groups.length)];
-        const best = group.items[group.items.length - 1];
-        const def = { type: group.type, name: best.name, stats: best.stats };
+        const types = ["Helmet", "Boots", "Body Armour", "Weapon"];
+        const type = types[Math.floor(Math.random() * types.length)];
+        const def = generateEquipmentItem(type, 1, 0.8);
         const item = new LootItem(this.lootSystem.nextId++, ex - 10, ey - 10, def, ex, ey);
         this.lootSystem.items.push(item);
         const cards = getUpgradeCardDefs();
@@ -3372,28 +4885,50 @@ class Game {
         }
         this.grantXP(80);
       }
-      return;
+      return martyrMinions;
     }
     this.grantXPFromEnemy(enemy);
-    const baseType = ENEMY_TYPES.find((t) => t.name === enemy.name);
-    if (!baseType) return;
-    let chance = baseType.dropChance || 0.3;
-    if (this.hasUpgradeCard("scavenger")) chance = Math.min(1, chance * 1.5);
-    if (Math.random() >= chance) return;
+    this.tryDropCubeFromEnemy(enemy);
 
-    const minDrop = baseType.minDrop ?? 1;
-    const maxDrop = baseType.maxDrop ?? 1;
-    const count = minDrop + Math.floor(Math.random() * (maxDrop - minDrop + 1));
+    const tier = enemy.enemyTier || (enemy.isMiniBoss ? "miniBoss" : enemy.isElite ? "elite" : "minion");
     const ex = enemy.position.x + enemy.size / 2;
     const ey = enemy.position.y + enemy.size / 2;
-    this.lootSystem.spawnBurstAt(ex, ey, count, 0);
-    if (hasTalent("battleHardened") && Math.random() < 0.1) {
+    const types = ["Helmet", "Boots", "Body Armour", "Weapon"];
+    const lootQual = this.currentMap?.lootQuality ?? 0.5;
+
+    const dropMult = enemy.affixes?.includes("evasive") ? 2 : 1;
+    if (tier === "minion") {
+      if (Math.random() < 0.05 * dropMult) {
+        const type = types[Math.floor(Math.random() * types.length)];
+        const def = generateEquipmentItem(type, lootQual, 0, "common");
+        this.lootSystem.spawnEquipmentAt(ex, ey, def);
+      }
+    } else if (tier === "elite") {
+      if (Math.random() < 0.2 * dropMult) {
+        const type = types[Math.floor(Math.random() * types.length)];
+        const def = generateEquipmentItem(type, Math.min(1, lootQual + 0.35), 0.3, "magic");
+        this.lootSystem.spawnEquipmentAt(ex, ey, def);
+      }
+    } else if (tier === "miniBoss") {
+      const type = types[Math.floor(Math.random() * types.length)];
+      const def = generateEquipmentItem(type, 1, 0.8, "rare");
+      this.lootSystem.spawnEquipmentAt(ex, ey, def);
+      if (Math.random() < 0.1 * dropMult) {
+        const type2 = types[Math.floor(Math.random() * types.length)];
+        const def2 = generateEquipmentItem(type2, 1, 0.8, "rare");
+        this.lootSystem.spawnEquipmentAt(ex + 25, ey, def2);
+      }
+    }
+
+    const baseType = ENEMY_TYPES.find((t) => t.name === enemy.name);
+    if (baseType && hasTalent("battleHardened") && Math.random() < 0.1) {
       this.lootSystem.spawnGuaranteedWeaponAt(ex, ey);
     }
     if (hasTalent("jackpot") && !this.jackpotUsed) {
       this.jackpotUsed = true;
       this.lootSystem.spawnBurstAt(ex, ey, 1, 1);
     }
+    return martyrMinions;
   }
 
   updateProjectiles(dt) {
@@ -3402,6 +4937,7 @@ class Game {
     for (const p of es.projectiles) {
       p.update(dt);
       if (p.intersects(this.player)) {
+        if (p._sourceEnemy) this.lastDamagingEnemy = p._sourceEnemy;
         this.onPlayerDamaged(p.damage, true);
       } else {
         const margin = -20;
@@ -3417,7 +4953,16 @@ class Game {
   onPlayerDamaged(rawAmount, fromEnemy = false) {
     if (this.gameOver) return;
     if (fromEnemy && this.hasCondition("enemyDmg")) rawAmount = Math.round(rawAmount * 1.15);
+    if (fromEnemy && this.lastDamagingEnemy?._auraBuffed) rawAmount = Math.round(rawAmount * 1.2);
+    if (fromEnemy && this.lastDamagingEnemy?.affixes?.includes("cursing")) {
+      const roll = Math.random();
+      if (roll < 0.25) { this.playerSlowUntil = this.time + 2; this.playerSlowMult = 0.7; }
+      else if (roll < 0.5) { this.playerBurnUntil = this.time + 3; this.playerBurnDmg = 4; }
+      else if (roll < 0.75) { this.playerCursedWeakenUntil = this.time + 2; }
+      else { this.stunTimer = Math.max(this.stunTimer || 0, 0.5); }
+    }
     if (this.hasUpgradeCard("glassCannon")) rawAmount = Math.round(rawAmount * 1.3);
+    if (this.activeAuras.has("barrierAura")) rawAmount = Math.round(rawAmount * 0.85);
 
     // Ghost Step: invulnerability window
     if (this.hasUpgradeCard("ghostStep") && this.ghostStepTimer > 0) return;
@@ -3427,6 +4972,9 @@ class Game {
 
     // Dash: invulnerability at midpoint
     if (this.dashActive && this.dashTimer < 0.2 && this.dashTimer >= 0.1) return;
+
+    // Blade Dash: full invulnerability
+    if (this.bladeDashActive) return;
 
     // Iron Skin: absorbs one hit
     if (this.hasUpgradeCard("ironSkin") && this.ironSkinShieldReady) {
@@ -3513,6 +5061,11 @@ class Game {
     const { ctx, canvas } = this;
     ctx.save();
 
+    if (this.earthquakeShakeUntil > this.time) {
+      const shake = 4;
+      ctx.translate((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake * 2);
+    }
+
     const scaleX = canvas.width / this.viewWidth;
     const scaleY = canvas.height / this.viewHeight;
     const scale = Math.min(scaleX, scaleY);
@@ -3539,7 +5092,8 @@ class Game {
     this.player.draw(ctx, this.camera);
 
     const dashInvincible = this.dashActive && this.dashTimer < 0.2 && this.dashTimer >= 0.1;
-    if (dashInvincible) {
+    const bladeDashInvincible = this.bladeDashActive;
+    if (dashInvincible || bladeDashInvincible) {
       const sx = Math.floor(this.player.position.x - this.camera.position.x);
       const sy = Math.floor(this.player.position.y - this.camera.position.y);
       const pulse = 0.6 + Math.sin(this.time * 40) * 0.2;
@@ -3582,6 +5136,7 @@ class Game {
       ctx.fillRect(0, 0, this.viewWidth, this.viewHeight);
     }
 
+    this.drawAuraEffects(ctx);
     this.drawSkillEffects(ctx);
 
     for (const proj of this.playerProjectiles) {
@@ -3598,7 +5153,11 @@ class Game {
       type: lootItem.type,
       stats: lootItem.stats || {},
       cardKey: lootItem.cardKey || null,
-      description: lootItem.description || ""
+      description: lootItem.description || "",
+      weight: lootItem.weight || null,
+      rarity: lootItem.rarity || null,
+      modifiers: lootItem.modifiers || [],
+      baseStat: lootItem.baseStat || null
     };
 
     this.inventory.push(newItem);
@@ -3608,9 +5167,56 @@ class Game {
     }
     if (this.hasUpgradeCard("vampiric") && !this.hasCondition("noHealthDrops")) {
       this.healPlayer(5);
+      const u = getSkillUnlocks();
+      const count = (u.vampiricTriggers || 0) + 1;
+      setSkillUnlock("vampiricTriggers", count);
     }
 
     this.updateInventoryUI();
+  }
+
+  addCubeToInventory(cubeKey) {
+    this.cubeInventory[cubeKey] = (this.cubeInventory[cubeKey] || 0) + 1;
+    if (this.inventoryOverlayOpen) this.populateInventoryOverlay();
+  }
+
+  tryDropCubeFromEnemy(enemy) {
+    const isMiniBoss = !!(enemy.enemyTier === "miniBoss" || enemy.isFiery || enemy.isCursedChestGuardian);
+    const isElite = !!(enemy.enemyTier === "elite" || enemy.isElite);
+
+    if (isMiniBoss) {
+      if (Math.random() < 0.2) {
+        const cube = MODIFIER_CUBES[Math.floor(Math.random() * MODIFIER_CUBES.length)];
+        this.addCubeToInventory(`${cube.id}T1`);
+      }
+      if (Math.random() < 0.15) {
+        const cube = MODIFIER_CUBES[Math.floor(Math.random() * MODIFIER_CUBES.length)];
+        this.addCubeToInventory(`${cube.id}T2`);
+      }
+      if (Math.random() < 0.1) {
+        const cube = MODIFIER_CUBES[Math.floor(Math.random() * MODIFIER_CUBES.length)];
+        this.addCubeToInventory(`${cube.id}T3`);
+      }
+      if (Math.random() < 0.08) {
+        const tier = 1 + Math.floor(Math.random() * 3);
+        const cube = UPGRADE_CUBES[Math.floor(Math.random() * UPGRADE_CUBES.length)];
+        this.addCubeToInventory(`${cube.id}T${tier}`);
+      }
+    } else if (isElite) {
+      if (Math.random() < 0.08) {
+        const cube = MODIFIER_CUBES[Math.floor(Math.random() * MODIFIER_CUBES.length)];
+        this.addCubeToInventory(`${cube.id}T1`);
+      }
+      if (Math.random() < 0.05) {
+        const cube = MODIFIER_CUBES[Math.floor(Math.random() * MODIFIER_CUBES.length)];
+        this.addCubeToInventory(`${cube.id}T2`);
+      }
+    } else {
+      if (Math.random() < 0.03) {
+        const cube = MODIFIER_CUBES[Math.floor(Math.random() * MODIFIER_CUBES.length)];
+        this.addCubeToInventory(`${cube.id}T1`);
+      }
+    }
   }
 
   healPlayer(amount) {
@@ -3691,6 +5297,8 @@ class Game {
             : "Click to equip";
       }
 
+      li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
+      li.addEventListener("mouseleave", hideItemTooltip);
       li.addEventListener("click", () => this.handleInventoryItemClick(item));
       this.inventoryListEl.appendChild(li);
     }
@@ -3724,6 +5332,7 @@ class Game {
       this.updateInventoryUI();
       this.updateEquippedUI();
       this.recalculateStats();
+      if (this.inventoryOverlayOpen) this.populateInventoryOverlay();
     }
   }
 
@@ -3742,6 +5351,7 @@ class Game {
     this.updateInventoryUI();
     this.updateUpgradeCardsUI();
     this.recalculateStats();
+    if (this.inventoryOverlayOpen) this.populateInventoryOverlay();
   }
 
   updateEquippedUI() {
@@ -3760,7 +5370,17 @@ class Game {
       const nameDiv = document.createElement("div");
       nameDiv.className = "equipped-item-name";
       const item = this.equipment[slot];
-      nameDiv.textContent = item ? item.name : "None";
+      if (item) {
+        nameDiv.style.color = getItemRarityColor(item);
+        nameDiv.textContent = item.name;
+      } else {
+        nameDiv.textContent = "None";
+      }
+
+      if (item) {
+        li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
+        li.addEventListener("mouseleave", hideItemTooltip);
+      }
 
       li.appendChild(slotLabel);
       li.appendChild(nameDiv);
@@ -3770,12 +5390,46 @@ class Game {
 
   recalculateStats() {
     const stats = { ...this.baseStats };
+    const percentMods = { attack: 0, maxHealth: 0, defense: 0, speed: 0, xpGained: 0, skillDamage: 0 };
+    let equipmentAttackSpeedMult = 1;
+    let equipmentCooldownRecovery = 1;
+    let equipmentSpeedPenalty = 0;
+    let hasHeavyArmour = false;
+    const WEIGHT_PENALTIES = { light: 0, medium: 0.1, heavy: 0.15 };
     for (const slot of Object.keys(this.equipment)) {
       const item = this.equipment[slot];
       if (!item || !item.stats) continue;
-      for (const [k, v] of Object.entries(item.stats)) {
-        stats[k] = (stats[k] || 0) + v;
+      if ((slot === "Helmet" || slot === "Body Armour") && item.weight) {
+        equipmentSpeedPenalty = Math.max(equipmentSpeedPenalty, WEIGHT_PENALTIES[item.weight] || 0);
+        if (item.weight === "heavy") hasHeavyArmour = true;
       }
+      for (const [k, v] of Object.entries(item.stats)) {
+        if (k === "attackSpeed") {
+          equipmentAttackSpeedMult *= v;
+        } else if (k === "cooldownRecovery") {
+          equipmentCooldownRecovery *= v;
+        } else if (k === "attackPercent" || k === "maxHealthPercent" || k === "defensePercent" || k === "speedPercent") {
+          const baseKey = k.replace("Percent", "");
+          percentMods[baseKey] = (percentMods[baseKey] || 0) + v;
+        } else if (k === "xpGainedPercent") {
+          percentMods.xpGained += v;
+        } else if (k === "skillDamagePercent") {
+          percentMods.skillDamage += v;
+        } else {
+          stats[k] = (stats[k] || 0) + v;
+        }
+      }
+    }
+    this.equipmentAttackSpeedMult = equipmentAttackSpeedMult;
+    this.equipmentCooldownRecovery = equipmentCooldownRecovery;
+    this.equipmentXpGainedMult = 1 + (percentMods.xpGained || 0);
+    this.equipmentSkillDamageMult = 1 + (percentMods.skillDamage || 0);
+    this.equipmentSpeedMult = 1 - equipmentSpeedPenalty;
+    this.equipmentDashCooldownMult = hasHeavyArmour ? 1.2 : 1;
+    this.dashCooldownTime = this.baseDashCooldownTime * this.equipmentDashCooldownMult;
+    for (const key of ["attack", "maxHealth", "defense", "speed"]) {
+      const pct = percentMods[key] || 0;
+      if (pct !== 0) stats[key] = Math.round((stats[key] || 0) * (1 + pct));
     }
     if (hasTalent("fortified")) {
       stats.defense = Math.round((stats.defense || 0) * 1.2);
@@ -3820,6 +5474,8 @@ class Game {
       descEl.className = "upgrade-card-desc";
       descEl.textContent = card.description || "";
 
+      li.addEventListener("mouseenter", (e) => showItemTooltip(e, card, this));
+      li.addEventListener("mouseleave", hideItemTooltip);
       li.appendChild(nameEl);
       li.appendChild(descEl);
       this.upgradeCardListEl.appendChild(li);
@@ -3837,6 +5493,14 @@ class Game {
       ["Speed", `${Math.round(stats.speed)}`],
       ["Attack", `${stats.attack}`]
     ];
+    const atkSpd = this.equipmentAttackSpeedMult || 1;
+    const cdRec = this.equipmentCooldownRecovery ?? 1;
+    const spdMult = this.equipmentSpeedMult ?? 1;
+    const dashCd = this.equipmentDashCooldownMult ?? 1;
+    if (atkSpd !== 1) rows.push(["Atk Spd", `+${Math.round((atkSpd - 1) * 100)}%`]);
+    if (cdRec !== 1) rows.push(["CD Rec", `${Math.round((1 - cdRec) * 100)}% less`]);
+    if (spdMult < 1) rows.push(["Armour", `-${Math.round((1 - spdMult) * 100)}% speed`]);
+    if (dashCd > 1) rows.push(["Dash CD", `+${Math.round((dashCd - 1) * 100)}%`]);
 
     for (const [label, value] of rows) {
       const labelEl = document.createElement("div");
@@ -3958,10 +5622,107 @@ function buildLegacyVault() {
 }
 
 function formatItemStats(item) {
-  if (!item.stats || Object.keys(item.stats).length === 0) return "";
-  return Object.entries(item.stats)
-    .map(([k, v]) => `${k}: +${v}`)
-    .join(", ");
+  const parts = [];
+  if (item.stats && Object.keys(item.stats).length > 0) {
+    const fmt = (k, v) => {
+      if (k === "attackSpeed") return `+${Math.round((v - 1) * 100)}% atk spd`;
+      if (k === "cooldownRecovery") return `${Math.round((1 - v) * 100)}% less CD`;
+      if (k.endsWith("Percent")) return `+${Math.round(v * 100)}% ${k.replace("Percent", "")}`;
+      return `${k}: +${v}`;
+    };
+    parts.push(Object.entries(item.stats).map(([k, v]) => fmt(k, v)).join(", "));
+  }
+  if (item.weight && (item.type === "Helmet" || item.type === "Body Armour")) {
+    const w = item.weight;
+    if (w === "medium") parts.push("Medium (-10% speed)");
+    else if (w === "heavy") parts.push("Heavy (-15% speed, +20% dash CD)");
+    else if (w === "light") parts.push("Light (no penalty)");
+  }
+  return parts.join(" | ");
+}
+
+function getItemRarityColor(item) {
+  if (!item) return "#e2e8f0";
+  if (item.rarity === "magic") return RARITY_COLORS.magic;
+  if (item.rarity === "rare") return RARITY_COLORS.rare;
+  return RARITY_COLORS.common;
+}
+
+function buildItemTooltipContent(item, game = null) {
+  const rarityColor = getItemRarityColor(item);
+  const name = escapeHtml(item.name);
+  const type = escapeHtml(item.type || "Item");
+  const desc = item.description ? escapeHtml(item.description) : "";
+
+  let html = `<div class="tooltip-name" style="color:${rarityColor}">${name}</div><div class="tooltip-type">${type}</div>`;
+
+  if (item.type === "Upgrade Card") {
+    if (desc) html += `<div class="tooltip-desc">${desc}</div>`;
+    return html;
+  }
+
+  const baseKey = EQUIPMENT_BASE_STAT[item.type];
+  const baseVal = item.stats && item.stats[baseKey] ? item.stats[baseKey] : 0;
+  const baseLabel = baseKey === "maxHealth" ? "Max Health" : baseKey === "attack" ? "Attack" : baseKey === "speed" ? "Speed" : "Defense";
+  const equipped = game && item.type ? game.equipment[item.type] : null;
+  const eqBaseVal = equipped?.stats?.[baseKey] ?? 0;
+  let baseCls = "tooltip-stats";
+  if (equipped && equipped !== item) {
+    if (baseVal > eqBaseVal) baseCls += " tooltip-better";
+    else if (baseVal < eqBaseVal) baseCls += " tooltip-worse";
+  }
+  html += `<div class="${baseCls}">${baseLabel}: +${baseVal}</div>`;
+
+  if (item.modifiers && item.modifiers.length > 0) {
+    const eqModifiers = equipped?.modifiers || [];
+    for (const m of item.modifiers) {
+      const pct = Math.round(m.value * 100);
+      const eqMod = eqModifiers.find((x) => x.id === m.id);
+      const eqVal = eqMod ? eqMod.value : 0;
+      let cls = "";
+      if (equipped && equipped !== item) {
+        if (m.value > eqVal) cls = ' class="tooltip-better"';
+        else if (m.value < eqVal) cls = ' class="tooltip-worse"';
+      }
+      html += `<div class="tooltip-mod"${cls}>+${pct}% ${m.label}</div>`;
+    }
+  }
+
+  if (item.weight && (item.type === "Helmet" || item.type === "Body Armour")) {
+    const w = item.weight;
+    const wText = w === "medium" ? "Medium (-10% speed)" : w === "heavy" ? "Heavy (-15% speed, +20% dash CD)" : "Light (no penalty)";
+    html += `<div class="tooltip-stats">${escapeHtml(wText)}</div>`;
+  }
+  if (desc) html += `<div class="tooltip-desc">${desc}</div>`;
+  return html;
+}
+
+function showItemTooltip(e, item, game = null) {
+  const el = document.getElementById("item-tooltip");
+  if (!el || !item) return;
+  el.innerHTML = buildItemTooltipContent(item, game);
+  el.style.left = "-9999px";
+  el.style.top = "0";
+  el.classList.remove("hidden");
+  el.offsetHeight; // force reflow
+  const rect = (e.currentTarget || e.target).getBoundingClientRect();
+  const tr = el.getBoundingClientRect();
+  let left = rect.left + (rect.width / 2) - (tr.width / 2);
+  let top = rect.bottom + 6;
+  if (left < 8) left = 8;
+  if (left + tr.width > window.innerWidth - 8) left = window.innerWidth - tr.width - 8;
+  if (top + tr.height > window.innerHeight - 8) top = rect.top - tr.height - 6;
+  if (top < 8) top = 8;
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+}
+
+function hideItemTooltip() {
+  const el = document.getElementById("item-tooltip");
+  if (el) {
+    el.classList.add("hidden");
+    el.innerHTML = "";
+  }
 }
 
 function renderHallOfChampions() {
@@ -4304,11 +6065,25 @@ function renderSkillSelectScreen() {
   }
 
   poolEl.innerHTML = "";
+  const byCategory = {};
   for (const s of unlocked) {
-    const btn = document.createElement("button");
-    btn.className = "skill-pool-item";
-    btn.innerHTML = `<span>${s.icon}</span><span>${escapeHtml(s.name)}</span>`;
-    btn.addEventListener("click", () => {
+    const cat = s.category || "projectile";
+    if (!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push(s);
+  }
+  const order = ["projectile", "melee", "aura"];
+  for (const cat of order) {
+    const skills = byCategory[cat];
+    if (!skills || skills.length === 0) continue;
+    const label = document.createElement("div");
+    label.className = "skill-category-label";
+    label.textContent = SKILL_CATEGORIES[cat] || cat;
+    poolEl.appendChild(label);
+    for (const s of skills) {
+      const btn = document.createElement("button");
+      btn.className = "skill-pool-item";
+      btn.innerHTML = `<span>${s.icon}</span><span>${escapeHtml(s.name)}</span>`;
+      btn.addEventListener("click", () => {
       const slot = selectedSkillSlot >= 0 && selectedSkillSlot < availableSlots ? selectedSkillSlot : pendingSkillsForRun.findIndex((x) => !x);
       if (slot >= 0 && slot < availableSlots) {
         pendingSkillsForRun[slot] = s.id;
@@ -4317,6 +6092,7 @@ function renderSkillSelectScreen() {
       }
     });
     poolEl.appendChild(btn);
+    }
   }
 }
 
@@ -4332,6 +6108,7 @@ function confirmSkillSelectAndStart() {
   if (gameRoot) gameRoot.classList.remove("hidden");
   document.getElementById("pause-toggle")?.classList.remove("hidden");
   document.getElementById("dev-toggle")?.classList.remove("hidden");
+  document.getElementById("inventory-button")?.classList.remove("hidden");
 
   const skills = [...pendingSkillsForRun];
   startGame(legacyItems, {
@@ -4354,8 +6131,10 @@ function bootstrap() {
     gameRoot.classList.add("hidden");
     const pauseBtn = document.getElementById("pause-toggle");
     const devBtn = document.getElementById("dev-toggle");
+    const invBtn = document.getElementById("inventory-button");
     if (pauseBtn) pauseBtn.classList.add("hidden");
     if (devBtn) devBtn.classList.add("hidden");
+    if (invBtn) invBtn.classList.add("hidden");
     const bossBar = document.getElementById("boss-health-bar");
     if (bossBar) bossBar.classList.add("hidden");
     renderHallOfChampions();

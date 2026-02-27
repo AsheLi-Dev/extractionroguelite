@@ -35,6 +35,7 @@
       <aside class="inventory-panel">
         <section class="map-name-section">
           <div id="map-name" class="map-name">Dungeon (Map 1)</div>
+          <div id="enemy-count" class="enemy-count">Enemies: 0</div>
         </section>
         <section class="xp-section">
           <div class="xp-level-row">
@@ -52,10 +53,6 @@
         <section class="upgrade-cards-section">
           <h2>Upgrade Cards</h2>
           <ul id="upgrade-card-list"></ul>
-        </section>
-        <section class="inventory-section">
-          <h2>Inventory</h2>
-          <ul id="inventory-list"></ul>
         </section>
         <section class="dash-section">
           <h2>Dash</h2>
@@ -209,6 +206,55 @@
       </div>
     </div>
 
+    <div id="inventory-overlay" class="inventory-overlay hidden">
+      <div class="inventory-overlay-box">
+        <header class="inventory-overlay-header">
+          <h1 class="inventory-overlay-title">Inventory</h1>
+          <button id="inventory-overlay-close" class="inventory-overlay-close">Close (I)</button>
+        </header>
+        <div class="inventory-overlay-tabs">
+          <button id="inventory-tab-items" class="inventory-tab active">Items</button>
+          <button id="inventory-tab-crafting" class="inventory-tab">Crafting</button>
+        </div>
+        <div id="inventory-overlay-items" class="inventory-overlay-tab-content">
+          <section class="inventory-overlay-section">
+            <h2>Equipped</h2>
+            <ul id="inventory-overlay-equipped-list"></ul>
+          </section>
+          <section class="inventory-overlay-section">
+            <h2 id="inventory-overlay-cards-title">Upgrade Cards (0/3)</h2>
+            <ul id="inventory-overlay-cards-list"></ul>
+          </section>
+          <section class="inventory-overlay-section">
+            <h2>Inventory</h2>
+            <ul id="inventory-overlay-inventory-list"></ul>
+          </section>
+        </div>
+        <div id="inventory-overlay-crafting" class="inventory-overlay-tab-content hidden">
+          <section class="inventory-overlay-section">
+            <h2>Cube Inventory</h2>
+            <div id="cube-inventory-grid" class="cube-inventory-grid"></div>
+          </section>
+          <section class="inventory-overlay-section">
+            <h2>Select Item to Craft</h2>
+            <ul id="crafting-item-list" class="crafting-item-list"></ul>
+          </section>
+          <section class="inventory-overlay-section">
+            <h2>Craft</h2>
+            <p class="crafting-hint">Select an equipment item above, then select a cube.</p>
+            <div id="crafting-selected-item" class="crafting-selected">No item selected</div>
+            <div id="crafting-selected-cube" class="crafting-selected">No cube selected</div>
+            <div id="crafting-preview" class="crafting-preview hidden"></div>
+            <button id="crafting-confirm" class="crafting-confirm-btn" disabled>Craft</button>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div id="item-tooltip" class="item-tooltip hidden"></div>
+    <div id="affix-tooltip" class="item-tooltip affix-tooltip hidden"></div>
+
+    <button id="inventory-button" class="inventory-button">🎒 Inventory (I)</button>
     <button id="pause-toggle" class="pause-toggle">⏸ Pause</button>
 
     <button id="dev-toggle" class="dev-toggle">DEV</button>
