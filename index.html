@@ -26,10 +26,10 @@
       <div class="canvas-wrapper">
         <canvas id="game-canvas"></canvas>
         <div id="skill-bar" class="skill-bar">
-          <div class="skill-slot" data-slot="0"><span class="skill-key">Q</span><div class="skill-icon" id="skill-icon-0">—</div><div class="skill-name" id="skill-name-0">Empty</div><div class="skill-cd-ring" id="skill-cd-0"></div></div>
-          <div class="skill-slot" data-slot="1"><span class="skill-key">W</span><div class="skill-icon" id="skill-icon-1">—</div><div class="skill-name" id="skill-name-1">Empty</div><div class="skill-cd-ring" id="skill-cd-1"></div></div>
-          <div class="skill-slot" data-slot="2"><span class="skill-key">E</span><div class="skill-icon" id="skill-icon-2">—</div><div class="skill-name" id="skill-name-2">Empty</div><div class="skill-cd-ring" id="skill-cd-2"></div></div>
-          <div class="skill-slot" data-slot="3"><span class="skill-key">R</span><div class="skill-icon" id="skill-icon-3">—</div><div class="skill-name" id="skill-name-3">Empty</div><div class="skill-cd-ring" id="skill-cd-3"></div></div>
+          <div class="skill-slot" data-slot="0"><span class="skill-key">1</span><div class="skill-icon" id="skill-icon-0">—</div><div class="skill-name" id="skill-name-0">Empty</div><div class="skill-cd-ring" id="skill-cd-0"></div></div>
+          <div class="skill-slot" data-slot="1"><span class="skill-key">2</span><div class="skill-icon" id="skill-icon-1">—</div><div class="skill-name" id="skill-name-1">Empty</div><div class="skill-cd-ring" id="skill-cd-1"></div></div>
+          <div class="skill-slot" data-slot="2"><span class="skill-key">3</span><div class="skill-icon" id="skill-icon-2">—</div><div class="skill-name" id="skill-name-2">Empty</div><div class="skill-cd-ring" id="skill-cd-2"></div></div>
+          <div class="skill-slot" data-slot="3"><span class="skill-key">4</span><div class="skill-icon" id="skill-icon-3">—</div><div class="skill-name" id="skill-name-3">Empty</div><div class="skill-cd-ring" id="skill-cd-3"></div></div>
         </div>
       </div>
       <aside class="inventory-panel">
@@ -124,7 +124,7 @@
     <div id="skill-select-overlay" class="skill-select-overlay hidden">
       <div class="skill-select-box">
         <h1 class="skill-select-title">Select Skills</h1>
-        <p class="skill-select-subtitle">Assign skills to Q W E R. Locked slots show requirements.</p>
+        <p class="skill-select-subtitle">Assign skills to 1 2 3 4. Locked slots show requirements.</p>
         <div id="skill-select-slots" class="skill-select-slots"></div>
         <div id="skill-select-pool" class="skill-select-pool"></div>
         <div class="skill-select-actions">
@@ -185,6 +185,19 @@
           </div>
         </header>
         <div id="legacy-vault-grid" class="legacy-vault-grid"></div>
+      </div>
+    </div>
+
+    <div id="event-overlay" class="event-overlay hidden">
+      <div class="event-card">
+        <h1 class="event-title" id="event-title">Event</h1>
+        <p class="event-desc" id="event-desc">Description</p>
+        <div id="event-choices" class="event-choices"></div>
+        <div id="event-merchant-pick" class="event-merchant-pick hidden">
+          <p class="event-pick-label">Choose an item to invest:</p>
+          <ul id="event-invest-list" class="event-invest-list"></ul>
+          <button id="event-invest-cancel" class="event-btn event-btn-secondary">Cancel</button>
+        </div>
       </div>
     </div>
 

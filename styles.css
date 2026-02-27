@@ -1661,3 +1661,107 @@ body {
   background: #15803d;
   border-color: #4ade80;
 }
+
+/* Event overlay */
+.event-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(5, 6, 10, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.event-overlay.hidden {
+  display: none;
+}
+
+.event-card {
+  background: linear-gradient(145deg, #0f172a 0%, #1e293b 100%);
+  border: 2px solid #6366f1;
+  border-radius: 24px;
+  padding: 40px 48px;
+  max-width: 520px;
+  width: 92%;
+  box-shadow: 0 24px 60px rgba(99, 102, 241, 0.25);
+  animation: level-up-pop 0.4s ease-out;
+}
+
+.event-title {
+  font-size: 28px;
+  color: #c7d2fe;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.event-desc {
+  font-size: 16px;
+  line-height: 1.6;
+  color: #94a3b8;
+  margin-bottom: 28px;
+}
+
+.event-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.event-choice-btn {
+  padding: 14px 24px;
+  font-size: 16px;
+  border-radius: 12px;
+  border: 2px solid #4f46e5;
+  background: #312e81;
+  color: #e0e7ff;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.event-choice-btn:hover {
+  background: #4338ca;
+  border-color: #6366f1;
+}
+
+.event-choice-btn.event-btn-secondary {
+  border-color: #64748b;
+  background: #334155;
+  color: #cbd5e1;
+}
+
+.event-choice-btn.event-btn-secondary:hover {
+  background: #475569;
+}
+
+.event-merchant-pick {
+  margin-top: 16px;
+}
+
+.event-pick-label {
+  font-size: 14px;
+  color: #94a3b8;
+  margin-bottom: 12px;
+}
+
+.event-invest-list {
+  list-style: none;
+  margin-bottom: 16px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.event-invest-list li {
+  padding: 10px 14px;
+  margin-bottom: 6px;
+  background: rgba(51, 65, 85, 0.6);
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.event-invest-list li:hover {
+  background: rgba(71, 85, 105, 0.8);
+  border-color: #6366f1;
+}
+

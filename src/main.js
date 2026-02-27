@@ -119,6 +119,62 @@ const SKILL_UNLOCKS_KEY = "spaceShooter_skillUnlocks";
 
 const SKILL_SLOT_UNLOCK = { 1: 0, 2: 1, 3: 3, 4: 5 };
 
+const SPRING_CARD_IDS = ["homing", "glassCannon", "legacyBonus", "healthRegen"];
+
+const EVENT_DEFS = [
+  {
+    id: "stranger",
+    name: "The Stranger",
+    desc: "A hooded figure emerges from the shadows. \"Please... I need to return home. Will you escort me to the Dungeon?\"",
+    choices: [
+      { id: "help", label: "Help them" },
+      { id: "refuse", label: "Refuse" }
+    ]
+  },
+  {
+    id: "spring",
+    name: "The Spring",
+    desc: "A crystalline spring glows with otherworldly light. The waters seem to pulse with latent power.",
+    choices: [
+      { id: "drink", label: "Drink from the spring" },
+      { id: "ignore", label: "Ignore it" }
+    ]
+  },
+  {
+    id: "merchant",
+    name: "The Merchant",
+    desc: "A well-dressed merchant approaches. \"Invest an item with me. I shall repay you handsomely... after you defeat the Tyrant.\"",
+    choices: [
+      { id: "invest", label: "Invest an item" },
+      { id: "decline", label: "Decline" }
+    ]
+  },
+  {
+    id: "shrine",
+    name: "The Shrine",
+    desc: "An ancient shrine hums with forgotten magic. It offers a trade—or destruction.",
+    choices: [
+      { id: "offerXp", label: "Offer 30% XP for an upgrade card" },
+      { id: "destroy", label: "Destroy all equipment, double LP reward" }
+    ]
+  },
+  {
+    id: "cursedChest",
+    name: "The Cursed Chest",
+    desc: "A chest radiates dark energy. Opening it may grant great power—or awaken something terrible.",
+    choices: [
+      { id: "open", label: "Open it" },
+      { id: "leave", label: "Leave it" }
+    ]
+  },
+  {
+    id: "fiery",
+    name: "The Fiery",
+    desc: "A golden fiery materializes and darts across the room! Defeat it within 30 seconds to claim its treasures.",
+    choices: []
+  }
+];
+
 const SKILL_DEFS = [
   { id: "fireball", name: "Fireball", icon: "🔥", baseCd: 3, desc: "Slow projectile, explodes for area damage + burning ground 3s", unlock: "always" },
   { id: "iceShard", name: "Ice Shard", icon: "❄️", baseCd: 2, desc: "Fast piercing projectile, slows 30% for 2s", unlock: "always" },
@@ -791,14 +847,32 @@ class Enemy {
     if (this.slowUntil != null && gameTime < this.slowUntil) speedMult *= (this.slowMult ?? 0.7);
     const cx = this.position.x + this.size / 2;
     const cy = this.position.y + this.size / 2;
-    const px = player.position.x + player.size / 2;
-    const py = player.position.y + player.size / 2;
-    const dx = px - cx;
-    const dy = py - cy;
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-    this.position.x += (dx / dist) * this.speed * speedMult * dt;
-    this.position.y += (dy / dist) * this.speed * speedMult * dt;
+    const margin = 60;
+    if (this.isFiery) {
+      this.wanderTimer = (this.wanderTimer || 0) - dt;
+      if (this.wanderTimer <= 0) {
+        this.wanderDirection = this.wanderDirection || new Vec2(0, 0);
+        this.wanderDirection.set(Math.random() - 0.5, Math.random() - 0.5);
+        const len = Math.sqrt(this.wanderDirection.x ** 2 + this.wanderDirection.y ** 2) || 1;
+        this.wanderDirection.x /= len;
+        this.wanderDirection.y /= len;
+        this.wanderTimer = 0.5 + Math.random() * 1;
+      }
+      let dx = this.wanderDirection.x;
+      let dy = this.wanderDirection.y;
+      this.position.x += dx * this.speed * speedMult * dt;
+      this.position.y += dy * this.speed * speedMult * dt;
+      this.position.x = Math.max(margin, Math.min(this.position.x, 1200 - margin - this.size));
+      this.position.y = Math.max(margin, Math.min(this.position.y, 900 - margin - this.size));
+    } else {
+      const px = player.position.x + player.size / 2;
+      const py = player.position.y + player.size / 2;
+      const dx = px - cx;
+      const dy = py - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      this.position.x += (dx / dist) * this.speed * speedMult * dt;
+      this.position.y += (dy / dist) * this.speed * speedMult * dt;
+    }
 
     if (this.attackTimer > 0) this.attackTimer -= dt;
     if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
@@ -871,9 +945,28 @@ class PlayerProjectile {
     this.distanceTraveled = 0;
   }
 
-  update(dt) {
+  update(dt, game = null) {
     this.trail.push({ x: this.position.x, y: this.position.y });
     if (this.trail.length > PLAYER_PROJECTILE_TRAIL_LEN) this.trail.shift();
+
+    if (game && game.hasUpgradeCard && game.hasUpgradeCard("homing")) {
+      const px = this.position.x + this.size / 2;
+      const py = this.position.y + this.size / 2;
+      const target = game.getNearestEnemy(px, py, 400);
+      if (target) {
+        const tx = target.position.x + target.size / 2;
+        const ty = target.position.y + target.size / 2;
+        const dx = tx - px;
+        const dy = ty - py;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const speed = PLAYER_PROJECTILE_SPEED;
+        this.velocity.x = (dx / dist) * speed * 0.15 + this.velocity.x * 0.85;
+        this.velocity.y = (dy / dist) * speed * 0.15 + this.velocity.y * 0.85;
+        const vlen = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2) || 1;
+        this.velocity.x = (this.velocity.x / vlen) * speed;
+        this.velocity.y = (this.velocity.y / vlen) * speed;
+      }
+    }
 
     const moveX = this.velocity.x * dt;
     const moveY = this.velocity.y * dt;
@@ -1265,7 +1358,11 @@ const LOOT_DEFS = [
         name: "Ghost Step",
         cardKey: "ghostStep",
         description: "Briefly untouchable after taking damage."
-      }
+      },
+      { name: "Homing", cardKey: "homing", description: "Projectiles seek nearby enemies." },
+      { name: "Glass Cannon", cardKey: "glassCannon", description: "+50% damage dealt, +30% damage taken." },
+      { name: "Legacy Fortune", cardKey: "legacyBonus", description: "+2 LP after defeating the boss." },
+      { name: "Vital Spring", cardKey: "healthRegen", description: "Regenerate 3% max health per second." }
     ]
   }
 ];
@@ -1478,6 +1575,15 @@ class Game {
     this.timeWarpUntil = 0;
     this.hasCondition = (id) => this.conditions.some((c) => c.id === id);
 
+    this.eventsOccurredThisRun = new Set();
+    this.escortQuest = null;
+    this.pendingMerchantInvestment = null;
+    this.lpMultiplier = 1;
+    this.cursedChestBlocked = false;
+    this.fierySpawned = false;
+    this.fieryKilled = false;
+    this.fieryTimer = 0;
+
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.lastTime = 0;
@@ -1668,10 +1774,10 @@ class Game {
     });
     window.addEventListener("keydown", (e) => {
       const k = e.key.toLowerCase();
-      if (k === "q" && !e.repeat) this.tryCastSkill(0);
-      if (k === "w" && !e.repeat) this.tryCastSkill(1);
-      if (k === "e" && !e.repeat) this.tryCastSkill(2);
-      if (k === "r" && !e.repeat) this.tryCastSkill(3);
+      if (k === "1" && !e.repeat) this.tryCastSkill(0);
+      if (k === "2" && !e.repeat) this.tryCastSkill(1);
+      if (k === "3" && !e.repeat) this.tryCastSkill(2);
+      if (k === "4" && !e.repeat) this.tryCastSkill(3);
     });
 
     requestAnimationFrame((t) => this.loop(t));
@@ -1870,6 +1976,7 @@ class Game {
   update(dt) {
     if (this.gameOver) return;
     if (this.levelUpChoices) return;
+    if (this.currentEvent) return;
 
     this.time += dt;
     this.timeSinceLastHit += dt;
@@ -1963,6 +2070,16 @@ class Game {
 
     if (this.hasUpgradeCard("magnet")) this.applyMagnetEffect(dt);
 
+    if (this.hasUpgradeCard("healthRegen")) {
+      const heal = this.currentStats.maxHealth * 0.03 * dt;
+      this.currentHealth = Math.min(this.currentStats.maxHealth, this.currentHealth + heal);
+      this.updateHealthBar();
+    }
+
+    if (this.fierySpawned && !this.fieryKilled && this.fieryTimer > 0) {
+      this.fieryTimer -= dt;
+    }
+
     this.lootSystem.update(dt, this.player, (item) => this.handleLootPickup(item));
     this.updateUpgradeCardEffects(dt);
     if (this.hazardSystem) this.hazardSystem.update(dt, this);
@@ -2007,6 +2124,7 @@ class Game {
 
   checkExits() {
     if (this.exitTransitionCooldown > 0 || !this.currentMap.exits) return;
+    if (this.cursedChestBlocked) return;
     for (const exit of this.currentMap.exits) {
       if (this.playerInExit(exit)) {
         this.transitionToMap(exit.targetMapId, exit.spawnSide);
@@ -2049,6 +2167,10 @@ class Game {
     this.enemySystem.setMap(targetMap);
     this.enemySystem.spawnInitial();
 
+    if (this.escortQuest?.active && targetMapId === 0) {
+      this.resolveStrangerQuest();
+    }
+
     const margin = this.world.wallThickness + 60;
     const centerY = this.world.height / 2 - this.player.size / 2;
 
@@ -2061,6 +2183,243 @@ class Game {
     }
 
     this.updateMapUI();
+    this.tryTriggerEvent();
+  }
+
+  tryTriggerEvent() {
+    if (this.eventsOccurredThisRun.size >= EVENT_DEFS.length) return;
+    if (Math.random() >= 0.25) return;
+    const available = EVENT_DEFS.filter((e) => !this.eventsOccurredThisRun.has(e.id));
+    if (available.length === 0) return;
+    const event = available[Math.floor(Math.random() * available.length)];
+    this.eventsOccurredThisRun.add(event.id);
+    this.showEventCard(event);
+  }
+
+  showEventCard(eventDef) {
+    this.paused = true;
+    this.currentEvent = eventDef;
+    const overlay = document.getElementById("event-overlay");
+    const titleEl = document.getElementById("event-title");
+    const descEl = document.getElementById("event-desc");
+    const choicesEl = document.getElementById("event-choices");
+    const merchantPick = document.getElementById("event-merchant-pick");
+    if (!overlay || !titleEl || !descEl || !choicesEl) return;
+    titleEl.textContent = eventDef.name;
+    descEl.textContent = eventDef.desc;
+    choicesEl.innerHTML = "";
+    merchantPick.classList.add("hidden");
+    if (eventDef.id === "fiery") {
+      const btn = document.createElement("button");
+      btn.className = "event-choice-btn";
+      btn.textContent = "Face the Fiery";
+      btn.onclick = () => this.resolveEventChoice(eventDef.id, "face");
+      choicesEl.appendChild(btn);
+    } else {
+      for (const choice of eventDef.choices) {
+        const btn = document.createElement("button");
+        btn.className = "event-choice-btn";
+        btn.textContent = choice.label;
+        btn.onclick = () => this.resolveEventChoice(eventDef.id, choice.id);
+        choicesEl.appendChild(btn);
+      }
+    }
+    overlay.classList.remove("hidden");
+  }
+
+  resolveEventChoice(eventId, choiceId) {
+    const overlay = document.getElementById("event-overlay");
+    const merchantPick = document.getElementById("event-merchant-pick");
+    const choicesEl = document.getElementById("event-choices");
+    if (eventId === "merchant" && choiceId === "invest") {
+      const equippable = this.inventory.filter((i) => this.isItemEquippable(i) && i.type !== "Upgrade Card");
+      if (equippable.length === 0) {
+        this.closeEventOverlay();
+        return;
+      }
+      choicesEl.classList.add("hidden");
+      merchantPick.classList.remove("hidden");
+      const list = document.getElementById("event-invest-list");
+      list.innerHTML = "";
+      for (const item of equippable) {
+        const li = document.createElement("li");
+        li.textContent = `${item.name} (${item.type})`;
+        li.onclick = () => {
+          this.pendingMerchantInvestment = item;
+          const idx = this.inventory.indexOf(item);
+          this.inventory.splice(idx, 1);
+          this.updateInventoryUI();
+          this.updateEquippedUI();
+          this.recalculateStats();
+          merchantPick.classList.add("hidden");
+          choicesEl.classList.remove("hidden");
+          this.closeEventOverlay();
+        };
+        list.appendChild(li);
+      }
+      document.getElementById("event-invest-cancel").onclick = () => {
+        merchantPick.classList.add("hidden");
+        choicesEl.classList.remove("hidden");
+        this.closeEventOverlay();
+      };
+      return;
+    }
+    if (eventId === "merchant" && choiceId === "decline") {
+      this.closeEventOverlay();
+      return;
+    }
+    if (eventId === "stranger") {
+      if (choiceId === "help") {
+        this.escortQuest = { active: true, targetMapId: 0 };
+      }
+      this.closeEventOverlay();
+      return;
+    }
+    if (eventId === "spring") {
+      if (choiceId === "drink") {
+        const cardId = SPRING_CARD_IDS[Math.floor(Math.random() * SPRING_CARD_IDS.length)];
+        const cards = getUpgradeCardDefs();
+        const card = cards.find((c) => c.cardKey === cardId) || { name: cardId, cardKey: cardId, description: "" };
+        this.inventory.push({
+          id: 55000 + Math.floor(Math.random() * 1000),
+          name: card.name,
+          type: "Upgrade Card",
+          stats: {},
+          cardKey: card.cardKey,
+          description: card.description || ""
+        });
+        this.updateInventoryUI();
+      }
+      this.closeEventOverlay();
+      return;
+    }
+    if (eventId === "shrine") {
+      if (choiceId === "offerXp") {
+        const sacrifice = Math.floor(this.xp * 0.3);
+        this.xp -= sacrifice;
+        this.updateXpUI();
+        const cards = getUpgradeCardDefs();
+        const card = cards[Math.floor(Math.random() * cards.length)];
+        if (this.activeUpgradeCards.length >= this.maxUpgradeCards) {
+          const removed = this.activeUpgradeCards.shift();
+          if (removed) this.inventory.push(removed);
+        }
+        this.activeUpgradeCards.push({ ...card });
+        this.updateUpgradeCardsUI();
+        this.recalculateStats();
+      } else if (choiceId === "destroy") {
+        this.inventory = this.inventory.filter((i) => i.type === "Upgrade Card");
+        this.equipment = { Helmet: null, "Body Armour": null, Weapon: null, Boots: null };
+        this.updateInventoryUI();
+        this.updateEquippedUI();
+        this.recalculateStats();
+        this.lpMultiplier = 2;
+      }
+      this.closeEventOverlay();
+      return;
+    }
+    if (eventId === "cursedChest") {
+      if (choiceId === "open") {
+        this.grantEventRareEquipment();
+        this.spawnCursedChestEnemy();
+        this.cursedChestBlocked = true;
+      }
+      this.closeEventOverlay();
+      return;
+    }
+    if (eventId === "fiery" && choiceId === "face") {
+      this.spawnFiery();
+      this.fieryTimer = 30;
+      this.closeEventOverlay();
+      return;
+    }
+    this.closeEventOverlay();
+  }
+
+  closeEventOverlay() {
+    this.paused = false;
+    this.currentEvent = null;
+    const overlay = document.getElementById("event-overlay");
+    const merchantPick = document.getElementById("event-merchant-pick");
+    const choicesEl = document.getElementById("event-choices");
+    if (overlay) overlay.classList.add("hidden");
+    if (merchantPick) merchantPick.classList.add("hidden");
+    if (choicesEl) choicesEl.classList.remove("hidden");
+  }
+
+  grantEventRareEquipment() {
+    const groups = LOOT_DEFS.filter((g) => g.type !== "Upgrade Card");
+    const group = groups[Math.floor(Math.random() * groups.length)];
+    const best = group.items[group.items.length - 1];
+    const def = { type: group.type, name: best.name, stats: best.stats };
+    this.inventory.push({
+      id: 50000 + Math.floor(Math.random() * 10000),
+      name: def.name,
+      type: def.type,
+      stats: def.stats || {},
+      cardKey: null,
+      description: ""
+    });
+    this.updateInventoryUI();
+  }
+
+  spawnCursedChestEnemy() {
+    const margin = this.world.wallThickness + 80;
+    const cx = this.world.width / 2 - 30;
+    const cy = this.world.height / 2 - 30;
+    const typeDef = {
+      name: "Cursed Guardian",
+      color: "#7c3aed",
+      size: 52,
+      maxHealth: 200,
+      attack: 25,
+      speed: 90
+    };
+    const s = this.currentMap.enemyScale || { hp: 1, attack: 1, speed: 1 };
+    typeDef.maxHealth = Math.round(typeDef.maxHealth * (s.hp || 1) * (DIFFICULTY_STAT_MULTIPLIER[this.difficulty] ?? 1));
+    typeDef.attack = Math.round(typeDef.attack * (s.attack || 1) * (DIFFICULTY_STAT_MULTIPLIER[this.difficulty] ?? 1));
+    typeDef.speed = Math.round(typeDef.speed * (s.speed || 1) * (DIFFICULTY_STAT_MULTIPLIER[this.difficulty] ?? 1));
+    const enemy = new Enemy(cx, cy, typeDef);
+    enemy.isCursedChestGuardian = true;
+    this.enemySystem.enemies.push(enemy);
+  }
+
+  spawnFiery() {
+    const margin = this.world.wallThickness + 60;
+    const x = margin + Math.random() * (this.world.width - margin * 2 - 40);
+    const y = margin + Math.random() * (this.world.height - margin * 2 - 40);
+    const typeDef = {
+      name: "Golden Fiery",
+      color: "#fbbf24",
+      size: 36,
+      maxHealth: 80,
+      attack: 12,
+      speed: 140
+    };
+    const s = this.currentMap.enemyScale || { hp: 1, attack: 1, speed: 1 };
+    typeDef.maxHealth = Math.round(typeDef.maxHealth * (s.hp || 1) * (DIFFICULTY_STAT_MULTIPLIER[this.difficulty] ?? 1));
+    typeDef.attack = Math.round(typeDef.attack * (s.attack || 1) * (DIFFICULTY_STAT_MULTIPLIER[this.difficulty] ?? 1));
+    typeDef.speed = Math.round(typeDef.speed * (s.speed || 1) * (DIFFICULTY_STAT_MULTIPLIER[this.difficulty] ?? 1));
+    const enemy = new Enemy(x, y, typeDef);
+    enemy.isFiery = true;
+    enemy.wanderDirection = new Vec2(Math.random() - 0.5, Math.random() - 0.5);
+    enemy.wanderTimer = 0;
+    this.enemySystem.enemies.push(enemy);
+    this.fierySpawned = true;
+  }
+
+  resolveStrangerQuest() {
+    this.escortQuest = null;
+    const cx = this.world.width / 2 - 20;
+    const cy = this.world.height / 2 - 20;
+    if (Math.random() < 0.5) {
+      this.lootSystem.spawnBurstAt(cx, cy, 4, 0.9);
+      this.grantXP(80);
+    } else {
+      for (let i = 0; i < 8; i++) {
+        this.enemySystem.spawnOne();
+      }
+    }
   }
 
   updateMapUI() {
@@ -2233,7 +2592,7 @@ class Game {
     const surviving = [];
     const es = this.enemySystem;
     for (const proj of this.playerProjectiles) {
-      proj.update(dt);
+      proj.update(dt, this);
       if (proj.isExpired()) continue;
 
       let hit = false;
@@ -2360,6 +2719,7 @@ class Game {
 
   computeSkillDamage(enemy, multiplier = 1) {
     let dmg = Math.round(this.currentStats.attack * multiplier);
+    if (this.hasUpgradeCard("glassCannon")) dmg = Math.round(dmg * 1.5);
     if (this.hasUpgradeCard("doubleStrike")) {
       this.doubleStrikeCounter++;
       if (this.doubleStrikeCounter >= 5) {
@@ -2801,7 +3161,7 @@ class Game {
   }
 
   updateSkillUI() {
-    const keys = ["Q", "W", "E", "R"];
+    const keys = ["1", "2", "3", "4"];
     for (let i = 0; i < 4; i++) {
       const iconEl = document.getElementById(`skill-icon-${i}`);
       const nameEl = document.getElementById(`skill-name-${i}`);
@@ -2831,6 +3191,7 @@ class Game {
 
   computePlayerDamage(enemy) {
     let dmg = this.currentStats.attack;
+    if (this.hasUpgradeCard("glassCannon")) dmg = Math.round(dmg * 1.5);
     if (this.hasUpgradeCard("doubleStrike")) {
       this.doubleStrikeCounter++;
       if (this.doubleStrikeCounter >= 5) {
@@ -2930,8 +3291,34 @@ class Game {
       this.grantXP(Math.round(BOSS_XP * xpMult));
       let lpEarned = LP_PER_DIFFICULTY[this.difficulty] ?? this.difficulty;
       if (this.difficulty >= 2 && hasTalent("veteran")) lpEarned += 1;
+      lpEarned *= (this.lpMultiplier || 1);
+      if (this.hasUpgradeCard("legacyBonus")) lpEarned += 2;
       addLegacyPoints(lpEarned);
       this.lpEarnedThisRun = lpEarned;
+      if (this.pendingMerchantInvestment) {
+        if (Math.random() < 0.2) {
+        } else {
+          if (Math.random() < 0.5) {
+            const groups = LOOT_DEFS.filter((g) => g.type !== "Upgrade Card");
+            const group = groups[Math.floor(Math.random() * groups.length)];
+            const idx = Math.min(group.items.length - 1, Math.floor(Math.random() * (group.items.length - 1)) + 1);
+            const item = group.items[idx];
+            this.inventory.push({
+              id: 60000 + Math.floor(Math.random() * 10000),
+              name: item.name,
+              type: group.type,
+              stats: item.stats || {},
+              cardKey: null,
+              description: ""
+            });
+          } else {
+            const rarityBonus = this.pendingMerchantInvestment.name.includes("Dragon") || this.pendingMerchantInvestment.name.includes("Legendary") ? 3 : 2;
+            addLegacyPoints(rarityBonus);
+            this.lpEarnedThisRun += rarityBonus;
+          }
+        }
+        this.pendingMerchantInvestment = null;
+      }
 
       const bx = boss.position.x + boss.size / 2;
       const by = boss.position.y + boss.size / 2;
@@ -2959,6 +3346,34 @@ class Game {
   }
 
   dropLootFromEnemy(enemy) {
+    if (enemy.isCursedChestGuardian) {
+      this.cursedChestBlocked = false;
+      this.grantXP(50);
+      this.lootSystem.spawnBurstAt(enemy.position.x + enemy.size / 2, enemy.position.y + enemy.size / 2, 2, 0.6);
+      return;
+    }
+    if (enemy.isFiery && !this.fieryKilled) {
+      this.fieryKilled = true;
+      const ex = enemy.position.x + enemy.size / 2;
+      const ey = enemy.position.y + enemy.size / 2;
+      if (this.fieryTimer > 0) {
+        const groups = LOOT_DEFS.filter((g) => g.type !== "Upgrade Card");
+        const group = groups[Math.floor(Math.random() * groups.length)];
+        const best = group.items[group.items.length - 1];
+        const def = { type: group.type, name: best.name, stats: best.stats };
+        const item = new LootItem(this.lootSystem.nextId++, ex - 10, ey - 10, def, ex, ey);
+        this.lootSystem.items.push(item);
+        const cards = getUpgradeCardDefs();
+        for (let i = 0; i < 2; i++) {
+          const card = cards[Math.floor(Math.random() * cards.length)];
+          const cardDef = { type: "Upgrade Card", name: card.name, cardKey: card.cardKey, description: card.description };
+          const cardItem = new LootItem(this.lootSystem.nextId++, ex + i * 25 - 10, ey - 10, cardDef, ex, ey);
+          this.lootSystem.items.push(cardItem);
+        }
+        this.grantXP(80);
+      }
+      return;
+    }
     this.grantXPFromEnemy(enemy);
     const baseType = ENEMY_TYPES.find((t) => t.name === enemy.name);
     if (!baseType) return;
@@ -3002,6 +3417,7 @@ class Game {
   onPlayerDamaged(rawAmount, fromEnemy = false) {
     if (this.gameOver) return;
     if (fromEnemy && this.hasCondition("enemyDmg")) rawAmount = Math.round(rawAmount * 1.15);
+    if (this.hasUpgradeCard("glassCannon")) rawAmount = Math.round(rawAmount * 1.3);
 
     // Ghost Step: invulnerability window
     if (this.hasUpgradeCard("ghostStep") && this.ghostStepTimer > 0) return;
