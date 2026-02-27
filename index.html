@@ -11,7 +11,10 @@
       <div class="main-menu-inner">
         <h1 class="main-menu-title">Space Shooter</h1>
         <p class="main-menu-subtitle">Defeat the Wasteland Tyrant and save your character!</p>
+        <div class="main-menu-lp">Legacy Points: <span id="main-menu-lp-value">0</span></div>
         <button id="main-menu-new-game" class="main-menu-btn">New Game</button>
+        <button id="main-menu-legacy-vault" class="main-menu-btn main-menu-btn-secondary">Legacy Vault</button>
+        <button id="main-menu-talent-tree" class="main-menu-btn main-menu-btn-secondary">Talent Tree</button>
         <section class="hall-of-champions-section">
           <h2>Hall of Champions</h2>
           <div id="hall-of-champions" class="hall-of-champions"></div>
@@ -20,7 +23,15 @@
     </div>
 
     <div class="game-root">
-      <canvas id="game-canvas"></canvas>
+      <div class="canvas-wrapper">
+        <canvas id="game-canvas"></canvas>
+        <div id="skill-bar" class="skill-bar">
+          <div class="skill-slot" data-slot="0"><span class="skill-key">Q</span><div class="skill-icon" id="skill-icon-0">—</div><div class="skill-name" id="skill-name-0">Empty</div><div class="skill-cd-ring" id="skill-cd-0"></div></div>
+          <div class="skill-slot" data-slot="1"><span class="skill-key">W</span><div class="skill-icon" id="skill-icon-1">—</div><div class="skill-name" id="skill-name-1">Empty</div><div class="skill-cd-ring" id="skill-cd-1"></div></div>
+          <div class="skill-slot" data-slot="2"><span class="skill-key">E</span><div class="skill-icon" id="skill-icon-2">—</div><div class="skill-name" id="skill-name-2">Empty</div><div class="skill-cd-ring" id="skill-cd-2"></div></div>
+          <div class="skill-slot" data-slot="3"><span class="skill-key">R</span><div class="skill-icon" id="skill-icon-3">—</div><div class="skill-name" id="skill-name-3">Empty</div><div class="skill-cd-ring" id="skill-cd-3"></div></div>
+        </div>
+      </div>
       <aside class="inventory-panel">
         <section class="map-name-section">
           <div id="map-name" class="map-name">Dungeon (Map 1)</div>
@@ -45,6 +56,13 @@
         <section class="inventory-section">
           <h2>Inventory</h2>
           <ul id="inventory-list"></ul>
+        </section>
+        <section class="dash-section">
+          <h2>Dash</h2>
+          <div class="dash-cooldown-track">
+            <div id="dash-cooldown-fill" class="dash-cooldown-fill"></div>
+          </div>
+          <div id="dash-label" class="dash-label">Ready</div>
         </section>
         <section class="health-bar-section">
           <h2>Health</h2>
@@ -71,6 +89,7 @@
       <div class="victory-box">
         <h1>Victory!</h1>
         <p class="victory-message">Your character has been saved!</p>
+        <p class="victory-lp" id="victory-lp-earned">+0 Legacy Points earned this run</p>
         <div class="victory-summary">
           <div class="victory-summary-section">
             <h3>Equipped Items</h3>
@@ -98,6 +117,74 @@
         <h1 class="level-up-title">Level Up!</h1>
         <p class="level-up-subtitle">Choose a bonus:</p>
         <div id="level-up-choices" class="level-up-choices"></div>
+        <button id="level-up-reroll" class="level-up-reroll-btn hidden">Reroll (Wild Card)</button>
+      </div>
+    </div>
+
+    <div id="skill-select-overlay" class="skill-select-overlay hidden">
+      <div class="skill-select-box">
+        <h1 class="skill-select-title">Select Skills</h1>
+        <p class="skill-select-subtitle">Assign skills to Q W E R. Locked slots show requirements.</p>
+        <div id="skill-select-slots" class="skill-select-slots"></div>
+        <div id="skill-select-pool" class="skill-select-pool"></div>
+        <div class="skill-select-actions">
+          <button id="skill-select-back" class="skill-select-back">Back</button>
+          <button id="skill-select-confirm" class="skill-select-confirm">Start Run</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="pre-run-overlay" class="pre-run-overlay hidden">
+      <div class="pre-run-box">
+        <h1 class="pre-run-title">Prepare for Run</h1>
+        <div class="pre-run-difficulty">
+          <label>Difficulty</label>
+          <div class="pre-run-difficulty-btns">
+            <button class="pre-run-diff-btn" data-diff="1">1</button>
+            <button class="pre-run-diff-btn" data-diff="2">2</button>
+            <button class="pre-run-diff-btn" data-diff="3">3</button>
+            <button class="pre-run-diff-btn" data-diff="4">4</button>
+            <button class="pre-run-diff-btn" data-diff="5">5</button>
+            <button class="pre-run-diff-btn pre-run-diff-6" data-diff="6">6</button>
+          </div>
+          <span id="pre-run-diff-label" class="pre-run-diff-label">Difficulty 1 — No conditions</span>
+          <span id="pre-run-diff-mult" class="pre-run-diff-mult">Enemy stats: 80%</span>
+        </div>
+        <div class="pre-run-conditions">
+          <h3>Active Conditions</h3>
+          <div id="pre-run-conditions-list" class="pre-run-conditions-list"></div>
+        </div>
+        <div class="pre-run-actions">
+          <button id="pre-run-back" class="pre-run-btn pre-run-back">Back</button>
+          <button id="pre-run-reroll" class="pre-run-btn pre-run-reroll">Reroll Conditions</button>
+          <button id="pre-run-accept" class="pre-run-btn pre-run-accept">Accept and Start</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="talent-tree-overlay" class="talent-tree-overlay hidden">
+      <div class="talent-tree-box">
+        <header class="talent-tree-header">
+          <h1 class="talent-tree-title">Talent Tree</h1>
+          <div class="talent-tree-lp">Legacy Points: <span id="talent-tree-lp-value">0</span></div>
+          <button id="talent-tree-close" class="talent-tree-btn">Back</button>
+        </header>
+        <div id="talent-tree-content" class="talent-tree-content"></div>
+      </div>
+    </div>
+
+    <div id="legacy-vault-overlay" class="legacy-vault-overlay hidden">
+      <div class="legacy-vault-box">
+        <header class="legacy-vault-header">
+          <h1 class="legacy-vault-title">Legacy Vault</h1>
+          <p class="legacy-vault-subtitle">Items collected by your champions. Pick up to <span id="legacy-vault-max-count">3</span> to start your new run.</p>
+          <div class="legacy-vault-actions">
+            <span id="legacy-selection-count" class="legacy-selection-count">0 / 3 selected</span>
+            <button id="legacy-vault-close" class="legacy-vault-btn">Back</button>
+            <button id="legacy-start-run" class="legacy-vault-btn legacy-vault-btn-primary" disabled>Start New Run</button>
+          </div>
+        </header>
+        <div id="legacy-vault-grid" class="legacy-vault-grid"></div>
       </div>
     </div>
 
