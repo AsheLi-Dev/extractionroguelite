@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Top-Down Room Game</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="main-menu" class="main-menu">
+      <div class="main-menu-inner">
+        <h1 class="main-menu-title">Space Shooter</h1>
+        <p class="main-menu-subtitle">Defeat the Wasteland Tyrant and save your character!</p>
+        <button id="main-menu-new-game" class="main-menu-btn">New Game</button>
+        <section class="hall-of-champions-section">
+          <h2>Hall of Champions</h2>
+          <div id="hall-of-champions" class="hall-of-champions"></div>
+        </section>
+      </div>
+    </div>
+
+    <div class="game-root">
+      <canvas id="game-canvas"></canvas>
+      <aside class="inventory-panel">
+        <section class="map-name-section">
+          <div id="map-name" class="map-name">Dungeon (Map 1)</div>
+        </section>
+        <section class="xp-section">
+          <div class="xp-level-row">
+            <span id="player-level" class="xp-level">Level 1</span>
+          </div>
+          <div class="xp-bar-track">
+            <div id="xp-bar-fill" class="xp-bar-fill"></div>
+          </div>
+          <div id="xp-label" class="xp-label">0 / 100 XP</div>
+        </section>
+        <section class="equipped-section">
+          <h2>Equipped</h2>
+          <ul id="equipped-list"></ul>
+        </section>
+        <section class="upgrade-cards-section">
+          <h2>Upgrade Cards</h2>
+          <ul id="upgrade-card-list"></ul>
+        </section>
+        <section class="inventory-section">
+          <h2>Inventory</h2>
+          <ul id="inventory-list"></ul>
+        </section>
+        <section class="health-bar-section">
+          <h2>Health</h2>
+          <div class="player-health-bar-track">
+            <div id="player-health-fill" class="player-health-bar-fill"></div>
+          </div>
+          <div id="player-health-label" class="player-health-label">100 / 100</div>
+        </section>
+        <section class="stats-section">
+          <h2>Stats</h2>
+          <div id="player-stats"></div>
+        </section>
+      </aside>
+    </div>
+
+    <div id="boss-health-bar" class="boss-health-bar hidden">
+      <div class="boss-health-bar-track">
+        <div id="boss-health-fill" class="boss-health-bar-fill"></div>
+      </div>
+      <div id="boss-health-label" class="boss-health-label">Boss</div>
+    </div>
+
+    <div id="victory-overlay" class="victory-overlay hidden">
+      <div class="victory-box">
+        <h1>Victory!</h1>
+        <p class="victory-message">Your character has been saved!</p>
+        <div class="victory-summary">
+          <div class="victory-summary-section">
+            <h3>Equipped Items</h3>
+            <div id="victory-equipped"></div>
+          </div>
+          <div class="victory-summary-section">
+            <h3>Upgrade Cards</h3>
+            <div id="victory-cards"></div>
+          </div>
+          <div class="victory-summary-section">
+            <h3>Stats</h3>
+            <div id="victory-stats"></div>
+          </div>
+        </div>
+        <div class="victory-save-section">
+          <label for="victory-char-name">Character Name</label>
+          <input type="text" id="victory-char-name" placeholder="Enter your champion's name" maxlength="24" />
+          <button id="victory-save-btn" class="victory-save-btn">Save to Hall of Champions</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="level-up-overlay" class="level-up-overlay hidden">
+      <div class="level-up-box">
+        <h1 class="level-up-title">Level Up!</h1>
+        <p class="level-up-subtitle">Choose a bonus:</p>
+        <div id="level-up-choices" class="level-up-choices"></div>
+      </div>
+    </div>
+
+    <div id="game-over" class="game-over-overlay hidden">
+      <div class="game-over-box">
+        <h1>Game Over</h1>
+        <p>You were defeated.</p>
+        <button id="try-again-btn" class="try-again-btn">Try Again</button>
+      </div>
+    </div>
+
+    <button id="pause-toggle" class="pause-toggle">⏸ Pause</button>
+
+    <button id="dev-toggle" class="dev-toggle">DEV</button>
+    <div id="dev-panel" class="dev-panel dev-panel-hidden">
+      <div class="dev-panel-inner">
+        <header class="dev-panel-header">
+          <h2>Developer Tools</h2>
+          <button id="dev-close" class="dev-close-button" aria-label="Close">✕</button>
+        </header>
+        <div class="dev-panel-actions">
+          <button id="dev-give-all" class="dev-button">Give All Cards</button>
+          <button id="dev-max-stats" class="dev-button dev-button-danger">Max Stats</button>
+        </div>
+        <div class="dev-panel-section">
+          <h3>Spawn Upgrade Cards</h3>
+          <ul id="dev-card-list" class="dev-card-list"></ul>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>

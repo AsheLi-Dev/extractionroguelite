@@ -1,0 +1,10 @@
+{
+  "name": "top-down-room-game",
+  "version": "1.0.0",
+  "description": "A small extensible top-down browser game with loot, equipment, and upgrade cards.",
+  "private": true,
+  "scripts": {
+    "start": "npx serve ."
+  },
+  "devDependencies": {}
+}
