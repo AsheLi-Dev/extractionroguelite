@@ -125,10 +125,127 @@ const DIFFICULTY_STAT_MULTIPLIER = { 1: 0.8, 2: 1.0, 3: 1.2, 4: 1.4, 5: 1.6, 6: 
 const LEGACY_POINTS_KEY = "spaceShooter_legacyPoints";
 const TALENTS_KEY = "spaceShooter_talents";
 const SKILL_UNLOCKS_KEY = "spaceShooter_skillUnlocks";
+const SKILL_LEVELS_KEY = "spaceShooter_skillLevels";
+const FLUX_KEY = "spaceShooter_flux";
+const SKILL_MOD_SOCKETS_KEY = "spaceShooter_skillModSockets";
+const MOD_CARDS_INVENTORY_KEY = "spaceShooter_modCardsInventory";
+
+const SKILL_XP_CURVE = [0, 0, 500, 1500, 3500, 7000, 12000, 20000, 32000, 50000, 75000];
+const SKILL_MAX_LEVEL = 10;
+
+function getXpForSkillLevel(level) {
+  if (level <= 1) return 0;
+  return SKILL_XP_CURVE[Math.min(level, SKILL_XP_CURVE.length - 1)] ?? 75000;
+}
+
+function getSkillLevels() {
+  try {
+    const raw = localStorage.getItem(SKILL_LEVELS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function setSkillLevels(data) {
+  localStorage.setItem(SKILL_LEVELS_KEY, JSON.stringify(data));
+}
+
+function getSkillLevel(skillId) {
+  const data = getSkillLevels();
+  const entry = data[skillId];
+  return entry ? Math.min(SKILL_MAX_LEVEL, entry.level ?? 1) : 1;
+}
+
+function getSkillXp(skillId) {
+  const data = getSkillLevels();
+  const entry = data[skillId];
+  return entry ? (entry.xp ?? 0) : 0;
+}
+
+function markSkillEncountered(skillId) {
+  const data = getSkillLevels();
+  if (!data[skillId]) data[skillId] = { xp: 0, level: 1, encountered: true };
+  else data[skillId].encountered = true;
+  setSkillLevels(data);
+}
+
+function addSkillXp(skillId, amount) {
+  if (!skillId || amount <= 0) return null;
+  const data = getSkillLevels();
+  if (!data[skillId]) data[skillId] = { xp: 0, level: 1, encountered: true };
+  else data[skillId].encountered = true;
+  const prevLevel = data[skillId].level || 1;
+  data[skillId].xp = (data[skillId].xp || 0) + amount;
+  let level = prevLevel;
+  while (level < SKILL_MAX_LEVEL && data[skillId].xp >= getXpForSkillLevel(level + 1)) {
+    level++;
+  }
+  data[skillId].level = level;
+  setSkillLevels(data);
+  return { level, leveledUp: level > prevLevel };
+}
+
+function getModSlotsForSkillLevel(level) {
+  if (level <= 2) return 0;
+  if (level <= 4) return 1;
+  if (level <= 7) return 2;
+  if (level <= 9) return 3;
+  return 4;
+}
+
+function getFlux() {
+  try {
+    const raw = localStorage.getItem(FLUX_KEY);
+    return raw ? parseInt(raw, 10) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function addFlux(amount) {
+  const next = Math.max(0, getFlux() + amount);
+  localStorage.setItem(FLUX_KEY, String(next));
+  return next;
+}
+
+function getSkillModSockets() {
+  try {
+    const raw = localStorage.getItem(SKILL_MOD_SOCKETS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function setSkillModSockets(data) {
+  localStorage.setItem(SKILL_MOD_SOCKETS_KEY, JSON.stringify(data));
+}
+
+function getModCardInventory() {
+  try {
+    const raw = localStorage.getItem(MOD_CARDS_INVENTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function addModCardToInventory(cardId) {
+  const inv = getModCardInventory();
+  inv.push(cardId);
+  localStorage.setItem(MOD_CARDS_INVENTORY_KEY, JSON.stringify(inv));
+}
+
+function removeModCardFromInventoryAtIndex(index) {
+  const inv = getModCardInventory();
+  if (index < 0 || index >= inv.length) return null;
+  const cardId = inv.splice(index, 1)[0];
+  localStorage.setItem(MOD_CARDS_INVENTORY_KEY, JSON.stringify(inv));
+  return cardId;
+}
 
 const SKILL_SLOT_UNLOCK = { 1: 0, 2: 1, 3: 3, 4: 5 };
-
-const SPRING_CARD_IDS = ["homing", "glassCannon", "legacyBonus", "healthRegen"];
 
 const EVENT_DEFS = [
   {
@@ -163,7 +280,7 @@ const EVENT_DEFS = [
     name: "The Shrine",
     desc: "An ancient shrine hums with forgotten magic. It offers a trade—or destruction.",
     choices: [
-      { id: "offerXp", label: "Offer 30% XP for an upgrade card" },
+      { id: "offerXp", label: "Offer 30% XP" },
       { id: "destroy", label: "Destroy all equipment, double LP reward" }
     ]
   },
@@ -185,6 +302,84 @@ const EVENT_DEFS = [
 ];
 
 const SKILL_CATEGORIES = { projectile: "Projectile", melee: "Melee", aura: "Aura" };
+
+const MODIFICATION_CARD_CATEGORIES = { delivery: "Delivery", trigger: "Trigger", element: "Element", self: "Self" };
+
+const MODIFICATION_CARD_DEFS = [
+  { id: "homing", name: "Homing", category: "delivery", desc: "Projectiles seek nearest enemy." },
+  { id: "bouncing", name: "Bouncing", category: "delivery", desc: "Projectiles bounce off walls up to 3 times." },
+  { id: "piercing", name: "Piercing", category: "delivery", desc: "Projectiles pass through all enemies." },
+  { id: "orbiting", name: "Orbiting", category: "delivery", desc: "Projectile orbits the player 3s before seeking." },
+  { id: "volley", name: "Volley", category: "delivery", desc: "Fires 3 projectiles in a spread." },
+  { id: "boomerang", name: "Boomerang", category: "delivery", desc: "Projectile returns to player, hitting enemies twice." },
+  { id: "onKill", name: "On Kill", category: "trigger", desc: "Skill fires when you kill an enemy (no cooldown cost)." },
+  { id: "chainCast", name: "Chain Cast", category: "trigger", desc: "Fires twice in rapid succession on one activation." },
+  { id: "echo", name: "Echo", category: "trigger", desc: "30% chance to cast again for free immediately." },
+  { id: "charged", name: "Charged", category: "trigger", desc: "Hold key up to 2s to charge; release up to 200% damage." },
+  { id: "rebound", name: "Rebound", category: "trigger", desc: "Skill bounces off walls once, firing again from impact." },
+  { id: "ignite", name: "Ignite", category: "element", desc: "Burn 15% skill damage/s for 3s." },
+  { id: "chill", name: "Chill", category: "element", desc: "Slow 20% for 2s." },
+  { id: "shock", name: "Shock", category: "element", desc: "25% chance to stun 0.5s." },
+  { id: "toxic", name: "Toxic", category: "element", desc: "Poison 5% max health/s for 3s, stacks 3." },
+  { id: "void", name: "Void", category: "element", desc: "Reduce enemy defense 20% for 4s." },
+  { id: "amplify", name: "Amplify", category: "element", desc: "+25% damage, +0.5s cooldown." },
+  { id: "lifesteal", name: "Lifesteal", category: "self", desc: "15% of skill damage as health." },
+  { id: "adrenaline", name: "Adrenaline", category: "self", desc: "+20% movement speed for 2s on cast." },
+  { id: "recoil", name: "Recoil", category: "self", desc: "+30% damage but knocks you back on cast." },
+  { id: "sacrifice", name: "Sacrifice", category: "self", desc: "+50% damage but costs 3% max health on cast." },
+  { id: "empower", name: "Empower", category: "self", desc: "+5% skill damage per cast, stacks up to 10 until map end." },
+  { id: "cooldownCascade", name: "Cooldown Cascade", category: "self", desc: "Reset cooldown if this skill kills an enemy." }
+];
+
+const DELIVERY_TRIGGER_MOD_IDS = MODIFICATION_CARD_DEFS.filter(
+  (c) => c.category === "delivery" || c.category === "trigger"
+).map((c) => c.id);
+
+function getModsForSkillSlot(game, slot) {
+  const skillId = game.skills?.[slot];
+  if (!skillId) return [];
+  const sockets = getSkillModSockets();
+  const list = (sockets[skillId] || []).filter(Boolean);
+  const overrides = game.devModOverrides?.[slot];
+  if (Array.isArray(overrides) && overrides.length > 0) {
+    const set = new Set(list);
+    for (const id of overrides) set.add(id);
+    return [...set];
+  }
+  return list;
+}
+
+function getModEffectMult(game) {
+  return hasTalent("grandSocketeer") ? 1.5 : 1;
+}
+
+function applyElementDebuffsFromMods(game, enemy, mods, skillDamage, gameTime) {
+  if (!mods || mods.length === 0) return;
+  const mult = getModEffectMult(game);
+  if (mods.includes("ignite")) {
+    const dps = (0.15 * skillDamage) * mult;
+    enemy.burnUntil = gameTime + 3;
+    enemy.burnDps = Math.max(enemy.burnDps || 0, dps);
+    enemy.burnAccum = 0;
+  }
+  if (mods.includes("chill")) {
+    const slowMult = 1 - 0.2 * mult;
+    enemy.slowUntil = Math.max(enemy.slowUntil || 0, gameTime + 2);
+    enemy.slowMult = Math.min(enemy.slowMult ?? 1, slowMult);
+  }
+  if (mods.includes("shock") && Math.random() < 0.25 * mult) {
+    enemy.stunUntil = Math.max(enemy.stunUntil || 0, gameTime + 0.5);
+  }
+  if (mods.includes("toxic")) {
+    enemy.toxicStacks = Math.min(3, (enemy.toxicStacks || 0) + 1);
+    enemy.toxicUntil = gameTime + 3;
+    enemy.toxicAccum = 0;
+  }
+  if (mods.includes("void")) {
+    enemy.voidDefenseUntil = gameTime + 4;
+    enemy.voidDefenseMult = 1 - 0.2 * mult;
+  }
+}
 
 const SKILL_DEFS = [
   { id: "fireball", name: "Fireball", icon: "🔥", baseCd: 3, desc: "Slow projectile, explodes for area damage + burning ground 3s", unlock: "always", category: "projectile" },
@@ -254,6 +449,72 @@ function hasTalent(id) {
   return getPurchasedTalents().includes(id);
 }
 
+function canRefundTalent(talentId, purchased) {
+  if (!purchased.includes(talentId)) return false;
+  for (const [branchName, nodes] of Object.entries(TALENT_TREE)) {
+    const idx = nodes.findIndex((n) => n.id === talentId);
+    if (idx === -1) continue;
+    const isBranching = nodes.length > 0 && (nodes[0].parentsAll !== undefined || nodes[0].parentsAny !== undefined);
+    if (isBranching) {
+      for (const node of nodes) {
+        if (node.id === talentId) continue;
+        if (!purchased.includes(node.id)) continue;
+        const parents = [...(node.parentsAll || []), ...(node.parentsAny || [])];
+        if (parents.includes(talentId)) return false;
+      }
+      return true;
+    }
+    for (let j = idx + 1; j < nodes.length; j++) {
+      if (purchased.includes(nodes[j].id)) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+function refundTalent(talentId) {
+  const purchased = getPurchasedTalents();
+  if (!purchased.includes(talentId)) return false;
+  let cost = 0;
+  for (const nodes of Object.values(TALENT_TREE)) {
+    const node = nodes.find((n) => n.id === talentId);
+    if (node) {
+      cost = node.cost;
+      break;
+    }
+  }
+  if (cost === 0) return false;
+  if (!canRefundTalent(talentId, purchased)) return false;
+  addLegacyPoints(cost);
+  const next = purchased.filter((id) => id !== talentId);
+  localStorage.setItem(TALENTS_KEY, JSON.stringify(next));
+  return true;
+}
+
+function refundBranch(branchName) {
+  const nodes = TALENT_TREE[branchName];
+  if (!nodes || !Array.isArray(nodes)) return 0;
+  const branchIds = new Set(nodes.map((n) => n.id));
+  let count = 0;
+  let purchased = getPurchasedTalents();
+  let inBranch = purchased.filter((id) => branchIds.has(id));
+  while (inBranch.length > 0) {
+    let refundedOne = false;
+    for (const id of inBranch) {
+      if (canRefundTalent(id, purchased)) {
+        refundTalent(id);
+        purchased = getPurchasedTalents();
+        inBranch = purchased.filter((pid) => branchIds.has(pid));
+        count++;
+        refundedOne = true;
+        break;
+      }
+    }
+    if (!refundedOne) break;
+  }
+  return count;
+}
+
 function getSkillUnlocks() {
   try {
     const raw = localStorage.getItem(SKILL_UNLOCKS_KEY);
@@ -296,7 +557,7 @@ function isSkillUnlocked(skillDef) {
   const u = getSkillUnlocks();
   if (skillDef.unlock === "always") return true;
   if (skillDef.unlock === "scavengerFull") {
-    return ["luckyFind", "treasureHunter", "hoarder", "jackpot"].every((t) => hasTalent(t));
+    return ["cardTranscendence", "phantomExtractor", "vaultMaster", "curator"].some((t) => hasTalent(t));
   }
   if (skillDef.unlock === "diff2") return !!u.diff2;
   if (skillDef.unlock === "diff3") return !!u.diff3;
@@ -304,7 +565,7 @@ function isSkillUnlocked(skillDef) {
   if (skillDef.unlock === "diff5") return !!u.diff5;
   if (skillDef.unlock === "fortified") return hasTalent("fortified");
   if (skillDef.unlock === "vampiric50") return (u.vampiricTriggers || 0) >= 50;
-  if (skillDef.unlock === "mastermind") return hasTalent("mastermind");
+  if (skillDef.unlock === "mastermind") return hasTalent("curator");
   if (skillDef.unlock === "secondWindUsed") return !!u.secondWindUsed;
   if (skillDef.unlock === "iceShard5") return !!u.iceShard5;
   if (skillDef.unlock === "lightningOnlyRun") return !!u.lightningOnlyRun;
@@ -317,34 +578,95 @@ function getUnlockedSkills() {
 
 const TALENT_TREE = {
   Warrior: [
-    { id: "ironFist", cost: 1, name: "Iron Fist", desc: "+10% attack damage to all characters" },
-    { id: "battleHardened", cost: 2, name: "Battle Hardened", desc: "10% chance for enemies to drop weapons" },
-    { id: "executioner", cost: 3, name: "Executioner", desc: "+25% damage to enemies below 30% health" },
-    { id: "warlord", cost: 4, name: "Warlord", desc: "Guaranteed high quality weapon from boss" }
+    // Tier 1 roots
+    { id: "fierce", cost: 1, name: "Fierce", tier: 1, desc: "+10% attack damage.", parentsAll: [], parentsAny: [] },
+    { id: "rapid", cost: 1, name: "Rapid", tier: 1, desc: "+10% attack speed.", parentsAll: [], parentsAny: [] },
+    { id: "resilient", cost: 1, name: "Resilient", tier: 1, desc: "+10% max health.", parentsAll: [], parentsAny: [] },
+    // Tier 2
+    { id: "bloodthirst", cost: 2, name: "Bloodthirst", tier: 2, desc: "Kills restore 3% of your max health.", parentsAll: ["fierce"], parentsAny: [] },
+    { id: "predator", cost: 2, name: "Predator", tier: 2, desc: "Enemies below 25% health take greatly increased damage.", parentsAll: [], parentsAny: ["fierce", "rapid"] },
+    { id: "reflexes", cost: 2, name: "Reflexes", tier: 2, desc: "Reduces dash cooldown by 0.1 seconds.", parentsAll: [], parentsAny: ["rapid", "resilient"] },
+    { id: "ironWill", cost: 2, name: "Iron Will", tier: 2, desc: "Permanent 20 HP shield that regenerates 5s after breaking.", parentsAll: ["resilient"], parentsAny: [] },
+    // Tier 3
+    { id: "frenzy", cost: 3, name: "Frenzy", tier: 3, desc: "Every 4th consecutive attack grants 3s of 30% increased attack speed.", parentsAll: ["bloodthirst"], parentsAny: [] },
+    { id: "executioner", cost: 3, name: "Executioner", tier: 3, desc: "Skills deal 25% increased damage and you deal more damage to low-health enemies.", parentsAll: [], parentsAny: ["bloodthirst", "predator"] },
+    { id: "battleScarred", cost: 3, name: "Battle Scarred", tier: 3, desc: "Taking damage grants +10% attack damage for 5s, stacking up to 3 times.", parentsAll: [], parentsAny: ["predator", "reflexes"] },
+    { id: "endurance", cost: 3, name: "Endurance", tier: 3, desc: "After dashing gain 15% damage reduction for 3 seconds.", parentsAll: [], parentsAny: ["reflexes", "ironWill"] },
+    { id: "fortress", cost: 3, name: "Fortress", tier: 3, desc: "Each equipped armour piece grants +5% damage.", parentsAll: ["ironWill"], parentsAny: [] },
+    // Tier 4 keystones
+    { id: "berserkerRage", cost: 4, name: "Berserker's Rage", tier: 4, desc: "Below 40% health gain +40% attack damage, +20% attack speed and +15% movement speed.", parentsAll: [], parentsAny: ["frenzy", "executioner"] },
+    { id: "warlord", cost: 4, name: "Warlord", tier: 4, desc: "Mini-bosses always drop one extra rare item and bosses grant a high-quality weapon.", parentsAll: [], parentsAny: ["executioner", "battleScarred"] },
+    { id: "secondWind", cost: 4, name: "Second Wind", tier: 4, desc: "Once per run survive a killing blow and periodically refresh skill cooldowns.", parentsAll: [], parentsAny: ["battleScarred", "endurance"] },
+    { id: "immortal", cost: 5, name: "Immortal", tier: 4, desc: "Once per run, survive a lethal hit at 1 HP and gain brief total damage reduction.", parentsAll: [], parentsAny: ["endurance", "fortress"] }
   ],
   Survivalist: [
-    { id: "thickSkin", cost: 1, name: "Thick Skin", desc: "+15 max health to all characters" },
-    { id: "secondWind", cost: 2, name: "Second Wind", desc: "Survive one killing blow per run" },
-    { id: "fortified", cost: 3, name: "Fortified", desc: "+20% equipment defense" },
-    { id: "immortal", cost: 4, name: "Immortal", desc: "Regenerating shield at start of each map" }
+    // Tier 1 roots
+    { id: "fortitude", cost: 1, name: "Fortitude", tier: 1, desc: "+10% max health.", parentsAll: [], parentsAny: [] },
+    { id: "bulwark", cost: 1, name: "Bulwark", tier: 1, desc: "+10% defense.", parentsAll: [], parentsAny: [] },
+    { id: "nimble", cost: 1, name: "Nimble", tier: 1, desc: "+5% movement speed.", parentsAll: [], parentsAny: [] },
+    // Tier 2
+    { id: "vitality", cost: 2, name: "Vitality", tier: 2, desc: "Regenerate 20% max health after entering a new map.", parentsAll: ["fortitude"], parentsAny: [] },
+    { id: "thickSkin", cost: 2, name: "Thick Skin", tier: 2, desc: "+15% max health and +10% defense.", parentsAll: [], parentsAny: ["fortitude", "bulwark"] },
+    { id: "toughness", cost: 2, name: "Toughness", tier: 2, desc: "First three hits on each new map deal 40% reduced damage.", parentsAll: [], parentsAny: ["bulwark", "nimble"] },
+    { id: "fleetFooted", cost: 2, name: "Fleet Footed", tier: 2, desc: "When health is below 50%, movement speed increased by an additional 10%.", parentsAll: ["nimble"], parentsAny: [] },
+    // Tier 3
+    { id: "lifebloom", cost: 3, name: "Lifebloom", tier: 3, desc: "Heal 5% of a killed enemy's max health on kill.", parentsAll: ["vitality"], parentsAny: [] },
+    { id: "secondBreath", cost: 3, name: "Second Breath", tier: 3, desc: "Once per map when health drops below 15%, instantly regenerate 25% max health.", parentsAll: [], parentsAny: ["vitality", "thickSkin"] },
+    { id: "retaliation", cost: 3, name: "Retaliation", tier: 3, desc: "Taking damage grants +8% attack damage for 4s, stacking up to 4 times.", parentsAll: [], parentsAny: ["thickSkin", "toughness"] },
+    { id: "evasion", cost: 3, name: "Evasion", tier: 3, desc: "Each dash has 15% chance to leave a decoy that distracts nearby enemies for 2s.", parentsAll: [], parentsAny: ["toughness", "fleetFooted"] },
+    { id: "shadowStep", cost: 3, name: "Shadow Step", tier: 3, desc: "Leave a toxic area along the dash path dealing 10% of your max health as damage per second for 2s.", parentsAll: ["fleetFooted"], parentsAny: [] },
+    // Tier 4 keystones
+    { id: "undyingResolve", cost: 4, name: "Undying Resolve", tier: 4, desc: "Permanently +10% max health each time a mini-boss is defeated during the run.", parentsAll: [], parentsAny: ["lifebloom", "secondBreath"] },
+    { id: "livingFortress", cost: 4, name: "Living Fortress", tier: 4, desc: "Every 8s gain a shield equal to 15% max health; when broken releases a shockwave dealing 120% attack to nearby enemies.", parentsAll: [], parentsAny: ["secondBreath", "retaliation"] },
+    { id: "ghostForm", cost: 4, name: "Ghost Form", tier: 4, desc: "After taking damage become untargetable for 0.8s, once every 6s max.", parentsAll: [], parentsAny: ["retaliation", "evasion"] },
+    { id: "untouchable", cost: 5, name: "Untouchable", tier: 4, desc: "Each dash that avoids damage during i-frames permanently reduces incoming damage by 1% (stacking up to 20%, max 20% reduction).", parentsAll: [], parentsAny: ["evasion", "shadowStep"] }
   ],
   Scavenger: [
-    { id: "luckyFind", cost: 1, name: "Lucky Find", desc: "Increases loot quality globally" },
-    { id: "treasureHunter", cost: 2, name: "Treasure Hunter", desc: "Bonus loot chest every third map" },
-    { id: "hoarder", cost: 3, name: "Hoarder", desc: "Legacy Vault: 3 → 5 starting items" },
-    { id: "jackpot", cost: 4, name: "Jackpot", desc: "One extremely rare unique item per run" }
+    // Tier 1
+    { id: "arcaneEye", cost: 1, name: "Arcane Eye", tier: 1, desc: "+20% increased drop rate of modification cards.", parentsAll: [], parentsAny: [] },
+    { id: "swiftExtraction", cost: 1, name: "Swift Extraction", tier: 1, desc: "Reduces dash cooldown by 0.1 seconds.", parentsAll: [], parentsAny: [] },
+    { id: "keenEye", cost: 1, name: "Keen Eye", tier: 1, desc: "+15% increased drop rate of equipment items.", parentsAll: [], parentsAny: [] },
+    // Tier 2
+    { id: "cardHoarder", cost: 2, name: "Card Hoarder", tier: 2, desc: "All equipment items have a 20% increased chance to drop with an additional socket slot.", parentsAll: ["arcaneEye"], parentsAny: [] },
+    { id: "fluxFinder", cost: 2, name: "Flux Finder", tier: 2, desc: "Elite enemies have a 15% increased chance to drop Flux.", parentsAll: ["arcaneEye"], parentsAny: [] },
+    { id: "luckyDraw", cost: 2, name: "Lucky Draw", tier: 2, desc: "25% chance to find a second random modification card when picking up any modification card.", parentsAll: [], parentsAny: ["arcaneEye", "swiftExtraction"] },
+    { id: "socketMastery", cost: 2, name: "Socket Mastery", tier: 2, desc: "Socket Cubes found during a run have a 20% chance to add 2 sockets instead of 1.", parentsAll: ["swiftExtraction"], parentsAny: [] },
+    { id: "secureFooting", cost: 2, name: "Secure Footing", tier: 2, desc: "Picking up any loot item grants a 1 second burst of 30% increased movement speed.", parentsAll: [], parentsAny: ["swiftExtraction", "keenEye"] },
+    { id: "itemSense", cost: 2, name: "Item Sense", tier: 2, desc: "Rare and higher quality items emit a visible glow on the minimap.", parentsAll: ["keenEye"], parentsAny: [] },
+    { id: "modSpecialist", cost: 2, name: "Mod Specialist", tier: 2, desc: "Modification cards dropped during a run have a 30% chance to be one tier higher quality.", parentsAll: ["keenEye"], parentsAny: [] },
+    // Tier 3
+    { id: "synergyMaster", cost: 3, name: "Synergy Master", tier: 3, desc: "6% increased damage for each skill with at least one modification card socketed; 10% per skill when all active skill slots have at least one modification card socketed.", parentsAll: ["cardHoarder"], parentsAny: [] },
+    { id: "cardSurge", cost: 3, name: "Card Surge", tier: 3, desc: "Picking up any modification card grants 15% increased attack speed and movement speed for 8 seconds.", parentsAll: [], parentsAny: ["cardHoarder", "luckyDraw"] },
+    { id: "ghostLooter", cost: 3, name: "Ghost Looter", tier: 3, desc: "Player is untargetable for 0.5 seconds when picking up any loot item.", parentsAll: [], parentsAny: ["luckyDraw", "secureFooting"] },
+    { id: "treasureSense", cost: 3, name: "Treasure Sense", tier: 3, desc: "Reveals all loot drop locations and mini-boss positions on the minimap for 5 seconds at the start of each map.", parentsAll: [], parentsAny: ["secureFooting", "itemSense"] },
+    { id: "appraiser", cost: 3, name: "Appraiser", tier: 3, desc: "Blue and yellow items dropped by enemies always have at least one modifier rolled at 35% or higher.", parentsAll: ["itemSense"], parentsAny: [] },
+    // Tier 4
+    { id: "cardTranscendence", cost: 4, name: "Card Transcendence", tier: 4, desc: "When the player levels up during a run there is a 10% chance to automatically receive a random modification card added to inventory.", parentsAll: [], parentsAny: ["synergyMaster", "cardSurge"] },
+    { id: "phantomExtractor", cost: 4, name: "Phantom Extractor", tier: 4, desc: "Player is fully invisible and invincible for 3 seconds after picking up a rare or higher quality item (once every 20 seconds maximum).", parentsAll: [], parentsAny: ["cardSurge", "ghostLooter"] },
+    { id: "vaultMaster", cost: 4, name: "Vault Master", tier: 4, desc: "Legacy Vault capacity increases from 5 to 8 items; Legacy Vault items cannot be degraded by any enemy affix or condition.", parentsAll: [], parentsAny: ["ghostLooter", "treasureSense"] },
+    { id: "curator", cost: 5, name: "Curator", tier: 4, desc: "Once per run after defeating the boss, permanently add one equipped item to the Legacy Vault (even if character is not saved). All Legacy Vault equipment gains one free random modifier reroll after each completed run.", parentsAll: [], parentsAny: ["treasureSense", "appraiser"] }
   ],
   Tinkerer: [
-    { id: "cardCollector", cost: 1, name: "Card Collector", desc: "Free random upgrade card at start" },
-    { id: "synergist", cost: 2, name: "Synergist", desc: "+10% all stats when 2+ cards equipped" },
-    { id: "wildCard", cost: 3, name: "Wild Card", desc: "Free card reroll once per run" },
-    { id: "mastermind", cost: 4, name: "Mastermind", desc: "Unlocks 4th upgrade card slot" }
-  ],
-  Pioneer: [
-    { id: "veteran", cost: 2, name: "Veteran", desc: "+1 bonus LP for completing Difficulty 2+" },
-    { id: "daredevil", cost: 2, name: "Daredevil", desc: "Conditions reroll twice per run" },
-    { id: "conqueror", cost: 3, name: "Conqueror", desc: "Bonus rare item to Legacy Vault on Diff 4+ completion" },
-    { id: "legend", cost: 5, name: "Legend", desc: "Unlocks Difficulty 6: 10 conditions, 10 LP reward" }
+    // Tier 1 roots
+    { id: "cubeMagnet", cost: 1, name: "Cube Magnet", tier: 1, desc: "+20% increased drop rate of all modifier and upgrade cubes.", parentsAll: [], parentsAny: [] },
+    { id: "socketSense", cost: 1, name: "Socket Sense", tier: 1, desc: "+20% increased chance for dropped equipment to have at least one socket.", parentsAll: [], parentsAny: [] },
+    { id: "transmuter", cost: 1, name: "Transmuter", tier: 1, desc: "+20% increased drop rate of Magic and Rare upgrade cubes.", parentsAll: [], parentsAny: [] },
+    // Tier 2
+    { id: "cubeExpert", cost: 2, name: "Cube Expert", tier: 2, desc: "Automatically upgrades all Tier 1 modifier cubes found during a run to Tier 2.", parentsAll: ["cubeMagnet"], parentsAny: [] },
+    { id: "tinkerersEye", cost: 2, name: "Tinkerer's Eye", tier: 2, desc: "15% chance to find one additional random cube of the same tier when picking up any cube or socket cube.", parentsAll: [], parentsAny: ["cubeMagnet", "socketSense"] },
+    { id: "socketFinder", cost: 2, name: "Socket Finder", tier: 2, desc: "Chance for a Socket Workshop to appear somewhere on the map; interact to add one socket to any item.", parentsAll: [], parentsAny: ["socketSense", "transmuter"] },
+    { id: "qualityEye", cost: 2, name: "Quality Eye", tier: 2, desc: "Blue items dropped by enemies always have at least one modifier rolled at 30% or higher.", parentsAll: ["transmuter"], parentsAny: [] },
+    // Tier 3
+    { id: "forgeMastery", cost: 3, name: "Forge Mastery", tier: 3, desc: "When the boss is defeated on Difficulty 5 there is a 10% chance for a Foresight Shrine to appear. Interacting adds a Foresight modifier to one item to preview the next craft before confirming.", parentsAll: ["cubeExpert"], parentsAny: [] },
+    { id: "cubeCascade", cost: 3, name: "Cube Cascade", tier: 3, desc: "Every crafting cube has a 10% chance to not be consumed when used.", parentsAll: [], parentsAny: ["cubeExpert", "tinkerersEye"] },
+    { id: "tinkererSocketMastery", cost: 3, name: "Socket Mastery", tier: 3, desc: "When applying a Socket Cube to a rare item that already has exactly 1 socket there is a 5% chance to add 2 additional sockets instead of 1 (total 3 sockets).", parentsAll: [], parentsAny: ["tinkerersEye", "socketFinder"] },
+    { id: "rarityRush", cost: 3, name: "Rarity Rush", tier: 3, desc: "When the player defeats a mini-boss on Difficulty 3 or higher there is a 5% chance for a random legendary cube to drop.", parentsAll: [], parentsAny: ["socketFinder", "qualityEye"] },
+    { id: "transmutation", cost: 3, name: "Transmutation", tier: 3, desc: "When upgrading a magic item to rare using a Rare Cube there is a 5% chance to add 3 additional modifiers instead of 2 (max 5 modifiers on that item).", parentsAll: ["qualityEye"], parentsAny: [] },
+    // Tier 4 keystones
+    { id: "perfectCraft", cost: 4, name: "Perfect Craft", tier: 4, desc: "When the boss is defeated on Difficulty 5 there is a 5% chance for a Perfection Workshop to appear. Interact to choose one item and reroll one random modifier to 45–50%.", parentsAll: [], parentsAny: ["forgeMastery", "cubeCascade"] },
+    { id: "grandSocketeer", cost: 4, name: "Grand Socketeer", tier: 4, desc: "All modification cards socketed into skill slots have 50% increased effects.", parentsAll: [], parentsAny: ["cubeCascade", "tinkererSocketMastery"] },
+    { id: "livingItem", cost: 4, name: "Living Item", tier: 4, desc: "Before starting a run select one white item from the Legacy Vault as Living Item. It gains one random modifier per mini-boss and two per boss (max 6). Cannot be modified by cubes.", parentsAll: [], parentsAny: ["tinkererSocketMastery", "rarityRush"] },
+    { id: "philosophersStone", cost: 5, name: "Philosopher's Stone", tier: 4, desc: "Mini-bosses have a 5% chance to drop a legendary orange item with two legendary affixes and two random modifiers.", parentsAll: [], parentsAny: ["rarityRush", "transmutation"] }
   ]
 };
 
@@ -367,9 +689,116 @@ const RUN_CONDITIONS = [
   { id: "startAttack", category: "player", icon: "📉", name: "Weakened Blows", desc: "Start with -20% attack damage" },
   { id: "startSpeed", category: "player", icon: "🐢", name: "Sluggish", desc: "Start with -20% movement speed" },
   { id: "vaultLocked", category: "player", icon: "🔒", name: "Vault Locked", desc: "Legacy vault unavailable this run" },
-  { id: "fewerCards", category: "player", icon: "🃏", name: "Fewer Slots", desc: "One fewer upgrade card slot" },
   { id: "noHealthDrops", category: "player", icon: "🚫", name: "No Healing", desc: "No health drops from enemies" },
 ];
+
+const ATTACK_TYPES = [
+  { id: "projectile", name: "Projectile Shot", desc: "Fire a fast projectile toward the cursor. Reliable ranged damage." },
+  { id: "fanStrike", name: "Fan Strike", desc: "Melee arc sweep in cursor direction. Hits all enemies in a 120° arc at short range." },
+  { id: "pulseShot", name: "Pulse Shot", desc: "Call down an area strike at the cursor location. Damages all enemies in a small circle after a brief delay." },
+  { id: "thrustStrike", name: "Thrust Strike", desc: "Fast precise thrust in cursor direction. Hits only the first enemy in line for 60% increased damage." },
+  { id: "dashStrike", name: "Dash Strike", desc: "Surge forward through enemies, then perform a quick 90° fan strike at your destination." },
+  { id: "backfireShot", name: "Backfire Shot", desc: "Fire a projectile forward while propelling yourself backward. Reposition and damage at once." }
+];
+
+/** Per–attack-type upgrade/penalty pools for level-up cards. Only projectile is populated; other types use empty arrays until implemented. */
+const ATTACK_UPGRADE_DEFS = {
+  projectile: {
+    standardUpgrades: [
+      { id: "extraProjectile", name: "Extra Projectile", description: "Adds 1 to simultaneous projectiles fired.", valueRange: null },
+      { id: "flatDamage", name: "Flat Damage", description: "Adds 1 to 2 flat damage to base attack.", valueRange: { min: 1, max: 2, integer: true } },
+      { id: "damageBoost", name: "Damage Boost", description: "Increases attack damage by 5% to 10%.", valueRange: { min: 5, max: 10, percent: true } },
+      { id: "attackSpeed", name: "Attack Speed", description: "Increases attack speed by 5% to 10%.", valueRange: { min: 5, max: 10, percent: true } },
+      { id: "projectileSpeed", name: "Projectile Speed", description: "Increases projectile speed by 10% to 15%.", valueRange: { min: 10, max: 15, percent: true } },
+      { id: "rangeBoost", name: "Range Boost", description: "Increases projectile max range by 15% to 20%.", valueRange: { min: 15, max: 20, percent: true } },
+      { id: "spreadReduction", name: "Spread Reduction", description: "Tightens projectile spread for more accuracy.", valueRange: { min: 15, max: 25, percent: true } },
+      { id: "critChance", name: "Crit Chance", description: "5% chance for projectiles to deal 150% damage.", valueRange: { min: 5, max: 5, percent: true } }
+    ],
+    standardPenalties: [
+      { id: "slowShot", name: "Slow Shot", description: "Reduces projectile speed by 10%.", valueRange: { min: 10, max: 10, percent: true } },
+      { id: "damageReduction", name: "Damage Reduction", description: "Reduces attack damage by 5% to 8%.", valueRange: { min: 5, max: 8, percent: true } },
+      { id: "speedPenalty", name: "Speed Penalty", description: "Reduces attack speed by 5% to 8%.", valueRange: { min: 5, max: 8, percent: true } },
+      { id: "fewerProjectiles", name: "Fewer Projectiles", description: "Reduces simultaneous projectiles by 1 (minimum 1).", valueRange: { min: 1, max: 1 } },
+      { id: "reducedRange", name: "Reduced Range", description: "Reduces projectile max range by 10% to 15%.", valueRange: { min: 10, max: 15, percent: true } },
+      { id: "widerSpread", name: "Wider Spread", description: "Increases projectile spread, making shots less accurate.", valueRange: { min: 15, max: 25, percent: true } },
+      { id: "fragileShot", name: "Fragile Shot", description: "Projectiles disappear after hitting 1 enemy even if piercing is active.", valueRange: null },
+      { id: "cooldown", name: "Cooldown", description: "Adds 0.1 seconds to attack cooldown.", valueRange: { min: 0.1, max: 0.1 } }
+    ],
+    uniqueUpgrades: [
+      { id: "piercing", name: "Piercing", description: "Projectiles pierce up to 3 enemies (default is 2)." },
+      { id: "splitting", name: "Splitting", description: "Projectiles that travel 1s without hitting split into 2, up to 4 times (max 16)." },
+      { id: "momentum", name: "Momentum", description: "Projectile damage +10% per second in flight, up to +100%." },
+      { id: "seeking", name: "Seeking", description: "Projectiles curve toward the nearest enemy after 0.5s in flight." },
+      { id: "chainLightning", name: "Chain Lightning", description: "On hit, up to 3 nearby enemies take 33% of the attack damage." },
+      { id: "explosive", name: "Explosive", description: "Projectiles explode on impact, dealing 60% damage in a small area." },
+      { id: "ghostProjectile", name: "Ghost Projectile", description: "Projectiles pass through all obstacles and walls." },
+      { id: "overdrive", name: "Overdrive", description: "Every 5th projectile deals 300% damage at 2x size." }
+    ],
+    uniquePenalties: [
+      { id: "randomDirection", name: "Random Direction", description: "Fires projectiles in a completely random direction." },
+      { id: "oppositeFire", name: "Opposite Fire", description: "Fires projectiles in the exact opposite direction of the cursor." },
+      { id: "misfire", name: "Misfire", description: "10% chance to fire nothing, consuming the attack but dealing no damage." },
+      { id: "shrinking", name: "Shrinking", description: "Projectile hitbox shrinks by 5% every 0.5s in flight." },
+      { id: "redirect", name: "Redirect", description: "Projectile direction randomly changes after 0.8s in flight." },
+      { id: "selfKnockback", name: "Self Knockback", description: "Propels the player slightly backward on each shot." },
+      { id: "delayedFire", name: "Delayed Fire", description: "0.3s delay between clicking and the projectile firing." },
+      { id: "reducedProjectiles", name: "Reduced Projectiles", description: "Reduces max simultaneous projectiles by 1 (minimum 1)." }
+    ]
+  },
+  fanStrike: { standardUpgrades: [], standardPenalties: [], uniqueUpgrades: [], uniquePenalties: [] },
+  pulseShot: { standardUpgrades: [], standardPenalties: [], uniqueUpgrades: [], uniquePenalties: [] },
+  thrustStrike: { standardUpgrades: [], standardPenalties: [], uniqueUpgrades: [], uniquePenalties: [] },
+  dashStrike: { standardUpgrades: [], standardPenalties: [], uniqueUpgrades: [], uniquePenalties: [] },
+  backfireShot: { standardUpgrades: [], standardPenalties: [], uniqueUpgrades: [], uniquePenalties: [] }
+};
+
+/** When offering unique card, avoid pairing these upgrade+penalty (e.g. Piercing + Fragile Shot). */
+const CONTRADICTORY_UPGRADE_PENALTY = {
+  piercing: ["fragileShot"],
+  fragileShot: ["piercing"]
+};
+
+/** Display description for level-up card showing the rolled value (e.g. "7% increased attack damage"). */
+function getUpgradeDisplayDescription(u) {
+  if (u.value === undefined) return u.description || "";
+  const v = u.value;
+  const ids = {
+    extraProjectile: () => "Adds 1 to simultaneous projectiles fired.",
+    flatDamage: () => `Adds ${v} flat damage to base attack.`,
+    damageBoost: () => `${v}% increased attack damage.`,
+    attackSpeed: () => `${v}% increased attack speed.`,
+    projectileSpeed: () => `${v}% increased projectile speed.`,
+    rangeBoost: () => `${v}% increased projectile max range.`,
+    spreadReduction: () => `${v}% tighter projectile spread.`,
+    critChance: () => `${v}% chance for projectiles to deal 150% damage.`
+  };
+  return ids[u.id] ? ids[u.id]() : (u.description || "");
+}
+
+function getPenaltyDisplayDescription(p) {
+  if (p.value === undefined) return p.description || "";
+  const v = p.value;
+  const ids = {
+    slowShot: () => `${v}% reduced projectile speed.`,
+    damageReduction: () => `${v}% reduced attack damage.`,
+    speedPenalty: () => `${v}% reduced attack speed.`,
+    fewerProjectiles: () => "1 fewer simultaneous projectile (minimum 1).",
+    reducedRange: () => `${v}% reduced projectile max range.`,
+    widerSpread: () => `${v}% wider projectile spread.`,
+    fragileShot: () => "Projectiles disappear after hitting 1 enemy.",
+    cooldown: () => `${v}s added to attack cooldown.`
+  };
+  return ids[p.id] ? ids[p.id]() : (p.description || "");
+}
+
+function rollUpgradeValue(def) {
+  if (!def.valueRange) return undefined;
+  const r = def.valueRange;
+  if (r.percent || r.integer) {
+    return Math.floor(r.min + Math.random() * (r.max - r.min + 1));
+  }
+  return r.min + Math.random() * (r.max - r.min);
+}
 
 function pickRandomConditions(count) {
   const shuffled = [...RUN_CONDITIONS].sort(() => Math.random() - 0.5);
@@ -571,7 +1000,7 @@ class HazardSystem {
           if (p.lastDamageTick >= 1) {
             p.lastDamageTick = 0;
             const hit = game.enemiesInRadius(p.x, p.y, p.radius);
-            for (const e of hit) game.dealDamageToEnemy(e, p.damagePerTick);
+            for (const e of hit) game.dealDamageToEnemy(e, p.damagePerTick, { isDot: true });
           }
         }
       }
@@ -795,11 +1224,11 @@ class HazardSystem {
 // -------- Enemy --------
 
 const ENEMY_TYPES = [
-  { name: "Slime",    color: "#4ade80", size: 36, maxHealth: 40,  attack: 6,  speed: 60,  dropChance: 0.25, minDrop: 1, maxDrop: 1, minXp: 10, maxXp: 20 },
-  { name: "Bat",      color: "#c084fc", size: 28, maxHealth: 25,  attack: 8,  speed: 100, dropChance: 0.2,  minDrop: 1, maxDrop: 1, minXp: 10, maxXp: 20 },
-  { name: "Skeleton", color: "#e2e8f0", size: 38, maxHealth: 60,  attack: 10, speed: 70,  dropChance: 0.45, minDrop: 1, maxDrop: 2, minXp: 30, maxXp: 50 },
-  { name: "Demon",    color: "#f87171", size: 44, maxHealth: 100, attack: 15, speed: 50,  dropChance: 0.55, minDrop: 1, maxDrop: 2, minXp: 30, maxXp: 50 },
-  { name: "Wisp",     color: "#67e8f9", size: 30, maxHealth: 20,  attack: 5,  speed: 130, dropChance: 0.18, minDrop: 1, maxDrop: 1, minXp: 10, maxXp: 20 },
+  { name: "Slime",    color: "#4ade80", size: 36, maxHealth: 40,  attack: 6,  speed: 60,  defense: 0, dropChance: 0.25, minDrop: 1, maxDrop: 1, minXp: 10, maxXp: 20 },
+  { name: "Bat",      color: "#c084fc", size: 28, maxHealth: 25,  attack: 8,  speed: 100, defense: 0, dropChance: 0.2,  minDrop: 1, maxDrop: 1, minXp: 10, maxXp: 20 },
+  { name: "Skeleton", color: "#e2e8f0", size: 38, maxHealth: 60,  attack: 10, speed: 70,  defense: 2, dropChance: 0.45, minDrop: 1, maxDrop: 2, minXp: 30, maxXp: 50 },
+  { name: "Demon",    color: "#f87171", size: 44, maxHealth: 100, attack: 15, speed: 50,  defense: 3, dropChance: 0.55, minDrop: 1, maxDrop: 2, minXp: 30, maxXp: 50 },
+  { name: "Wisp",     color: "#67e8f9", size: 30, maxHealth: 20,  attack: 5,  speed: 130, defense: 0, dropChance: 0.18, minDrop: 1, maxDrop: 1, minXp: 10, maxXp: 20 },
 ];
 
 const BOSS_XP = 200;
@@ -833,13 +1262,7 @@ function getXpForLevel(level) {
   return 500 * Math.pow(1.5, level - 4);
 }
 
-const LEVEL_UP_BONUSES = [
-  { id: "attack", label: "+10% Attack Damage", apply: (g) => { g.levelAttackMult = (g.levelAttackMult || 1) * 1.1; } },
-  { id: "health", label: "+15% Max Health", apply: (g) => { g.levelHealthMult = (g.levelHealthMult || 1) * 1.15; } },
-  { id: "speed", label: "+10% Movement Speed", apply: (g) => { g.levelSpeedMult = (g.levelSpeedMult || 1) * 1.1; } },
-  { id: "attackSpeed", label: "+5% Attack Speed", apply: (g) => { g.levelAttackSpeedMult = (g.levelAttackSpeedMult || 1) * 1.05; } },
-  { id: "cardSlot", label: "+1 Upgrade Card Slot", apply: (g) => { g.maxUpgradeCards = (g.maxUpgradeCards || 3) + 1; } },
-];
+/* Level-up stat bonuses replaced by attack upgrade/penalty cards (see ATTACK_UPGRADE_DEFS and showLevelUpChoices). */
 
 let ENEMY_ID_COUNTER = 0;
 
@@ -864,6 +1287,17 @@ class Enemy {
 
     // Only chase after player enters detection range; once activated, chase forever
     this.activated = false;
+
+    // Debuffs from modification cards (element mods)
+    this.defense = typeDef.defense ?? 0;
+    this.burnUntil = null;
+    this.burnDps = 0;
+    this.burnAccum = 0;
+    this.toxicStacks = 0;
+    this.toxicUntil = null;
+    this.toxicAccum = 0;
+    this.voidDefenseUntil = null;
+    this.voidDefenseMult = 1;
   }
 
   get center() {
@@ -1006,7 +1440,7 @@ class Enemy {
     return this.health <= 0;
   }
 
-  draw(ctx, camera) {
+  draw(ctx, camera, gameTime = null) {
     const sx = Math.floor(this.position.x - camera.position.x);
     const sy = Math.floor(this.position.y - camera.position.y);
     const half = this.size / 2;
@@ -1204,6 +1638,62 @@ class Enemy {
         iconX += iconSize + 2;
       }
     }
+    const cx = sx + this.size / 2;
+    const cy = sy + this.size / 2;
+    if (gameTime != null) {
+      if (this.burnUntil != null && gameTime < this.burnUntil) {
+        ctx.fillStyle = `rgba(251, 146, 60, 0.4)`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, this.size * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = "9px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText((this.burnUntil - gameTime).toFixed(1) + "s", cx, sy - 4);
+      }
+      if (this.slowUntil != null && gameTime < this.slowUntil) {
+        ctx.fillStyle = `rgba(147, 197, 253, 0.45)`;
+        ctx.globalAlpha = 0.6;
+        ctx.fillRect(sx, sy, this.size, this.size);
+        ctx.globalAlpha = 1;
+        ctx.font = "9px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText((this.slowUntil - gameTime).toFixed(1) + "s", cx, sy - 4);
+      }
+      if (this.stunUntil != null && gameTime < this.stunUntil) {
+        ctx.fillStyle = `rgba(250, 204, 21, 0.6)`;
+        ctx.beginPath();
+        ctx.arc(cx + 4, cy - 4, 4, 0, Math.PI * 2);
+        ctx.arc(cx - 4, cy + 2, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = "9px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText((this.stunUntil - gameTime).toFixed(1) + "s", cx, sy - 4);
+      }
+      if (this.toxicStacks > 0 && this.toxicUntil != null && gameTime < this.toxicUntil) {
+        ctx.fillStyle = `rgba(34, 197, 94, 0.5)`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, this.size * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = "9px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText((this.toxicUntil - gameTime).toFixed(1) + "s x" + this.toxicStacks, cx, sy - 4);
+      }
+      if (this.voidDefenseUntil != null && gameTime < this.voidDefenseUntil) {
+        ctx.strokeStyle = `rgba(88, 28, 135, 0.7)`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, this.size * 0.7, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.font = "9px sans-serif";
+        ctx.fillStyle = "#e9d5ff";
+        ctx.textAlign = "center";
+        ctx.fillText((this.voidDefenseUntil - gameTime).toFixed(1) + "s", cx, sy - 4);
+      }
+    }
   }
 }
 
@@ -1215,40 +1705,88 @@ const PLAYER_PROJECTILE_MAX_DIST = 1400;
 const PLAYER_PROJECTILE_TRAIL_LEN = 6;
 
 class PlayerProjectile {
-  constructor(x, y, targetX, targetY, damage) {
+  constructor(x, y, targetX, targetY, damage, options = {}) {
     this.position = new Vec2(x, y);
     const dx = targetX - x;
     const dy = targetY - y;
     const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-    const speed = PLAYER_PROJECTILE_SPEED;
+    const speedMult = options.speedMult != null ? options.speedMult : 1;
+    const speed = PLAYER_PROJECTILE_SPEED * speedMult;
     this.velocity = new Vec2((dx / dist) * speed, (dy / dist) * speed);
     this.damage = damage;
-    this.size = PLAYER_PROJECTILE_SIZE;
+    this.size = options.overdrive ? PLAYER_PROJECTILE_SIZE * 2 : PLAYER_PROJECTILE_SIZE;
+    if (options.overdrive) this.damage = this.damage * 3;
     this.trail = [];
     this.distanceTraveled = 0;
+    this.hitEnemyIds = new Set();
+    this.maxLifetime = null;
+    this.age = 0;
+    this.flightTime = 0;
+    this.piercesRemaining = options.piercesRemaining != null ? options.piercesRemaining : 2;
+    this.piercing = this.piercesRemaining > 0;
+    this.fragileShot = !!options.fragileShot;
+    this.ghost = !!options.ghost;
+    this.splitting = !!options.splitting;
+    this.splitCount = options.splitCount || 0;
+    this.maxDist = PLAYER_PROJECTILE_MAX_DIST * (options.maxDistMult != null ? options.maxDistMult : 1);
+    this._spawn = null;
   }
 
   update(dt, game = null) {
     this.trail.push({ x: this.position.x, y: this.position.y });
     if (this.trail.length > PLAYER_PROJECTILE_TRAIL_LEN) this.trail.shift();
 
-    if (game && game.hasUpgradeCard && game.hasUpgradeCard("homing")) {
+    if (this.maxLifetime != null) this.age += dt;
+    this.flightTime += dt;
+
+    const homing = game && game.hasUpgradeCard && game.hasUpgradeCard("homing");
+    const seeking = game && game.hasAttackUpgrade && game.hasAttackUpgrade("seeking");
+    const useHoming = homing || (seeking && this.flightTime >= 0.5);
+    if (useHoming) {
       const px = this.position.x + this.size / 2;
       const py = this.position.y + this.size / 2;
-      const target = game.getNearestEnemy(px, py, 400);
+      const target = game.getNearestEnemy(px, py, 400, this.hitEnemyIds);
       if (target) {
         const tx = target.position.x + target.size / 2;
         const ty = target.position.y + target.size / 2;
         const dx = tx - px;
         const dy = ty - py;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const speed = PLAYER_PROJECTILE_SPEED;
-        this.velocity.x = (dx / dist) * speed * 0.15 + this.velocity.x * 0.85;
-        this.velocity.y = (dy / dist) * speed * 0.15 + this.velocity.y * 0.85;
+        const curSpeed = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2) || PLAYER_PROJECTILE_SPEED;
+        this.velocity.x = (dx / dist) * curSpeed * 0.15 + this.velocity.x * 0.85;
+        this.velocity.y = (dy / dist) * curSpeed * 0.15 + this.velocity.y * 0.85;
         const vlen = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2) || 1;
-        this.velocity.x = (this.velocity.x / vlen) * speed;
-        this.velocity.y = (this.velocity.y / vlen) * speed;
+        this.velocity.x = (this.velocity.x / vlen) * curSpeed;
+        this.velocity.y = (this.velocity.y / vlen) * curSpeed;
       }
+    }
+
+    if (game && game.hasAttackUpgrade && game.hasAttackUpgrade("splitting") && this.splitting && this.splitCount < 4 && this.flightTime >= 1 && this.hitEnemyIds.size === 0) {
+      const curSpeed = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2) || PLAYER_PROJECTILE_SPEED;
+      const angle = Math.atan2(this.velocity.y, this.velocity.x);
+      const spreadRad = (15 * Math.PI / 180) / 2;
+      const opt = {
+        speedMult: curSpeed / PLAYER_PROJECTILE_SPEED,
+        maxDistMult: this.maxDist / PLAYER_PROJECTILE_MAX_DIST,
+        piercesRemaining: this.piercesRemaining,
+        fragileShot: this.fragileShot,
+        splitting: true,
+        splitCount: this.splitCount + 1,
+        ghost: this.ghost
+      };
+      const tx = this.position.x + this.velocity.x;
+      const ty = this.position.y + this.velocity.y;
+      const p1 = new PlayerProjectile(this.position.x, this.position.y, this.position.x + Math.cos(angle - spreadRad) * 100, this.position.y + Math.sin(angle - spreadRad) * 100, this.damage, opt);
+      p1.velocity.x = Math.cos(angle - spreadRad) * curSpeed;
+      p1.velocity.y = Math.sin(angle - spreadRad) * curSpeed;
+      p1.hitEnemyIds = new Set(this.hitEnemyIds);
+      p1.maxLifetime = this.maxLifetime;
+      const p2 = new PlayerProjectile(this.position.x, this.position.y, this.position.x + Math.cos(angle + spreadRad) * 100, this.position.y + Math.sin(angle + spreadRad) * 100, this.damage, opt);
+      p2.velocity.x = Math.cos(angle + spreadRad) * curSpeed;
+      p2.velocity.y = Math.sin(angle + spreadRad) * curSpeed;
+      p2.hitEnemyIds = new Set(this.hitEnemyIds);
+      p2.maxLifetime = this.maxLifetime;
+      this._spawn = [p1, p2];
     }
 
     const moveX = this.velocity.x * dt;
@@ -1259,7 +1797,9 @@ class PlayerProjectile {
   }
 
   isExpired() {
-    return this.distanceTraveled >= PLAYER_PROJECTILE_MAX_DIST;
+    if (this.maxLifetime != null && this.age >= this.maxLifetime) return true;
+    if (this.ghost) return this.distanceTraveled >= this.maxDist * 3;
+    return this.distanceTraveled >= this.maxDist;
   }
 
   intersects(other) {
@@ -1371,6 +1911,19 @@ class Boss {
 
     this.minionCooldown = 8;
     this.minionTimer = 0;
+
+    this.defense = 5;
+    this.burnUntil = null;
+    this.burnDps = 0;
+    this.burnAccum = 0;
+    this.slowUntil = null;
+    this.slowMult = 1;
+    this.stunUntil = null;
+    this.toxicStacks = 0;
+    this.toxicUntil = null;
+    this.toxicAccum = 0;
+    this.voidDefenseUntil = null;
+    this.voidDefenseMult = 1;
   }
 
   get center() {
@@ -1419,7 +1972,7 @@ class Boss {
     );
   }
 
-  draw(ctx, camera) {
+  draw(ctx, camera, gameTime = null) {
     const sx = Math.floor(this.position.x - camera.position.x);
     const sy = Math.floor(this.position.y - camera.position.y);
 
@@ -1428,6 +1981,62 @@ class Boss {
     ctx.strokeStyle = this.phase2 ? "#ff4444" : "#4a0000";
     ctx.lineWidth = 3;
     ctx.strokeRect(sx, sy, this.size, this.size);
+    const cx = sx + this.size / 2;
+    const cy = sy + this.size / 2;
+    if (gameTime != null) {
+      if (this.burnUntil != null && gameTime < this.burnUntil) {
+        ctx.fillStyle = `rgba(251, 146, 60, 0.4)`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, this.size * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = "10px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText((this.burnUntil - gameTime).toFixed(1) + "s", cx, sy - 6);
+      }
+      if (this.slowUntil != null && gameTime < this.slowUntil) {
+        ctx.fillStyle = `rgba(147, 197, 253, 0.45)`;
+        ctx.globalAlpha = 0.6;
+        ctx.fillRect(sx, sy, this.size, this.size);
+        ctx.globalAlpha = 1;
+        ctx.font = "10px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText((this.slowUntil - gameTime).toFixed(1) + "s", cx, sy - 6);
+      }
+      if (this.stunUntil != null && gameTime < this.stunUntil) {
+        ctx.fillStyle = `rgba(250, 204, 21, 0.6)`;
+        ctx.beginPath();
+        ctx.arc(cx + 6, cy - 6, 6, 0, Math.PI * 2);
+        ctx.arc(cx - 6, cy + 4, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = "10px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText((this.stunUntil - gameTime).toFixed(1) + "s", cx, sy - 6);
+      }
+      if (this.toxicStacks > 0 && this.toxicUntil != null && gameTime < this.toxicUntil) {
+        ctx.fillStyle = `rgba(34, 197, 94, 0.5)`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, this.size * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = "10px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText((this.toxicUntil - gameTime).toFixed(1) + "s x" + this.toxicStacks, cx, sy - 6);
+      }
+      if (this.voidDefenseUntil != null && gameTime < this.voidDefenseUntil) {
+        ctx.strokeStyle = `rgba(88, 28, 135, 0.7)`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, this.size * 0.7, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.font = "10px sans-serif";
+        ctx.fillStyle = "#e9d5ff";
+        ctx.textAlign = "center";
+        ctx.fillText((this.voidDefenseUntil - gameTime).toFixed(1) + "s", cx, sy - 6);
+      }
+    }
   }
 }
 
@@ -1570,12 +2179,12 @@ class EnemySystem {
   update(dt) {
   }
 
-  draw(ctx, camera) {
+  draw(ctx, camera, gameTime = null) {
     for (const e of this.enemies) {
-      e.draw(ctx, camera);
+      e.draw(ctx, camera, gameTime);
     }
     if (this.boss) {
-      this.boss.draw(ctx, camera);
+      this.boss.draw(ctx, camera, gameTime);
     }
     for (const p of this.projectiles) {
       p.draw(ctx, camera);
@@ -1609,6 +2218,12 @@ const EQUIPMENT_BASE_RANGES = {
   "Body Armour": { min: 2, max: 12 }
 };
 
+/** Secondary base stat: Helmet gets defense (lower than body), Body Armour gets maxHealth (lower than helmet). */
+const EQUIPMENT_SECONDARY_BASE = {
+  Helmet: { statKey: "defense", range: { min: 1, max: 8 } },
+  "Body Armour": { statKey: "maxHealth", range: { min: 1, max: 15 } }
+};
+
 const WEIGHT_OPTIONS = { Helmet: ["light", "medium", "heavy"], "Body Armour": ["light", "medium", "heavy"] };
 
 const MODIFIER_POOL = [
@@ -1619,8 +2234,54 @@ const MODIFIER_POOL = [
   { id: "speedPercent", label: "Movement Speed", statKey: "speed" },
   { id: "xpGainedPercent", label: "XP Gained", statKey: "xpGained" },
   { id: "skillDamagePercent", label: "Skill Damage", statKey: "skillDamage" },
-  { id: "cooldownReductionPercent", label: "Cooldown Reduction", statKey: "cooldownRecovery" }
+  { id: "cooldownReductionPercent", label: "Cooldown Reduction", statKey: "cooldownRecovery" },
+  { id: "defenseStatScale", label: "Defense +20-100%", statKey: "defense", localStatScale: true },
+  { id: "maxHealthStatScale", label: "Max Health +20-100%", statKey: "maxHealth", localStatScale: true }
 ];
+
+const ARMOUR_SLOT_TYPES = ["Helmet", "Body Armour"];
+const LOCAL_STAT_SCALE_MOD_IDS = ["defenseStatScale", "maxHealthStatScale"];
+
+function getModifierPoolForType(type) {
+  const pool = [...MODIFIER_POOL];
+  if (!ARMOUR_SLOT_TYPES.includes(type)) {
+    return pool.filter((m) => !LOCAL_STAT_SCALE_MOD_IDS.includes(m.id));
+  }
+  return pool;
+}
+
+function rollLocalStatScaleValue() {
+  return 0.2 + Math.random() * 0.8;
+}
+
+/** Modifier value ranges by difficulty for dropped items (normal modifiers: 5-15% to 25-50%; local stat scale: ×2). */
+const MODIFIER_ROLL_BY_DIFFICULTY = {
+  1: { min: 0.05, max: 0.15 },
+  2: { min: 0.10, max: 0.25 },
+  3: { min: 0.15, max: 0.35 },
+  4: { min: 0.20, max: 0.40 },
+  5: { min: 0.25, max: 0.50 }
+};
+
+const LOCAL_STAT_SCALE_ROLL_BY_DIFFICULTY = {
+  1: { min: 0.10, max: 0.30 },
+  2: { min: 0.20, max: 0.50 },
+  3: { min: 0.30, max: 0.70 },
+  4: { min: 0.40, max: 0.80 },
+  5: { min: 0.50, max: 1.0 }
+};
+
+function rollModifierValueForDifficulty(difficulty) {
+  const r = MODIFIER_ROLL_BY_DIFFICULTY[difficulty];
+  if (!r) return rollModifierValue();
+  return r.min + Math.random() * (r.max - r.min);
+}
+
+function rollLocalStatScaleValueForDifficulty(difficulty) {
+  const r = LOCAL_STAT_SCALE_ROLL_BY_DIFFICULTY[difficulty];
+  if (!r) return rollLocalStatScaleValue();
+  return r.min + Math.random() * (r.max - r.min);
+}
 
 const NAME_PREFIXES = ["Twisted", "Cursed", "Blessed", "Ancient", "Rotten", "Void", "Storm", "Frost", "Flame", "Shadow"];
 const NAME_SUFFIXES = ["of the Fox", "of the Bear", "of Power", "of Swiftness", "of the Titan", "of the Wolf", "of the Owl", "of the Serpent"];
@@ -1633,7 +2294,7 @@ const LEGENDARY_CUBES = [
   { id: "blessedCube", label: "Blessed Cube", modifierId: "blessed", modifierLabel: "Blessed" }
 ];
 
-const LEGENDARY_MODIFIER_IDS = ["eternal", "generative", "blessed"];
+const LEGENDARY_MODIFIER_IDS = ["eternal", "generative", "blessed", "foresight"];
 const LEGENDARY_MODIFIER_EFFECTS = {
   eternal: "Returns to Legacy Vault on defeat.",
   generative: "Adds a T3 cube to Legacy Stash on boss kill.",
@@ -1674,6 +2335,20 @@ const UPGRADE_CUBES = [
   { id: "reforgeCube", label: "Reforge Cube", targetRarity: null, rerolls: true }
 ];
 
+function getCubeLabel(cubeKey) {
+  const leg = LEGENDARY_CUBES.find((c) => c.id === cubeKey);
+  if (leg) return leg.label;
+  const match = cubeKey.match(/^(.+?)T(\d)$/);
+  if (match) {
+    const [, id, tier] = match;
+    const mod = MODIFIER_CUBES.find((c) => c.id === id);
+    const upg = UPGRADE_CUBES.find((c) => c.id === id);
+    const base = mod || upg;
+    if (base) return `${base.label} T${tier}`;
+  }
+  return cubeKey;
+}
+
 function rollModifierForTier(tier) {
   const r = MODIFIER_CUBE_TIERS[tier - 1] || MODIFIER_CUBE_TIERS[0];
   return r.min + Math.random() * (r.max - r.min);
@@ -1695,13 +2370,18 @@ function rollModifierValue() {
   return 0.1 + Math.random() * 0.4;
 }
 
-function generateEquipmentItem(type, lootQuality, qualityBonus = 0, forceRarity = null) {
+function generateEquipmentItem(type, lootQuality, qualityBonus = 0, forceRarity = null, options = {}) {
   const rarity = forceRarity || getRarityRoll(lootQuality, qualityBonus);
   const baseKey = EQUIPMENT_BASE_STAT[type];
   const range = EQUIPMENT_BASE_RANGES[type];
   const scale = 0.4 + 0.6 * (0.5 + lootQuality / 2);
   const baseValue = Math.round(range.min + (range.max - range.min) * scale);
   const baseStat = { [baseKey]: baseValue };
+  const sec = EQUIPMENT_SECONDARY_BASE[type];
+  if (sec) {
+    const secValue = Math.round(sec.range.min + (sec.range.max - sec.range.min) * scale);
+    baseStat[sec.statKey] = secValue;
+  }
 
   let weight = null;
   if (WEIGHT_OPTIONS[type]) {
@@ -1709,22 +2389,43 @@ function generateEquipmentItem(type, lootQuality, qualityBonus = 0, forceRarity 
     weight = opts[Math.floor(Math.random() * opts.length)];
   }
 
+  const difficulty = options.difficulty != null ? options.difficulty : null;
+  const rollNormal = difficulty != null ? () => rollModifierValueForDifficulty(difficulty) : rollModifierValue;
+  const rollLocal = difficulty != null ? () => rollLocalStatScaleValueForDifficulty(difficulty) : rollLocalStatScaleValue;
+
   const modifiers = [];
   if (rarity === "magic") {
-    const pool = [...MODIFIER_POOL];
+    const pool = getModifierPoolForType(type);
     for (let i = 0; i < 2; i++) {
       const idx = Math.floor(Math.random() * pool.length);
       const m = pool.splice(idx, 1)[0];
-      modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: rollModifierValue() });
+      const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocal() : rollNormal();
+      modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, addedAt: Date.now() });
+    }
+    if (options.qualityEye && modifiers.length > 0) {
+      const idx = Math.floor(Math.random() * modifiers.length);
+      const mod = modifiers[idx];
+      if (mod.value < 0.3 && !LOCAL_STAT_SCALE_MOD_IDS.includes(mod.id)) {
+        mod.value = 0.3 + Math.random() * 0.1;
+        if (difficulty != null) {
+          const r = MODIFIER_ROLL_BY_DIFFICULTY[difficulty];
+          if (r) mod.value = Math.min(mod.value, r.max);
+        }
+      }
     }
   } else if (rarity === "rare") {
-    const pool = [...MODIFIER_POOL];
+    const pool = getModifierPoolForType(type);
     for (let i = 0; i < 4; i++) {
       const idx = Math.floor(Math.random() * pool.length);
       const m = pool.splice(idx, 1)[0];
-      modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: rollModifierValue() });
+      const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocal() : rollNormal();
+      modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, addedAt: Date.now() });
     }
   }
+
+  const socketChance = (options.socketSense ? 0.18 : 0.15);
+  const socketRoll = Math.random();
+  const sockets = socketRoll < 0.03 ? 2 : socketRoll < socketChance ? 1 : 0;
 
   const baseNames = EQUIPMENT_BASE_NAMES[type];
   const baseName = baseNames[Math.floor(Math.random() * baseNames.length)];
@@ -1744,7 +2445,11 @@ function generateEquipmentItem(type, lootQuality, qualityBonus = 0, forceRarity 
 
   const stats = { ...baseStat };
   for (const m of modifiers) {
-    if (m.statKey === "attackSpeed") {
+    if (m.id === "defenseStatScale") {
+      stats.defense = Math.round((stats.defense || 0) * (1 + m.value));
+    } else if (m.id === "maxHealthStatScale") {
+      stats.maxHealth = Math.round((stats.maxHealth || 0) * (1 + m.value));
+    } else if (m.statKey === "attackSpeed") {
       stats.attackSpeed = (stats.attackSpeed || 1) * (1 + m.value);
     } else if (m.statKey === "cooldownRecovery") {
       stats.cooldownRecovery = (stats.cooldownRecovery || 1) * (1 - m.value);
@@ -1761,7 +2466,8 @@ function generateEquipmentItem(type, lootQuality, qualityBonus = 0, forceRarity 
     baseStat,
     weight,
     modifiers,
-    stats
+    stats,
+    sockets: sockets
   };
 }
 
@@ -1782,65 +2488,6 @@ const LOOT_DEFS = [
     type: "Weapon",
     items: []
   },
-  {
-    type: "Upgrade Card",
-    items: [
-      {
-        name: "Swift Feet",
-        cardKey: "swiftFeet",
-        description: "Burst of speed for 2s after picking up loot."
-      },
-      {
-        name: "Iron Skin",
-        cardKey: "ironSkin",
-        description: "Every 10s gain a shield that blocks one hit."
-      },
-      {
-        name: "Vampiric",
-        cardKey: "vampiric",
-        description: "Heal a bit whenever you pick up loot."
-      },
-      {
-        name: "Double Strike",
-        cardKey: "doubleStrike",
-        description: "Every 5th attack deals double damage."
-      },
-      {
-        name: "Magnet",
-        cardKey: "magnet",
-        description: "Nearby loot is pulled toward you."
-      },
-      {
-        name: "Berserker",
-        cardKey: "berserker",
-        description: "Move/attack faster as your health gets lower."
-      },
-      {
-        name: "Lucky",
-        cardKey: "lucky",
-        description: "Avoid damage to gradually improve loot quality."
-      },
-      {
-        name: "Thorns",
-        cardKey: "thorns",
-        description: "Enemies that touch you take reflected damage."
-      },
-      {
-        name: "Scavenger",
-        cardKey: "scavenger",
-        description: "Defeated enemies can drop bonus loot."
-      },
-      {
-        name: "Ghost Step",
-        cardKey: "ghostStep",
-        description: "Briefly untouchable after taking damage."
-      },
-      { name: "Homing", cardKey: "homing", description: "Projectiles seek nearby enemies." },
-      { name: "Glass Cannon", cardKey: "glassCannon", description: "+50% damage dealt, +30% damage taken." },
-      { name: "Legacy Fortune", cardKey: "legacyBonus", description: "+2 LP after defeating the boss." },
-      { name: "Vital Spring", cardKey: "healthRegen", description: "Regenerate 3% max health per second." }
-    ]
-  }
 ];
 
 const LOOT_COLORS = {
@@ -1848,7 +2495,7 @@ const LOOT_COLORS = {
   Boots: "#f97316",
   "Body Armour": "#a855f7",
   Weapon: "#facc15",
-  "Upgrade Card": "#22c55e"
+  Cube: "#a78bfa"
 };
 
 const LOOT_ICONS = {
@@ -1856,15 +2503,10 @@ const LOOT_ICONS = {
   Boots: "👢",
   "Body Armour": "🛡️",
   Weapon: "⚔️",
-  "Upgrade Card": "🃏"
+  Cube: "◆"
 };
 
 let GLOBAL_LUCK = 0;
-
-function getUpgradeCardDefs() {
-  const group = LOOT_DEFS.find((g) => g.type === "Upgrade Card");
-  return group ? group.items : [];
-}
 
 class LootItem {
   constructor(id, x, y, definition, burstFromX = null, burstFromY = null) {
@@ -1873,6 +2515,7 @@ class LootItem {
     this.size = 20;
     this.type = definition.type;
     this.name = definition.name;
+    this.cubeKey = definition.cubeKey ?? null;
     this.stats = definition.stats || {};
     this.cardKey = definition.cardKey || null;
     this.description = definition.description || "";
@@ -1880,6 +2523,7 @@ class LootItem {
     this.rarity = definition.rarity || null;
     this.modifiers = definition.modifiers || [];
     this.baseStat = definition.baseStat || null;
+    this.sockets = definition.sockets ?? 0;
     this.color = this.rarity ? RARITY_COLORS[this.rarity] : (LOOT_COLORS[this.type] || "#fbbf24");
     this.burstFrom = burstFromX != null && burstFromY != null ? { x: burstFromX, y: burstFromY } : null;
     this.burstProgress = 0;
@@ -1976,32 +2620,26 @@ class LootSystem {
     this.items = [];
     this.nextId = 1;
     this.mapLootQuality = 0;
+    this.difficulty = 1;
   }
 
   setMapLootQuality(quality) {
     this.mapLootQuality = quality;
   }
 
+  setDifficulty(difficulty) {
+    this.difficulty = difficulty != null ? Math.min(5, Math.max(1, difficulty)) : 1;
+  }
+
   getLootDefinition(qualityBonus = 0) {
     const group = LOOT_DEFS[Math.floor(Math.random() * LOOT_DEFS.length)];
-
-    if (group.type === "Upgrade Card") {
-      const card = group.items[Math.floor(Math.random() * group.items.length)];
-      return {
-        type: "Upgrade Card",
-        name: card.name,
-        stats: {},
-        cardKey: card.cardKey,
-        description: card.description,
-        weight: null
-      };
-    }
-
-    return generateEquipmentItem(group.type, this.mapLootQuality, qualityBonus);
+    const opts = this.difficulty != null ? { difficulty: this.difficulty } : {};
+    return generateEquipmentItem(group.type, this.mapLootQuality, qualityBonus, null, opts);
   }
 
   spawnGuaranteedWeaponAt(centerX, centerY) {
-    const def = generateEquipmentItem("Weapon", Math.min(1, this.mapLootQuality + 0.5), 0.5);
+    const opts = this.difficulty != null ? { difficulty: this.difficulty } : {};
+    const def = generateEquipmentItem("Weapon", Math.min(1, this.mapLootQuality + 0.5), 0.5, null, opts);
     const size = 20;
     const margin = this.world.wallThickness + 15;
     const landX = centerX - size / 2 + (Math.random() - 0.5) * 30;
@@ -2046,6 +2684,19 @@ class LootSystem {
     }
   }
 
+  spawnCubeAt(centerX, centerY, cubeKey) {
+    const size = 20;
+    const margin = this.world.wallThickness + 15;
+    const landX = centerX - size / 2 + (Math.random() - 0.5) * 24;
+    const landY = centerY - size / 2 + (Math.random() - 0.5) * 24;
+    const clampedX = Math.max(margin, Math.min(landX, this.world.width - margin - size));
+    const clampedY = Math.max(margin, Math.min(landY, this.world.height - margin - size));
+    const def = { type: "Cube", name: getCubeLabel(cubeKey), cubeKey };
+    const item = new LootItem(this.nextId++, clampedX, clampedY, def, centerX, centerY);
+    item.size = size;
+    this.items.push(item);
+  }
+
   update(dt, player, onLootPicked) {
     for (const item of this.items) {
       item.updateBurst(dt);
@@ -2077,8 +2728,18 @@ class Game {
     this.difficulty = runConfig.difficulty ?? 1;
     this.conditions = runConfig.conditions ?? [];
     this.skills = runConfig.skills || [null, null, null, null];
+    this.attackType = runConfig.attackType || "projectile";
+    (this.skills || []).forEach((id) => { if (id) markSkillEncountered(id); });
     this.skillCooldowns = [0, 0, 0, 0];
     this.skillEffects = [];
+    this.skillChargeSlot = null;
+    this.skillChargeStartTime = null;
+    this.chainCastQueue = [];
+    this.empowerStacks = [0, 0, 0, 0];
+    this.playerHasteUntil = 0;
+    this.playerHasteMult = 1;
+    this.skillCascadeFlashUntil = {};
+    this.devModOverrides = { 0: [], 1: [], 2: [], 3: [] };
     this.activeAuras = new Set();
     this.whirlwindActive = false;
     this.bladeDashActive = false;
@@ -2102,6 +2763,7 @@ class Game {
     this.fierySpawned = false;
     this.fieryKilled = false;
     this.fieryTimer = 0;
+    this.rootedMinionsSpawned = 0;
 
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
@@ -2120,8 +2782,13 @@ class Game {
       weight: item.weight || null,
       rarity: item.rarity || null,
       modifiers: item.modifiers || [],
-      baseStat: item.baseStat || null
+      baseStat: item.baseStat || null,
+      sockets: item.sockets ?? 0
     }));
+    if (hasTalent("livingItem")) {
+      const firstCommon = this.inventory.find((it) => it.type !== "Upgrade Card" && (it.rarity === "common" || !it.rarity));
+      if (firstCommon) firstCommon.livingItem = true;
+    }
     this.cubeInventory = {};
     const stash = consumeLegacyCubeStash();
     for (const [key, count] of Object.entries(stash)) {
@@ -2129,7 +2796,6 @@ class Game {
     }
     this.inventoryListEl = document.getElementById("inventory-list");
     this.equippedListEl = document.getElementById("equipped-list");
-    this.upgradeCardListEl = document.getElementById("upgrade-card-list");
     this.playerStatsEl = document.getElementById("player-stats");
     this.devToggleEl = document.getElementById("dev-toggle");
     this.devPanelEl = document.getElementById("dev-panel");
@@ -2147,11 +2813,16 @@ class Game {
       attack: 10
     };
     if (!this.devMode) {
-      if (hasTalent("thickSkin")) this.baseStats.maxHealth += 15;
+      if (hasTalent("resilient")) this.baseStats.maxHealth = Math.round(this.baseStats.maxHealth * 1.1);
+      if (hasTalent("fortitude")) this.baseStats.maxHealth = Math.round(this.baseStats.maxHealth * 1.1);
+      if (hasTalent("thickSkin")) this.baseStats.maxHealth = Math.round(this.baseStats.maxHealth * 1.15);
+      if (hasTalent("fierce")) this.baseStats.attack = Math.round(this.baseStats.attack * 1.1);
+      if (hasTalent("nimble")) this.baseStats.speed = Math.round(this.baseStats.speed * 1.05);
       if (this.hasCondition("startHealth")) this.baseStats.maxHealth = Math.max(10, this.baseStats.maxHealth - 30);
       if (this.hasCondition("startAttack")) this.baseStats.attack = Math.round(this.baseStats.attack * 0.8);
       if (this.hasCondition("startSpeed")) this.baseStats.speed = Math.round(this.baseStats.speed * 0.8);
     }
+    this.talentAttackSpeedMult = hasTalent("rapid") ? 1.1 : 1;
     this.currentStats = { ...this.baseStats };
     this.currentHealth = this.baseStats.maxHealth;
     this.timeSinceLastHit = 0;
@@ -2163,16 +2834,11 @@ class Game {
       Boots: null
     };
 
-    this.maxUpgradeCards = this.hasCondition("fewerCards") ? 2 : (hasTalent("mastermind") ? 4 : 3);
-    this.activeUpgradeCards = [];
-
     this.level = 1;
     this.xp = 0;
     this.levelUpChoices = null;
-    this.levelAttackMult = 1;
-    this.levelHealthMult = 1;
-    this.levelSpeedMult = 1;
-    this.levelAttackSpeedMult = 1;
+    this.runAttackUpgrades = [];
+    this.runAttackPenalties = [];
     this.equipmentAttackSpeedMult = 1;
     this.equipmentCooldownRecovery = 1;
     this.equipmentXpGainedMult = 1;
@@ -2203,12 +2869,23 @@ class Game {
     this.player = new Player(margin, centerY);
 
     this.lootSystem = new LootSystem(this.world);
-    let lootQual = this.currentMap.lootQuality;
-    if (hasTalent("luckyFind")) lootQual += 0.15;
+    const lootQual = this.currentMap.lootQuality;
     this.lootSystem.setMapLootQuality(lootQual);
+    this.lootSystem.setDifficulty(this.difficulty);
 
     this.enemySystem = new EnemySystem(this.world, this.currentMap, this.conditions, this.difficulty);
     this.enemySystem.spawnInitial();
+
+    if (hasTalent("socketFinder") && Math.random() < 0.2) {
+      const m = this.world.wallThickness + 80;
+      this.mapInteractables.push({
+        type: "socketWorkshop",
+        x: m + Math.random() * (this.world.width - 2 * m - 64),
+        y: m + Math.random() * (this.world.height - 2 * m - 64),
+        w: 64,
+        h: 64
+      });
+    }
 
     this.hazardSystem = new HazardSystem(this.world, this.conditions);
 
@@ -2236,27 +2913,42 @@ class Game {
     this.playerProjectiles = [];
     this.playerAttackCooldown = 0.6;
     this.playerAttackTimer = 0;
+    this.pulseOrbs = [];
+    this.dashStrikeState = null;
+    this.backfireDashState = null;
     this.doubleStrikeCounter = 0;
 
     this.exitTransitionCooldown = 0;
     this.victoryPortal = null;
     this.victoryPortalTimer = 0;
+    this.mapInteractables = [];
+    this.nearInteractable = null;
     this.activeBlessings = [];
 
     this.dashDuration = 0.3;
     this.dashInvincibleStart = 0.1;
     this.dashInvincibleDuration = 0.1;
-    this.baseDashCooldownTime = 0.8;
-    this.dashCooldownTime = 0.8;
+    let baseDash = hasTalent("swiftExtraction") ? 0.7 : 0.8;
+    if (hasTalent("reflexes")) baseDash = Math.max(0.1, baseDash - 0.1);
+    this.baseDashCooldownTime = baseDash;
+    this.dashCooldownTime = this.baseDashCooldownTime;
     this.dashSpeedMult = 3;
     this.dashActive = false;
     this.dashTimer = 0;
     this.dashCooldown = 0;
     this.dashDirection = new Vec2(0, 0);
     this.dashTrail = [];
+    this.floatingCombatText = [];
     this.lastMouseWorld = { x: 0, y: 0 };
     this.spaceConsumed = false;
     this.mouseHeld = false;
+
+    this.secureFootingUntil = 0;
+    this.cardSurgeUntil = 0;
+    this.ghostLooterUntargetableUntil = 0;
+    this.phantomExtractorUntil = 0;
+    this.phantomExtractorCooldownUntil = 0;
+    this.curatorUsedThisRun = false;
 
     this.gameOver = false;
     this.paused = false;
@@ -2272,15 +2964,7 @@ class Game {
     this.updateInventoryUI();
     this.updateEquippedUI();
     this.recalculateStats();
-    if (hasTalent("cardCollector")) {
-      const cards = getUpgradeCardDefs();
-      if (cards.length > 0 && this.activeUpgradeCards.length < this.maxUpgradeCards) {
-        const card = cards[Math.floor(Math.random() * cards.length)];
-        this.activeUpgradeCards.push({ ...card });
-      }
-    }
     if (hasTalent("immortal")) this.immortalShield = 30;
-    this.updateUpgradeCardsUI();
     this.recalculateStats();
     this.updateMapUI();
     this.updateXpUI();
@@ -2384,6 +3068,13 @@ class Game {
       if (k === "3" && !e.repeat) this.tryCastSkill(2);
       if (k === "4" && !e.repeat) this.tryCastSkill(3);
     });
+    window.addEventListener("keyup", (e) => {
+      const k = e.key.toLowerCase();
+      if (k === "1") this.tryReleaseChargedSkill(0);
+      if (k === "2") this.tryReleaseChargedSkill(1);
+      if (k === "3") this.tryReleaseChargedSkill(2);
+      if (k === "4") this.tryReleaseChargedSkill(3);
+    });
 
     requestAnimationFrame((t) => this.loop(t));
   }
@@ -2469,34 +3160,115 @@ class Game {
 
     if (this.devCardListEl) {
       this.devCardListEl.innerHTML = "";
-      const cards = getUpgradeCardDefs();
-      for (const card of cards) {
-        const li = document.createElement("li");
-        li.className = "dev-card-row";
+    }
 
-        const main = document.createElement("div");
-        main.className = "dev-card-row-main";
-
-        const nameEl = document.createElement("div");
-        nameEl.className = "dev-card-row-name";
-        nameEl.textContent = card.name;
-
-        const descEl = document.createElement("div");
-        descEl.className = "dev-card-row-desc";
-        descEl.textContent = card.description || "";
-
-        main.appendChild(nameEl);
-        main.appendChild(descEl);
-
-        const btn = document.createElement("button");
-        btn.textContent = "Spawn";
-        btn.addEventListener("click", () => this.spawnUpgradeCardToInventory(card));
-
-        li.appendChild(main);
-        li.appendChild(btn);
-
-        this.devCardListEl.appendChild(li);
+    const devModTogglesEl = document.getElementById("dev-skill-mod-toggles");
+    if (devModTogglesEl) {
+      devModTogglesEl.innerHTML = "";
+      for (let slot = 0; slot < 4; slot++) {
+        const skillId = this.skills?.[slot];
+        const def = skillId ? SKILL_DEFS.find((s) => s.id === skillId) : null;
+        const row = document.createElement("div");
+        row.className = "dev-mod-slot-row";
+        const label = document.createElement("span");
+        label.className = "dev-mod-slot-label";
+        label.textContent = `Slot ${slot + 1}: ${def ? def.name : "Empty"}`;
+        row.appendChild(label);
+        const wrap = document.createElement("div");
+        wrap.className = "dev-mod-checks";
+        for (const cardDef of MODIFICATION_CARD_DEFS) {
+          const modId = cardDef.id;
+          if (!cardDef) continue;
+          const labelEl = document.createElement("label");
+          labelEl.className = "dev-mod-check-label";
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.dataset.slot = String(slot);
+          cb.dataset.modId = modId;
+          cb.checked = (this.devModOverrides[slot] || []).includes(modId);
+          cb.addEventListener("change", () => {
+            const list = this.devModOverrides[slot] || [];
+            if (cb.checked) {
+              if (!list.includes(modId)) this.devModOverrides[slot] = [...list, modId];
+            } else {
+              this.devModOverrides[slot] = list.filter((id) => id !== modId);
+            }
+          });
+          labelEl.appendChild(cb);
+          labelEl.appendChild(document.createTextNode(" " + cardDef.name));
+          wrap.appendChild(labelEl);
+        }
+        row.appendChild(wrap);
+        devModTogglesEl.appendChild(row);
       }
+    }
+
+    const buildLogToggle = document.getElementById("build-log-toggle");
+    const buildLogPanel = document.getElementById("build-log-panel");
+    const buildLogClose = document.getElementById("build-log-close");
+    if (buildLogToggle && buildLogPanel) {
+      buildLogToggle.addEventListener("click", () => {
+        buildLogPanel.classList.toggle("hidden");
+        if (!buildLogPanel.classList.contains("hidden") && this.buildLogRefresh) this.buildLogRefresh();
+      });
+    }
+    if (buildLogClose && buildLogPanel) {
+      buildLogClose.addEventListener("click", () => buildLogPanel.classList.add("hidden"));
+    }
+    this.buildLogRefresh = () => {
+      const listEl = document.getElementById("build-log-list");
+      if (!listEl) return;
+      listEl.innerHTML = "";
+      const ups = this.runAttackUpgrades || [];
+      const pens = this.runAttackPenalties || [];
+      for (let i = 0; i < Math.max(ups.length, pens.length); i++) {
+        if (ups[i]) {
+          const li = document.createElement("li");
+          li.className = "build-log-upgrade";
+          li.textContent = `↑ ${ups[i].name}`;
+          listEl.appendChild(li);
+        }
+        if (pens[i]) {
+          const li = document.createElement("li");
+          li.className = "build-log-penalty";
+          li.textContent = `↓ ${pens[i].name}`;
+          listEl.appendChild(li);
+        }
+      }
+    };
+
+    const devForceUpgrade = document.getElementById("dev-force-upgrade");
+    const devForcePenalty = document.getElementById("dev-force-penalty");
+    const devApplyForce = document.getElementById("dev-apply-force-upgrade");
+    if (devForceUpgrade && devForcePenalty && devApplyForce) {
+      const defs = ATTACK_UPGRADE_DEFS[this.attackType] || {};
+      const allUpgrades = [...(defs.standardUpgrades || []), ...(defs.uniqueUpgrades || [])];
+      const allPenalties = [...(defs.standardPenalties || []), ...(defs.uniquePenalties || [])];
+      devForceUpgrade.innerHTML = '<option value="">-- Upgrade --</option>';
+      for (const u of allUpgrades) {
+        const opt = document.createElement("option");
+        opt.value = u.id;
+        opt.textContent = u.name;
+        devForceUpgrade.appendChild(opt);
+      }
+      devForcePenalty.innerHTML = '<option value="">-- Penalty --</option>';
+      for (const p of allPenalties) {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.name;
+        devForcePenalty.appendChild(opt);
+      }
+      devApplyForce.addEventListener("click", () => {
+        const uId = devForceUpgrade.value;
+        const pId = devForcePenalty.value;
+        if (!uId || !pId) return;
+        const uDef = allUpgrades.find((x) => x.id === uId);
+        const pDef = allPenalties.find((x) => x.id === pId);
+        if (!uDef || !pDef) return;
+        this.runAttackUpgrades.push({ id: uDef.id, name: uDef.name, description: uDef.description, value: rollUpgradeValue(uDef), percent: !!uDef.valueRange?.percent });
+        this.runAttackPenalties.push({ id: pDef.id, name: pDef.name, description: pDef.description, value: rollUpgradeValue(pDef), percent: !!pDef.valueRange?.percent });
+        if (this.buildLogRefresh) this.buildLogRefresh();
+      });
     }
   }
 
@@ -2559,9 +3331,8 @@ class Game {
 
   populateInventoryOverlay() {
     const equippedList = document.getElementById("inventory-overlay-equipped-list");
-    const cardsList = document.getElementById("inventory-overlay-cards-list");
     const invList = document.getElementById("inventory-overlay-inventory-list");
-    if (!equippedList || !cardsList || !invList) return;
+    if (!equippedList || !invList) return;
 
     equippedList.innerHTML = "";
     const slots = ["Helmet", "Body Armour", "Weapon", "Boots"];
@@ -2597,36 +3368,6 @@ class Game {
       equippedList.appendChild(li);
     }
 
-    const cardsTitle = document.getElementById("inventory-overlay-cards-title");
-    if (cardsTitle) cardsTitle.textContent = `Upgrade Cards (${this.activeUpgradeCards.length}/${this.maxUpgradeCards})`;
-
-    cardsList.innerHTML = "";
-    if (this.activeUpgradeCards.length === 0) {
-      const li = document.createElement("li");
-      li.className = "inventory-overlay-empty";
-      li.textContent = "No upgrade cards equipped";
-      cardsList.appendChild(li);
-    } else {
-      for (const card of this.activeUpgradeCards) {
-        const li = document.createElement("li");
-        li.textContent = card.name;
-        li.addEventListener("mouseenter", (e) => showItemTooltip(e, card, this));
-        li.addEventListener("mouseleave", hideItemTooltip);
-        li.addEventListener("click", () => {
-          const idx = this.activeUpgradeCards.indexOf(card);
-          if (idx >= 0) {
-            this.inventory.push(card);
-            this.activeUpgradeCards.splice(idx, 1);
-            this.updateInventoryUI();
-            this.updateUpgradeCardsUI();
-            this.populateInventoryOverlay();
-            this.recalculateStats();
-          }
-        });
-        cardsList.appendChild(li);
-      }
-    }
-
     invList.innerHTML = "";
     if (this.inventory.length === 0) {
       const li = document.createElement("li");
@@ -2654,15 +3395,23 @@ class Game {
     this.populateCraftingTab();
   }
 
+  getLivingItem() {
+    for (const slot of ["Helmet", "Body Armour", "Weapon", "Boots"]) {
+      const item = this.equipment[slot];
+      if (item?.livingItem) return item;
+    }
+    return this.inventory.find((it) => it.livingItem) || null;
+  }
+
   getCraftableEquipmentItems() {
     const items = [];
     for (const slot of ["Helmet", "Body Armour", "Weapon", "Boots"]) {
       const item = this.equipment[slot];
-      if (item && item.rarity !== "legendary") items.push({ item, source: "equipped", slot });
+      if (item && item.rarity !== "legendary" && !item.livingItem) items.push({ item, source: "equipped", slot });
     }
     for (let i = 0; i < this.inventory.length; i++) {
       const item = this.inventory[i];
-      if (item.type !== "Upgrade Card" && item.rarity !== "legendary" && (item.type === "Helmet" || item.type === "Body Armour" || item.type === "Weapon" || item.type === "Boots")) {
+      if (item.type !== "Upgrade Card" && item.rarity !== "legendary" && !item.livingItem && (item.type === "Helmet" || item.type === "Body Armour" || item.type === "Weapon" || item.type === "Boots")) {
         items.push({ item, source: "inventory", index: i });
       }
     }
@@ -2784,6 +3533,10 @@ class Game {
     let preview = "";
     let canCraft = false;
     if (this.craftingSelectedItem && this.craftingSelectedCube) {
+      const item = this.craftingSelectedItem;
+      if (item.rarity === "legendary") {
+        preview = "Legendary items cannot be further crafted.";
+      } else {
       const legCube = LEGENDARY_CUBES.find((c) => c.id === this.craftingSelectedCube);
       const [cubeId, tierStr] = this.craftingSelectedCube.match(/(.+)T(\d)$/)?.slice(1) || [null, "1"];
       const tier = parseInt(tierStr || "1", 10);
@@ -2791,7 +3544,6 @@ class Game {
       const upgCube = !legCube && UPGRADE_CUBES.find((c) => this.craftingSelectedCube.startsWith(c.id));
 
       if (legCube) {
-        const item = this.craftingSelectedItem;
         if (item.type === "Upgrade Card") {
           preview = "Legendary cubes can only be used on equipment.";
         } else if (item.rarity !== "rare") {
@@ -2838,6 +3590,7 @@ class Game {
           canCraft = true;
         }
       }
+      }
     }
     previewEl.textContent = preview;
     previewEl.classList.toggle("hidden", !preview);
@@ -2846,6 +3599,7 @@ class Game {
 
   executeCraft() {
     if (!this.craftingSelectedItem || !this.craftingSelectedCube) return;
+    if (this.craftingSelectedItem.rarity === "legendary") return;
     const cubeKey = this.craftingSelectedCube;
     const count = this.cubeInventory[cubeKey] || 0;
     if (count === 0) return;
@@ -2867,8 +3621,11 @@ class Game {
       this.applyUpgradeCube(this.craftingSelectedItem, upgCube, tier);
     }
 
-    this.cubeInventory[cubeKey] = count - 1;
-    if (this.cubeInventory[cubeKey] === 0) delete this.cubeInventory[cubeKey];
+    const cascadeSave = hasTalent("cubeCascade") && Math.random() < 0.1;
+    if (!cascadeSave) {
+      this.cubeInventory[cubeKey] = count - 1;
+      if (this.cubeInventory[cubeKey] === 0) delete this.cubeInventory[cubeKey];
+    }
     this.craftingSelectedCube = null;
     this.recalculateStats();
     this.updateEquippedUI();
@@ -2922,11 +3679,11 @@ class Game {
     if (cubeDef.id === "magicCube") {
       item.rarity = "magic";
       item.modifiers = item.modifiers || [];
-      const pool = [...MODIFIER_POOL];
+      const pool = getModifierPoolForType(item.type);
       for (let i = 0; i < 2; i++) {
         const idx = Math.floor(Math.random() * pool.length);
         const m = pool.splice(idx, 1)[0];
-        const val = rollModifierForTier(tier);
+        const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValue() : rollModifierForTier(tier);
         item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, addedAt: Date.now() });
       }
       const hasPrefix = NAME_PREFIXES.some((p) => item.name.startsWith(p + " "));
@@ -2941,12 +3698,13 @@ class Game {
     } else if (cubeDef.id === "rareCube") {
       item.rarity = "rare";
       item.modifiers = item.modifiers || [];
-      const pool = [...MODIFIER_POOL].filter((p) => !item.modifiers.some((m) => m.id === p.id));
-      for (let i = 0; i < 2; i++) {
+      const pool = getModifierPoolForType(item.type).filter((p) => !item.modifiers.some((m) => m.id === p.id));
+      const extraMods = hasTalent("transmutation") && Math.random() < 0.05 ? 3 : 2;
+      for (let i = 0; i < extraMods; i++) {
         if (pool.length === 0) break;
         const idx = Math.floor(Math.random() * pool.length);
         const m = pool.splice(idx, 1)[0];
-        const val = rollModifierForTier(tier);
+        const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValue() : rollModifierForTier(tier);
         item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, addedAt: Date.now() });
       }
       const hasPrefix = NAME_PREFIXES.some((p) => item.name.startsWith(p + " "));
@@ -2955,12 +3713,12 @@ class Game {
       if (!hasSuffix) item.name = `${item.name} ${NAME_SUFFIXES[Math.floor(Math.random() * NAME_SUFFIXES.length)]}`;
     } else if (cubeDef.id === "reforgeCube") {
       item.modifiers = [];
-      const pool = [...MODIFIER_POOL];
+      const pool = getModifierPoolForType(item.type);
       const count = item.rarity === "magic" ? 2 : 4;
       for (let i = 0; i < count; i++) {
         const idx = Math.floor(Math.random() * pool.length);
         const m = pool.splice(idx, 1)[0];
-        const val = rollModifierForTier(tier);
+        const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValue() : rollModifierForTier(tier);
         item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, addedAt: Date.now() });
       }
     }
@@ -2971,12 +3729,17 @@ class Game {
     const baseKey = EQUIPMENT_BASE_STAT[item.type];
     if (!item.baseStat && item.stats) {
       item.baseStat = { [baseKey]: item.stats[baseKey] ?? 0 };
+      const sec = EQUIPMENT_SECONDARY_BASE[item.type];
+      if (sec) item.baseStat[sec.statKey] = item.stats[sec.statKey] ?? 0;
     }
-    const baseVal = item.baseStat?.[baseKey] ?? item.stats?.[baseKey] ?? 0;
-    const stats = { [baseKey]: baseVal };
+    const stats = { ...(item.baseStat || {}) };
     for (const m of item.modifiers || []) {
       if (LEGENDARY_MODIFIER_IDS.includes(m.id)) continue;
-      if (m.statKey === "attackSpeed") {
+      if (m.id === "defenseStatScale") {
+        stats.defense = Math.round((stats.defense || 0) * (1 + m.value));
+      } else if (m.id === "maxHealthStatScale") {
+        stats.maxHealth = Math.round((stats.maxHealth || 0) * (1 + m.value));
+      } else if (m.statKey === "attackSpeed") {
         stats.attackSpeed = (stats.attackSpeed || 1) * (1 + m.value);
       } else if (m.statKey === "cooldownRecovery") {
         stats.cooldownRecovery = (stats.cooldownRecovery || 1) * (1 - m.value);
@@ -3022,7 +3785,6 @@ class Game {
     if (lpEl) lpEl.textContent = `+${this.lpEarnedThisRun ?? 0} Legacy Points earned this run`;
 
     const equippedEl = document.getElementById("victory-equipped");
-    const cardsEl = document.getElementById("victory-cards");
     const statsEl = document.getElementById("victory-stats");
     if (equippedEl) {
       equippedEl.innerHTML = "";
@@ -3030,14 +3792,6 @@ class Game {
         const div = document.createElement("div");
         div.textContent = `${slot}: ${item ? item.name : "None"}`;
         equippedEl.appendChild(div);
-      }
-    }
-    if (cardsEl) {
-      cardsEl.innerHTML = "";
-      for (const card of this.activeUpgradeCards) {
-        const div = document.createElement("div");
-        div.textContent = card.name;
-        cardsEl.appendChild(div);
       }
     }
     if (statsEl) {
@@ -3066,7 +3820,6 @@ class Game {
       level: this.level,
       difficulty: this.difficulty,
       equipment: JSON.parse(JSON.stringify(this.equipment)),
-      activeUpgradeCards: JSON.parse(JSON.stringify(this.activeUpgradeCards)),
       inventory: JSON.parse(JSON.stringify(this.inventory)),
       cubeInventory: JSON.parse(JSON.stringify(this.cubeInventory)),
       stats: { ...this.currentStats },
@@ -3107,12 +3860,12 @@ class Game {
 
     // Speed calculation — gear stats + card modifiers
     let effectiveSpeed = this.currentStats.speed;
-    if (this.hasUpgradeCard("swiftFeet") && this.swiftFeetTimer > 0) {
+    if (this.hasUpgradeCard("secureFooting") && this.swiftFeetTimer > 0) {
       this.swiftFeetTimer -= dt;
       if (this.swiftFeetTimer < 0) this.swiftFeetTimer = 0;
       effectiveSpeed *= 1.5;
     }
-    if (this.hasUpgradeCard("berserker")) {
+    if (this.hasUpgradeCard("berserkerRage")) {
       const ratio =
         this.currentStats.maxHealth > 0
           ? this.currentHealth / this.currentStats.maxHealth
@@ -3148,7 +3901,10 @@ class Game {
     if (this.whirlwindActive) effectiveSpeed *= 0.5;
     effectiveSpeed *= this.equipmentSpeedMult || 1;
     if (this.hasBlessing("swiftness")) effectiveSpeed *= 1.5;
+    if (hasTalent("secureFooting") && this.secureFootingUntil > this.time) effectiveSpeed *= 1.3;
+    if (hasTalent("cardSurge") && this.cardSurgeUntil > this.time) effectiveSpeed *= 1.15;
     if (this.playerSlowUntil > this.time) effectiveSpeed *= (this.playerSlowMult ?? 0.7);
+    if (this.playerHasteUntil > this.time) effectiveSpeed *= (this.playerHasteMult ?? 1);
     this.player.speed = effectiveSpeed;
 
     if (this.playerBurnUntil > this.time) {
@@ -3207,18 +3963,31 @@ class Game {
       for (const e of hit) {
         if (!this.bladeDashHitIds.has(e.id)) {
           this.bladeDashHitIds.add(e.id);
-          this.dealDamageToEnemy(e, this.computeSkillDamage(e, this.bladeDashMult));
+          const slot = this.bladeDashSlot;
+          const mods = slot != null ? getModsForSkillSlot(this, slot) : [];
+          this.dealDamageToEnemy(e, this.computeSkillDamage(e, this.bladeDashMult, slot, { sacrificeMult: this.bladeDashSacrificeMult }), { isSkill: true, skillSlot: slot, modList: mods });
         }
       }
       if (this.bladeDashTimer <= 0) {
         this.bladeDashActive = false;
         this.bladeDashHitIds.clear();
       }
+    } else if (this.dashStrikeState) {
+      // Player position is driven by updateDashStrike
+    } else if (this.backfireDashState) {
+      // Player position is driven by updateBackfireDash
     } else if (this.stunTimer <= 0) {
       this.player.update(dt, this.input, this.world);
     }
+    if (this.playerHasteUntil > this.time) {
+      this.adrenalineTrail = this.adrenalineTrail || [];
+      this.adrenalineTrail.push({ x: this.player.position.x, y: this.player.position.y });
+      if (this.adrenalineTrail.length > 12) this.adrenalineTrail.shift();
+    } else {
+      this.adrenalineTrail = [];
+    }
 
-    if (this.hasUpgradeCard("magnet")) this.applyMagnetEffect(dt);
+    if (this.hasUpgradeCard("cubeMagnet")) this.applyMagnetEffect(dt);
 
     if (this.hasUpgradeCard("healthRegen")) {
       const heal = this.currentStats.maxHealth * 0.03 * dt;
@@ -3240,6 +4009,22 @@ class Game {
     if (this.exitTransitionCooldown > 0) this.exitTransitionCooldown -= dt;
     if (!this.victoryPortal) this.checkExits();
     this.checkVictoryPortal(dt);
+    this.nearInteractable = null;
+    const px = this.player.position.x + this.player.size / 2;
+    const py = this.player.position.y + this.player.size / 2;
+    for (const obj of this.mapInteractables) {
+      const cx = obj.x + obj.w / 2;
+      const cy = obj.y + obj.h / 2;
+      if (Math.abs(px - cx) < 80 && Math.abs(py - cy) < 80) {
+        this.nearInteractable = obj;
+        break;
+      }
+    }
+    if (this.nearInteractable && this.input.keys.has("e")) {
+      this.interactWithMapObject(this.nearInteractable);
+      this.mapInteractables = this.mapInteractables.filter((o) => o !== this.nearInteractable);
+      this.nearInteractable = null;
+    }
     this.updateBlessings(dt);
 
     this.updateBossHealthBar();
@@ -3303,9 +4088,9 @@ class Game {
     this.skillEffects = [];
     this.dashActive = false;
     this.dashTrail = [];
-    let lootQual = targetMap.lootQuality;
-    if (hasTalent("luckyFind")) lootQual += 0.15;
+    const lootQual = targetMap.lootQuality;
     this.lootSystem.setMapLootQuality(lootQual);
+    this.lootSystem.setDifficulty(this.difficulty);
 
     if (hasTalent("immortal")) this.immortalShield = 30;
 
@@ -3315,6 +4100,7 @@ class Game {
       this.lootSystem.spawnBurstAt(cx, cy, 2, 0.8);
     }
 
+    this.empowerStacks = [0, 0, 0, 0];
     this.enemySystem.enemies = [];
     this.enemySystem.boss = null;
     this.enemySystem.projectiles = [];
@@ -3324,6 +4110,14 @@ class Game {
 
     if (this.escortQuest?.active && targetMapId === 0) {
       this.resolveStrangerQuest();
+    }
+
+    this.mapInteractables = [];
+    if (hasTalent("socketFinder") && Math.random() < 0.2) {
+      const margin = this.world.wallThickness + 80;
+      const ix = margin + Math.random() * (this.world.width - 2 * margin - 64);
+      const iy = margin + Math.random() * (this.world.height - 2 * margin - 64);
+      this.mapInteractables.push({ type: "socketWorkshop", x: ix, y: iy, w: 64, h: 64 });
     }
 
     const margin = this.world.wallThickness + 60;
@@ -3432,18 +4226,7 @@ class Game {
     }
     if (eventId === "spring") {
       if (choiceId === "drink") {
-        const cardId = SPRING_CARD_IDS[Math.floor(Math.random() * SPRING_CARD_IDS.length)];
-        const cards = getUpgradeCardDefs();
-        const card = cards.find((c) => c.cardKey === cardId) || { name: cardId, cardKey: cardId, description: "" };
-        this.inventory.push({
-          id: 55000 + Math.floor(Math.random() * 1000),
-          name: card.name,
-          type: "Upgrade Card",
-          stats: {},
-          cardKey: card.cardKey,
-          description: card.description || ""
-        });
-        this.updateInventoryUI();
+        // No reward (upgrade cards removed)
       }
       this.closeEventOverlay();
       return;
@@ -3453,17 +4236,8 @@ class Game {
         const sacrifice = Math.floor(this.xp * 0.3);
         this.xp -= sacrifice;
         this.updateXpUI();
-        const cards = getUpgradeCardDefs();
-        const card = cards[Math.floor(Math.random() * cards.length)];
-        if (this.activeUpgradeCards.length >= this.maxUpgradeCards) {
-          const removed = this.activeUpgradeCards.shift();
-          if (removed) this.inventory.push(removed);
-        }
-        this.activeUpgradeCards.push({ ...card });
-        this.updateUpgradeCardsUI();
-        this.recalculateStats();
       } else if (choiceId === "destroy") {
-        this.inventory = this.inventory.filter((i) => i.type === "Upgrade Card");
+        this.inventory = [];
         this.equipment = { Helmet: null, "Body Armour": null, Weapon: null, Boots: null };
         this.updateInventoryUI();
         this.updateEquippedUI();
@@ -3505,7 +4279,8 @@ class Game {
   grantEventRareEquipment() {
     const types = ["Helmet", "Boots", "Body Armour", "Weapon"];
     const type = types[Math.floor(Math.random() * types.length)];
-    const def = generateEquipmentItem(type, this.currentMap?.lootQuality ?? 0.5, 0.65);
+    const diff = Math.min(5, Math.max(1, this.difficulty ?? 1));
+    const def = generateEquipmentItem(type, this.currentMap?.lootQuality ?? 0.5, 0.65, null, { difficulty: diff });
     this.inventory.push({
       id: 50000 + Math.floor(Math.random() * 10000),
       name: def.name,
@@ -3608,9 +4383,20 @@ class Game {
 
   grantXP(amount) {
     const mult = this.equipmentXpGainedMult ?? 1;
-    this.xp += Math.round(amount * mult);
+    const rounded = Math.round(amount * mult);
+    this.xp += rounded;
     this.updateXpUI();
     this.checkLevelUp();
+    for (let i = 0; i < (this.skills?.length || 0); i++) {
+      const skillId = this.skills[i];
+      if (!skillId) continue;
+      markSkillEncountered(skillId);
+      const result = addSkillXp(skillId, rounded);
+      if (result && result.leveledUp) {
+        this.skillLevelUpThisFrame = this.skillLevelUpThisFrame || [];
+        this.skillLevelUpThisFrame.push({ skillId, level: result.level });
+      }
+    }
   }
 
   checkLevelUp() {
@@ -3618,25 +4404,115 @@ class Game {
     const nextThreshold = getXpForLevel(this.level + 1);
     if (this.xp >= nextThreshold) {
       this.level++;
+      if (hasTalent("cardTranscendence") && Math.random() < 0.1) {
+        const card = MODIFICATION_CARD_DEFS[Math.floor(Math.random() * MODIFICATION_CARD_DEFS.length)];
+        addModCardToInventory(card.id);
+      }
       this.showLevelUpChoices();
     }
   }
 
-  showLevelUpChoices() {
-    const shuffled = [...LEVEL_UP_BONUSES].sort(() => Math.random() - 0.5);
-    this.levelUpChoices = shuffled.slice(0, 3);
+  buildLevelUpCards() {
+    const defs = ATTACK_UPGRADE_DEFS[this.attackType];
+    if (!defs) return [];
+    const takenUpgrades = new Set((this.runAttackUpgrades || []).map((u) => u.id));
+    const takenPenalties = new Set((this.runAttackPenalties || []).map((p) => p.id));
 
+    const pickStandardUpgrade = () => {
+      const pool = (defs.standardUpgrades || []).filter((u) => !takenUpgrades.has(u.id));
+      if (pool.length === 0) return null;
+      const def = pool[Math.floor(Math.random() * pool.length)];
+      const value = rollUpgradeValue(def);
+      return { id: def.id, name: def.name, description: def.description, value };
+    };
+    const pickStandardPenalty = () => {
+      const pool = (defs.standardPenalties || []).filter((p) => !takenPenalties.has(p.id));
+      if (pool.length === 0) return null;
+      const def = pool[Math.floor(Math.random() * pool.length)];
+      const value = rollUpgradeValue(def);
+      return { id: def.id, name: def.name, description: def.description, value };
+    };
+    const pickUniqueUpgrade = () => {
+      const pool = (defs.uniqueUpgrades || []).filter((u) => !takenUpgrades.has(u.id));
+      if (pool.length === 0) return null;
+      const def = pool[Math.floor(Math.random() * pool.length)];
+      return { id: def.id, name: def.name, description: def.description, value: undefined };
+    };
+    const pickUniquePenalty = (excludeIds = []) => {
+      const pool = (defs.uniquePenalties || []).filter(
+        (p) => !takenPenalties.has(p.id) && !excludeIds.includes(p.id)
+      );
+      if (pool.length === 0) return null;
+      const def = pool[Math.floor(Math.random() * pool.length)];
+      return { id: def.id, name: def.name, description: def.description, value: undefined };
+    };
+
+    const cards = [];
+    const usedInOfferUp = new Set();
+    const usedInOfferPen = new Set();
+    for (let i = 0; i < 2; i++) {
+      const upgrades = [];
+      for (let j = 0; j < 2; j++) {
+        const poolUp = (defs.standardUpgrades || []).filter((u) => !takenUpgrades.has(u.id) && !usedInOfferUp.has(u.id));
+        if (poolUp.length === 0) break;
+        const defUp = poolUp[Math.floor(Math.random() * poolUp.length)];
+        const upgrade = { id: defUp.id, name: defUp.name, description: defUp.description, value: rollUpgradeValue(defUp), percent: !!defUp.valueRange?.percent };
+        upgrades.push(upgrade);
+        usedInOfferUp.add(upgrade.id);
+      }
+      const poolPen = (defs.standardPenalties || []).filter((p) => !takenPenalties.has(p.id) && !usedInOfferPen.has(p.id));
+      if (upgrades.length < 2 || poolPen.length === 0) break;
+      const defPen = poolPen[Math.floor(Math.random() * poolPen.length)];
+      const penalty = { id: defPen.id, name: defPen.name, description: defPen.description, value: rollUpgradeValue(defPen), percent: !!defPen.valueRange?.percent };
+      cards.push({ upgrades, penalty, isUnique: false });
+      usedInOfferPen.add(penalty.id);
+    }
+    const uUpgrades = [];
+    const showUniqueCard = this.level === 5 || this.level === 10;
+    if (showUniqueCard) {
+      const usedUniqueUp = new Set();
+      for (let j = 0; j < 1; j++) {
+        const poolU = (defs.uniqueUpgrades || []).filter((u) => !takenUpgrades.has(u.id) && !usedUniqueUp.has(u.id));
+        if (poolU.length === 0) break;
+        const defU = poolU[Math.floor(Math.random() * poolU.length)];
+        uUpgrades.push({ id: defU.id, name: defU.name, description: defU.description, value: undefined });
+        usedUniqueUp.add(defU.id);
+      }
+      let blockedPenalties = [];
+      for (const u of uUpgrades) {
+        blockedPenalties = blockedPenalties.concat(CONTRADICTORY_UPGRADE_PENALTY[u.id] || []);
+      }
+      const uPen = pickUniquePenalty(blockedPenalties);
+      if (uUpgrades.length === 1 && uPen) {
+        cards.push({ upgrades: uUpgrades, penalty: uPen, isUnique: true });
+      }
+    }
+
+    return cards;
+  }
+
+  showLevelUpChoices() {
+    this.levelUpChoices = this.buildLevelUpCards();
+    if (!this.levelUpChoices || this.levelUpChoices.length === 0) {
+      this.levelUpChoices = null;
+      return;
+    }
     const overlay = document.getElementById("level-up-overlay");
     const choicesEl = document.getElementById("level-up-choices");
     const rerollBtn = document.getElementById("level-up-reroll");
     if (!overlay || !choicesEl) return;
 
     choicesEl.innerHTML = "";
-    for (const bonus of this.levelUpChoices) {
+    for (const card of this.levelUpChoices) {
       const btn = document.createElement("button");
-      btn.className = "level-up-choice-btn";
-      btn.textContent = bonus.label;
-      btn.addEventListener("click", () => this.applyLevelUpChoice(bonus));
+      btn.className = "level-up-card" + (card.isUnique ? " level-up-card-unique" : "");
+      const star = card.isUnique ? '<span class="level-up-card-star">★</span>' : "";
+      const upgradeBlocks = (card.upgrades || []).map(
+        (u, idx) => `<div class="level-up-card-upgrade">${idx === 0 ? star : ""}<strong>${u.name}</strong><br><span class="level-up-card-desc">${getUpgradeDisplayDescription(u)}</span></div>`
+      ).join("");
+      const penaltyBlock = `<div class="level-up-card-penalty"><strong>${card.penalty.name}</strong><br><span class="level-up-card-desc">${getPenaltyDisplayDescription(card.penalty)}</span></div>`;
+      btn.innerHTML = `<div class="level-up-card-inner">${upgradeBlocks}<div class="level-up-card-divider"></div>${penaltyBlock}</div>`;
+      btn.addEventListener("click", () => this.applyLevelUpChoice(card, btn));
       choicesEl.appendChild(btn);
     }
     if (rerollBtn) {
@@ -3656,23 +4532,39 @@ class Game {
     }
   }
 
-  applyLevelUpChoice(bonus) {
-    bonus.apply(this);
+  applyLevelUpChoice(card, cardEl) {
+    for (const u of (card.upgrades || [])) this.runAttackUpgrades.push(u);
+    this.runAttackPenalties.push(card.penalty);
     this.levelUpChoices = null;
 
-    const overlay = document.getElementById("level-up-overlay");
-    if (overlay) overlay.classList.add("hidden");
-
-    this.paused = false;
-    if (this.pauseToggleEl) {
-      this.pauseToggleEl.textContent = "⏸ Pause";
-      this.pauseToggleEl.classList.remove("paused");
+    if (cardEl) {
+      cardEl.classList.add("level-up-card-selected");
+      setTimeout(() => {
+        const overlay = document.getElementById("level-up-overlay");
+        if (overlay) overlay.classList.add("hidden");
+        this.paused = false;
+        if (this.pauseToggleEl) {
+          this.pauseToggleEl.textContent = "⏸ Pause";
+          this.pauseToggleEl.classList.remove("paused");
+        }
+        this.recalculateStats();
+        this.updateXpUI();
+        this.checkLevelUp();
+        if (this.buildLogRefresh) this.buildLogRefresh();
+      }, 320);
+    } else {
+      const overlay = document.getElementById("level-up-overlay");
+      if (overlay) overlay.classList.add("hidden");
+      this.paused = false;
+      if (this.pauseToggleEl) {
+        this.pauseToggleEl.textContent = "⏸ Pause";
+        this.pauseToggleEl.classList.remove("paused");
+      }
+      this.recalculateStats();
+      this.updateXpUI();
+      this.checkLevelUp();
+      if (this.buildLogRefresh) this.buildLogRefresh();
     }
-
-    this.recalculateStats();
-    this.updateXpUI();
-    this.updateUpgradeCardsUI();
-    this.checkLevelUp();
   }
 
   getWorldPositionFromScreen(clientX, clientY) {
@@ -3735,7 +4627,7 @@ class Game {
     if (e.button !== 0 || this.gameOver || this.paused || this.levelUpChoices) return;
     this.mouseHeld = true;
     this.lastMouseWorld = this.getWorldPositionFromClick(e);
-    this.firePlayerProjectile(this.lastMouseWorld.x, this.lastMouseWorld.y);
+    this.tryBasicAttack(this.lastMouseWorld.x, this.lastMouseWorld.y);
   }
 
   tryDash() {
@@ -3770,11 +4662,14 @@ class Game {
     this.spaceConsumed = true;
   }
 
-  firePlayerProjectile(targetX, targetY) {
-    let atkSpdMult = (this.levelAttackSpeedMult || 1) * (this.equipmentAttackSpeedMult || 1);
+  tryBasicAttack(targetX, targetY) {
+    let atkSpdMult = (this.equipmentAttackSpeedMult || 1) * (this.talentAttackSpeedMult || 1);
+    atkSpdMult *= 1 + this.getAttackUpgradeValue("attackSpeed");
+    atkSpdMult *= 1 - this.getAttackPenaltyValue("speedPenalty");
     if (this.playerWeakenUntil > this.time) atkSpdMult *= 0.9;
     let effectiveCooldown = this.playerAttackCooldown / atkSpdMult;
-    if (this.hasUpgradeCard("berserker")) {
+    effectiveCooldown += this.getAttackPenaltyValue("cooldown");
+    if (this.hasUpgradeCard("berserkerRage")) {
       const ratio =
         this.currentStats.maxHealth > 0
           ? this.currentHealth / this.currentStats.maxHealth
@@ -3782,47 +4677,293 @@ class Game {
       effectiveCooldown *= Math.max(0.4, ratio);
     }
     if (this.playerAttackTimer > 0) return;
+    if (this.dashStrikeState) return;
+    if (this.backfireDashState) return;
+
+    const px = this.player.position.x + this.player.size / 2;
+    const py = this.player.position.y + this.player.size / 2;
+    const dx = targetX - px;
+    const dy = targetY - py;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+
     this.playerAttackTimer = effectiveCooldown;
 
+    if (this.attackType === "projectile") {
+      if (this.hasAttackPenalty("misfire") && Math.random() < 0.1) return;
+      if (this.hasAttackPenalty("delayedFire")) {
+        this.delayedFireQueue = this.delayedFireQueue || [];
+        this.delayedFireQueue.push({ targetX, targetY, at: this.time + 0.3 });
+        return;
+      }
+      this.firePlayerProjectile(targetX, targetY);
+      return;
+    }
+
+    const baseDamage = this.computePlayerDamage(null);
+
+    if (this.attackType === "fanStrike") {
+      const FAN_RANGE = 210;
+      const hit = this.enemiesInCone(px, py, dirX, dirY, FAN_RANGE, 60);
+      for (const e of hit) this.dealDamageToEnemy(e, baseDamage);
+      this.skillEffects.push({ type: "attackFanArc", x: px, y: py, dirX, dirY, range: FAN_RANGE, t: 0, duration: 0.2 });
+      return;
+    }
+
+    if (this.attackType === "pulseShot") {
+      const PULSE_RADIUS = 55;
+      const PULSE_DELAY = 0.35;
+      this.skillEffects.push({ type: "pulseStrike", x: targetX, y: targetY, damage: baseDamage, radius: PULSE_RADIUS, delay: PULSE_DELAY, t: 0, duration: PULSE_DELAY + 0.25 });
+      return;
+    }
+
+    if (this.attackType === "thrustStrike") {
+      const THRUST_RANGE = 240;
+      const hit = this.getEnemiesInLine(px, py, dirX, dirY, THRUST_RANGE, 8);
+      const dmg = Math.round(baseDamage * 1.6);
+      for (const e of hit) this.dealDamageToEnemy(e, dmg);
+      const endX = px + dirX * THRUST_RANGE;
+      const endY = py + dirY * THRUST_RANGE;
+      this.skillEffects.push({ type: "attackThrustLunge", x: px, y: py, dirX, dirY, hitX: endX, hitY: endY, t: 0, duration: 0.15 });
+      return;
+    }
+
+    if (this.attackType === "dashStrike") {
+      const surgeDist = this.player.size * 0.5;
+      this.dashStrikeState = { phase: "surge", startX: this.player.position.x, startY: this.player.position.y, dirX, dirY, dist: surgeDist, traveled: 0 };
+      this.skillEffects.push({ type: "dashStrikeSurge", x: px, y: py, dirX, dirY, t: 0, duration: 0.25 });
+      return;
+    }
+
+    if (this.attackType === "backfireShot") {
+      const backDist = this.player.size * 1.5;
+      const projX = px - PLAYER_PROJECTILE_SIZE / 2;
+      const projY = py - PLAYER_PROJECTILE_SIZE / 2;
+      const speedMult = 1 + this.getAttackUpgradeValue("projectileSpeed") - this.getAttackPenaltyValue("slowShot");
+      const maxDistMult = 1 + this.getAttackUpgradeValue("rangeBoost") - this.getAttackPenaltyValue("reducedRange");
+      const piercesRemaining = (this.hasUpgradeCard("piercing") || this.hasAttackUpgrade("piercing")) ? 3 : 2;
+      const fragileShot = this.hasAttackPenalty("fragileShot");
+      this.overdriveCounter = (this.overdriveCounter || 0) + 1;
+      const isOverdrive = this.hasAttackUpgrade("overdrive") && (this.overdriveCounter % 5 === 0);
+      const proj = new PlayerProjectile(projX, projY, targetX, targetY, baseDamage, {
+        speedMult, maxDistMult, piercesRemaining, fragileShot,
+        ghost: this.hasAttackUpgrade("ghostProjectile"),
+        splitting: this.hasAttackUpgrade("splitting"),
+        overdrive: isOverdrive
+      });
+      if (this.hasUpgradeCard("homing")) proj.maxLifetime = 3;
+      this.playerProjectiles.push(proj);
+      this.backfireDashState = { dirX, dirY, traveled: 0, dist: backDist };
+      this.skillEffects.push({ type: "backfireTrail", x: px, y: py, dirX, dirY, t: 0, duration: 0.25 });
+      return;
+    }
+  }
+
+  getProjectileCount() {
+    let n = 1;
+    const ups = this.runAttackUpgrades || [];
+    const pens = this.runAttackPenalties || [];
+    n += ups.filter((u) => u.id === "extraProjectile").length;
+    if (this.hasUpgradeCard("volley")) n += 3;
+    n -= pens.filter((p) => p.id === "fewerProjectiles").length;
+    n -= pens.filter((p) => p.id === "reducedProjectiles").length;
+    return Math.max(1, n);
+  }
+
+  firePlayerProjectile(targetX, targetY) {
     const px = this.player.position.x + this.player.size / 2 - PLAYER_PROJECTILE_SIZE / 2;
     const py = this.player.position.y + this.player.size / 2 - PLAYER_PROJECTILE_SIZE / 2;
-    const damage = this.computePlayerDamage(null);
-    const proj = new PlayerProjectile(px, py, targetX, targetY, damage);
-    this.playerProjectiles.push(proj);
+    let baseDamage = this.computePlayerDamage(null);
+    const critChance = this.getAttackUpgradeValue("critChance");
+    const isCrit = critChance > 0 && Math.random() < critChance;
+    if (isCrit) baseDamage = Math.round(baseDamage * 1.5);
+
+    let dirX = targetX - (this.player.position.x + this.player.size / 2);
+    let dirY = targetY - (this.player.position.y + this.player.size / 2);
+    const dist = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
+    dirX /= dist;
+    dirY /= dist;
+    if (this.hasAttackPenalty("randomDirection") && !this.hasUpgradeCard("homing")) {
+      const angle = Math.random() * Math.PI * 2;
+      dirX = Math.cos(angle);
+      dirY = Math.sin(angle);
+    } else if (this.hasAttackPenalty("oppositeFire")) {
+      dirX = -dirX;
+      dirY = -dirY;
+    }
+
+    const count = this.getProjectileCount();
+    let spreadRad = (12 * Math.PI) / 180;
+    spreadRad += this.getAttackPenaltyValue("widerSpread");
+    spreadRad -= this.getAttackUpgradeValue("spreadReduction");
+    spreadRad = Math.max(0.02, spreadRad);
+
+    const speedMult = 1 + this.getAttackUpgradeValue("projectileSpeed") - this.getAttackPenaltyValue("slowShot");
+    const maxDistMult = 1 + this.getAttackUpgradeValue("rangeBoost") - this.getAttackPenaltyValue("reducedRange");
+    const piercesRemaining = (this.hasUpgradeCard("piercing") || this.hasAttackUpgrade("piercing")) ? 3 : 2;
+    const fragileShot = this.hasAttackPenalty("fragileShot");
+    const ghost = this.hasAttackUpgrade("ghostProjectile");
+    const splitting = this.hasAttackUpgrade("splitting");
+    this.overdriveCounter = (this.overdriveCounter || 0);
+
+    for (let i = 0; i < count; i++) {
+      this.overdriveCounter++;
+      const isOverdrive = this.hasAttackUpgrade("overdrive") && (this.overdriveCounter % 5 === 0);
+      let tx = targetX;
+      let ty = targetY;
+      if (count > 1) {
+        const offset = (i - (count - 1) / 2) * spreadRad;
+        const cos = Math.cos(offset);
+        const sin = Math.sin(offset);
+        const ndx = dirX * cos - dirY * sin;
+        const ndy = dirX * sin + dirY * cos;
+        const far = 800;
+        tx = this.player.position.x + this.player.size / 2 + ndx * far;
+        ty = this.player.position.y + this.player.size / 2 + ndy * far;
+      }
+      const damage = baseDamage;
+      const proj = new PlayerProjectile(px, py, tx, ty, damage, { speedMult, maxDistMult, piercesRemaining, fragileShot, ghost, splitting, overdrive: isOverdrive });
+      proj.maxLifetime = 2;
+      this.playerProjectiles.push(proj);
+    }
+
+    if (this.hasAttackPenalty("selfKnockback")) {
+      const kick = 8;
+      this.player.position.x -= dirX * kick;
+      this.player.position.y -= dirY * kick;
+      const margin = this.world.wallThickness;
+      this.player.position.x = Math.max(margin, Math.min(this.player.position.x, this.world.width - margin - this.player.size));
+      this.player.position.y = Math.max(margin, Math.min(this.player.position.y, this.world.height - margin - this.player.size));
+    }
   }
 
   updatePlayerProjectiles(dt) {
     const surviving = [];
+    const toAdd = [];
     const es = this.enemySystem;
     for (const proj of this.playerProjectiles) {
+      proj._spawn = null;
       proj.update(dt, this);
+      if (proj._spawn) toAdd.push(...proj._spawn);
       if (proj.isExpired()) continue;
+      if (proj._spawn) continue;
 
       let hit = false;
-      for (const enemy of es.enemies) {
+      const applyHit = (enemy, dmg) => {
+        proj.hitEnemyIds.add(enemy.id);
+        let useDmg = dmg;
+        if (this.hasAttackUpgrade("momentum")) {
+          useDmg = Math.round(useDmg * (1 + Math.min(1, proj.flightTime) * 0.1));
+        }
+        if (hasTalent("executioner") && enemy.health < enemy.maxHealth * 0.3) {
+          useDmg = Math.round(useDmg * 1.25);
+        }
+        this.dealDamageToEnemy(enemy, useDmg);
+        if (this.hasAttackUpgrade("chainLightning")) {
+          const cx = enemy.position.x + enemy.size / 2;
+          const cy = enemy.position.y + enemy.size / 2;
+          const exclude = new Set(proj.hitEnemyIds);
+          const chainDmg = Math.round(useDmg * 0.33);
+          for (let i = 0; i < 3; i++) {
+            const next = this.getNearestEnemy(cx, cy, 150, exclude);
+            if (!next) break;
+            this.dealDamageToEnemy(next, chainDmg);
+            exclude.add(next.id);
+          }
+        }
+        if (this.hasAttackUpgrade("explosive")) {
+          const ex = enemy.position.x + enemy.size / 2;
+          const ey = enemy.position.y + enemy.size / 2;
+          const hitArea = this.enemiesInRadius(ex, ey, 45);
+          for (const e of hitArea) {
+            if (e !== enemy) this.dealDamageToEnemy(e, Math.round(proj.damage * 0.6));
+          }
+        }
+      };
+
+      const allEnemies = es.boss ? [...es.enemies, es.boss] : es.enemies;
+      for (const enemy of allEnemies) {
         if (enemy.isDead) continue;
         if (enemy._undyingRespawnTime && this.time < enemy._undyingRespawnTime) continue;
+        if (proj.hitEnemyIds.has(enemy.id)) continue;
         if (proj.intersects(enemy)) {
           hit = true;
-          let dmg = proj.damage;
-          if (hasTalent("executioner") && enemy.health < enemy.maxHealth * 0.3) {
-            dmg = Math.round(dmg * 1.25);
+          applyHit(enemy, proj.damage);
+          if (proj.fragileShot) break;
+          if (proj.piercing) {
+            proj.piercesRemaining--;
+            if (proj.piercesRemaining <= 0) break;
+          } else {
+            break;
           }
-          this.dealDamageToEnemy(enemy, dmg);
-          break;
         }
       }
-      if (!hit && es.boss && proj.intersects(es.boss)) {
-        hit = true;
-        let dmg = proj.damage;
-        if (hasTalent("executioner") && es.boss.health < es.boss.maxHealth * 0.3) {
-          dmg = Math.round(dmg * 1.25);
-        }
-        this.dealDamageToEnemy(es.boss, dmg);
-      }
-      if (!hit && !proj.isExpired()) surviving.push(proj);
+      const keep = !proj.isExpired() && (!hit || (!proj.fragileShot && (!proj.piercing || proj.piercesRemaining > 0)));
+      if (keep) surviving.push(proj);
     }
-    this.playerProjectiles = surviving;
+    this.playerProjectiles = surviving.concat(toAdd);
+  }
+
+  updateDashStrike(dt) {
+    if (!this.dashStrikeState) return;
+    const s = this.dashStrikeState;
+    const margin = this.world.wallThickness;
+    if (s.phase === "surge") {
+      const speed = 600;
+      const move = Math.min(speed * dt, s.dist - s.traveled);
+      this.player.position.x += s.dirX * move;
+      this.player.position.y += s.dirY * move;
+      this.player.position.x = Math.max(margin, Math.min(this.player.position.x, this.world.width - margin - this.player.size));
+      this.player.position.y = Math.max(margin, Math.min(this.player.position.y, this.world.height - margin - this.player.size));
+      s.traveled += move;
+      if (s.traveled >= s.dist) {
+        s.phase = "fan";
+        const px = this.player.position.x + this.player.size / 2;
+        const py = this.player.position.y + this.player.size / 2;
+        const DASH_STRIKE_FAN_RANGE = 150;
+        const hit = this.enemiesInCone(px, py, s.dirX, s.dirY, DASH_STRIKE_FAN_RANGE, 45);
+        const dmg = this.computePlayerDamage(null);
+        for (const e of hit) this.dealDamageToEnemy(e, dmg);
+        this.skillEffects.push({ type: "dashStrikeFan", x: px, y: py, dirX: s.dirX, dirY: s.dirY, range: DASH_STRIKE_FAN_RANGE, t: 0, duration: 0.12 });
+        this.dashStrikeState = null;
+      }
+    }
+  }
+
+  updateBackfireDash(dt) {
+    if (!this.backfireDashState) return;
+    const s = this.backfireDashState;
+    const speed = 500;
+    const move = Math.min(speed * dt, s.dist - s.traveled);
+    this.player.position.x -= s.dirX * move;
+    this.player.position.y -= s.dirY * move;
+    const margin = this.world.wallThickness;
+    this.player.position.x = Math.max(margin, Math.min(this.player.position.x, this.world.width - margin - this.player.size));
+    this.player.position.y = Math.max(margin, Math.min(this.player.position.y, this.world.height - margin - this.player.size));
+    s.traveled += move;
+    if (s.traveled >= s.dist) this.backfireDashState = null;
+  }
+
+  updatePulseOrbs(dt) {
+    const margin = this.world.wallThickness;
+    const surviving = [];
+    for (const orb of this.pulseOrbs) {
+      const moveX = orb.vx * dt;
+      const moveY = orb.vy * dt;
+      orb.x += moveX;
+      orb.y += moveY;
+      orb.traveled += Math.sqrt(moveX * moveX + moveY * moveY);
+      const hitWall = orb.x < margin || orb.x > this.world.width - margin || orb.y < margin || orb.y > this.world.height - margin;
+      if (orb.traveled >= orb.maxDist || hitWall) {
+        const hit = this.enemiesInRadius(orb.x, orb.y, orb.detRadius);
+        for (const e of hit) this.dealDamageToEnemy(e, orb.damage);
+        this.skillEffects.push({ type: "pulseDetonation", x: orb.x, y: orb.y, radius: orb.detRadius, t: 0, duration: 0.25 });
+      } else {
+        surviving.push(orb);
+      }
+    }
+    this.pulseOrbs = surviving;
   }
 
   updateEnemyAffixes(dt, enemy) {
@@ -3905,11 +5046,26 @@ class Game {
     for (let i = 0; i < 4; i++) {
       if (this.skillCooldowns[i] > 0) this.skillCooldowns[i] -= dt;
     }
-
-    if (this.mouseHeld && !this.gameOver && !this.paused && !this.levelUpChoices) {
-      this.firePlayerProjectile(this.lastMouseWorld.x, this.lastMouseWorld.y);
+    while (this.chainCastQueue.length > 0 && this.chainCastQueue[0].t <= this.time) {
+      const { skillId, slot } = this.chainCastQueue.shift();
+      this.executeSkill(skillId, slot, { chainCast: true });
     }
 
+    if (this.mouseHeld && !this.gameOver && !this.paused && !this.levelUpChoices) {
+      this.tryBasicAttack(this.lastMouseWorld.x, this.lastMouseWorld.y);
+    }
+    if (this.delayedFireQueue && this.delayedFireQueue.length > 0) {
+      const stillPending = [];
+      for (const item of this.delayedFireQueue) {
+        if (this.time >= item.at) this.firePlayerProjectile(item.targetX, item.targetY);
+        else stillPending.push(item);
+      }
+      this.delayedFireQueue = stillPending;
+    }
+
+    this.updateDashStrike(dt);
+    this.updateBackfireDash(dt);
+    this.updatePulseOrbs(dt);
     this.updatePlayerProjectiles(dt);
 
     const es = this.enemySystem;
@@ -3922,6 +5078,7 @@ class Game {
       for (const enemy of es.enemies) {
         enemy.update(dt, player, this.time, globalSlow, this.viewWidth / 4, this);
         this.updateEnemyAffixes(dt, enemy);
+        this.processEnemyDebuffs(dt, enemy);
         if (enemy.intersects(player)) {
           if (enemy.attackTimer <= 0) {
             enemy.attackTimer = enemy.attackCooldown;
@@ -3959,6 +5116,7 @@ class Game {
     for (const enemy of es.enemies) {
       enemy.update(dt, player, this.time, globalSlow, this.viewWidth / 4, this);
       this.updateEnemyAffixes(dt, enemy);
+      this.processEnemyDebuffs(dt, enemy);
 
       if (enemy.intersects(player)) {
         if (enemy.attackTimer <= 0) {
@@ -3989,8 +5147,11 @@ class Game {
     }
 
     es.enemies = surviving;
+    this.updateProjectiles(dt);
     es.update(dt);
     this.updateEnemyCountUI();
+
+    this.floatingCombatText = this.floatingCombatText.filter((e) => this.time - e.t <= 0.8);
   }
 
   updateAuras(dt) {
@@ -4034,7 +5195,12 @@ class Game {
         this.flameAuraAccum = 0;
         const hit = this.enemiesInRadius(px, py, auraRadius);
         const dmg = Math.max(1, Math.round(this.currentStats.attack * 0.2));
-        for (const e of hit) this.dealDamageToEnemy(e, dmg);
+        for (const e of hit) {
+          this.dealDamageToEnemy(e, dmg, { isSkill: true });
+          e.burnUntil = this.time + 3;
+          e.burnDps = Math.max(e.burnDps || 0, dmg * 0.15);
+          e.burnAccum = 0;
+        }
       }
     }
     if (this.activeAuras.has("thunderAura")) {
@@ -4044,7 +5210,7 @@ class Game {
         const target = this.getNearestEnemy(px, py, 200);
         if (target) {
           const dmg = this.computeSkillDamage(target, 0.6);
-          this.dealDamageToEnemy(target, dmg);
+          this.dealDamageToEnemy(target, dmg, { isSkill: true });
         }
       }
     }
@@ -4063,17 +5229,44 @@ class Game {
     }
   }
 
-  dealDamageToEnemy(enemy, amount) {
+  dealDamageToEnemy(enemy, amount, opts = {}) {
     let dmg = Math.round(amount);
     if (this.playerInWeakeningPatch) dmg = Math.max(1, Math.round(dmg * 0.7));
     if (this.hasCondition("enemyResist")) dmg = Math.max(1, Math.round(dmg * 0.8));
+    const effectiveDefense = (enemy.defense || 0) * (enemy.voidDefenseMult ?? 1);
+    dmg = Math.max(1, Math.round(dmg - effectiveDefense));
+    if (hasTalent("predator") && enemy.maxHealth > 0 && enemy.health / enemy.maxHealth <= 0.25) {
+      dmg = Math.max(1, Math.round(dmg * 1.5));
+    }
+    const skillSlot = opts.skillSlot;
+    const mods = opts.modList != null ? opts.modList : (skillSlot != null ? getModsForSkillSlot(this, skillSlot) : []);
+    const mult = getModEffectMult(this);
+    if (mods.includes("lifesteal") && dmg > 0) {
+      const lifestealPct = 0.15 * mult + (this.hasUpgradeCard("vampiric") ? 0.05 : 0);
+      const heal = Math.max(1, Math.round(dmg * lifestealPct));
+      this.healPlayer(heal);
+      const px = this.player.position.x + this.player.size / 2;
+      const py = this.player.position.y + this.player.size / 2;
+      this.addFloatingText(px, py, `+${heal}`, "heal");
+    }
     const has = (id) => enemy.affixes?.includes(id);
+
+    const ex = enemy.position.x + enemy.size / 2;
+    const ey = enemy.position.y + enemy.size / 2;
+    const isKillingBlow = enemy.health <= dmg;
+    const hitType = opts.isDot ? "dot" : opts.isSkill ? "skill" : opts.isCrit ? "crit" : "normal";
+    this.addFloatingText(ex, ey, dmg, hitType, isKillingBlow);
+
+    if (!opts.isDot && mods.length > 0) {
+      applyElementDebuffsFromMods(this, enemy, mods, amount, this.time);
+    }
 
     if (has("weakening")) {
       this.playerWeakenUntil = this.time + 2;
     }
 
-    if (has("rooted")) {
+    if (has("rooted") && !opts.isDot && this.rootedMinionsSpawned < 5) {
+      this.rootedMinionsSpawned++;
       const base = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
       const size = Math.round(base.size * 0.7);
       const offset = 25 + Math.random() * 20;
@@ -4103,7 +5296,7 @@ class Game {
       const aftershockDmg = Math.max(1, Math.round(enemy.maxHealth * 0.1));
       const hit = this.enemiesInRadius(ex, ey, radius);
       for (const e of hit) {
-        if (e !== enemy && !e.isDead) this.dealDamageToEnemy(e, aftershockDmg);
+        if (e !== enemy && !e.isDead) this.dealDamageToEnemy(e, aftershockDmg, { isSkill: true });
       }
     }
 
@@ -4111,11 +5304,69 @@ class Game {
       const heal = Math.round(dmg * 0.5);
       this.healPlayer(heal);
     }
+    if (enemy.isDead) {
+      if (skillSlot != null && getModsForSkillSlot(this, skillSlot).includes("cooldownCascade")) {
+        this.skillCooldowns[skillSlot] = 0;
+        this.skillCascadeFlashUntil = this.skillCascadeFlashUntil || {};
+        this.skillCascadeFlashUntil[skillSlot] = this.time + 0.3;
+      }
+      this.triggerOnKillMods();
+    }
   }
 
-  computeSkillDamage(enemy, multiplier = 1) {
+  processEnemyDebuffs(dt, enemy) {
+    if (enemy.isDead) return;
+    const t = this.time;
+    if (enemy.burnUntil != null && t < enemy.burnUntil) {
+      enemy.burnAccum = (enemy.burnAccum || 0) + dt;
+      if (enemy.burnAccum >= 0.5) {
+        enemy.burnAccum = 0;
+        const burnDmg = Math.max(1, Math.round((enemy.burnDps || 0) * 0.5));
+        this.dealDamageToEnemy(enemy, burnDmg, { isDot: true });
+      }
+    } else {
+      enemy.burnUntil = null;
+      enemy.burnDps = 0;
+    }
+    if (enemy.toxicStacks > 0 && enemy.toxicUntil != null && t < enemy.toxicUntil) {
+      enemy.toxicAccum = (enemy.toxicAccum || 0) + dt;
+      const dpsPerStack = enemy.maxHealth * 0.05;
+      if (enemy.toxicAccum >= 0.5) {
+        enemy.toxicAccum = 0;
+        const toxicDmg = Math.max(1, Math.round(dpsPerStack * enemy.toxicStacks * 0.5));
+        this.dealDamageToEnemy(enemy, toxicDmg, { isDot: true });
+      }
+    } else if (enemy.toxicUntil != null && t >= enemy.toxicUntil) {
+      enemy.toxicStacks = 0;
+      enemy.toxicUntil = null;
+    }
+  }
+
+  triggerOnKillMods() {
+    const px = this.player.position.x + this.player.size / 2;
+    const py = this.player.position.y + this.player.size / 2;
+    for (let slot = 0; slot < 4; slot++) {
+      const mods = getModsForSkillSlot(this, slot);
+      if (!mods.includes("onKill")) continue;
+      const skillId = this.skills[slot];
+      if (!skillId) continue;
+      const def = SKILL_DEFS.find((s) => s.id === skillId);
+      if (def && def.category === "aura") continue;
+      this.executeSkill(skillId, slot, { noCooldown: true, onKill: true });
+    }
+  }
+
+  computeSkillDamage(enemy, multiplier = 1, slot = null, opts = {}) {
     const skillMult = this.equipmentSkillDamageMult ?? 1;
     let dmg = Math.round(this.currentStats.attack * multiplier * skillMult);
+    const mods = slot != null ? getModsForSkillSlot(this, slot) : [];
+    const mult = getModEffectMult(this);
+    if (mods.includes("amplify")) dmg = Math.round(dmg * (1 + 0.25 * mult));
+    if (mods.includes("recoil")) dmg = Math.round(dmg * (1 + 0.3 * mult));
+    if (opts.sacrificeMult) dmg = Math.round(dmg * opts.sacrificeMult);
+    if (slot != null && this.empowerStacks && this.empowerStacks[slot] > 0) {
+      dmg = Math.round(dmg * (1 + 0.05 * mult * Math.min(10, this.empowerStacks[slot])));
+    }
     if (this.hasUpgradeCard("glassCannon")) dmg = Math.round(dmg * 1.5);
     if (this.hasUpgradeCard("doubleStrike")) {
       this.doubleStrikeCounter++;
@@ -4124,7 +5375,7 @@ class Game {
         dmg *= 2;
       }
     }
-    if (this.hasUpgradeCard("berserker")) {
+    if (this.hasUpgradeCard("berserkerRage")) {
       const ratio = this.currentStats.maxHealth > 0 ? this.currentHealth / this.currentStats.maxHealth : 1;
       dmg *= 1 + (1 - ratio) * 0.5;
     }
@@ -4135,8 +5386,9 @@ class Game {
   }
 
   getSkillCooldownMult() {
-    let mult = (1 / (this.levelAttackSpeedMult || 1)) * (this.equipmentCooldownRecovery ?? 1);
-    if (this.hasUpgradeCard("berserker")) {
+    const atkSpdFromRun = 1 + this.getAttackUpgradeValue("attackSpeed") - this.getAttackPenaltyValue("speedPenalty");
+    let mult = (1 / atkSpdFromRun) * (this.equipmentCooldownRecovery ?? 1);
+    if (this.hasUpgradeCard("berserkerRage")) {
       const ratio = this.currentStats.maxHealth > 0 ? this.currentHealth / this.currentStats.maxHealth : 1;
       mult *= Math.max(0.4, ratio);
     }
@@ -4158,51 +5410,153 @@ class Game {
       return;
     }
     if (this.skillCooldowns[slot] > 0) return;
-    this.executeSkill(skillId, slot);
+    const mods = getModsForSkillSlot(this, slot);
+    if (mods.includes("charged")) {
+      this.skillChargeSlot = slot;
+      this.skillChargeStartTime = this.time;
+      return;
+    }
+    this.executeSkill(skillId, slot, {});
+  }
+
+  tryReleaseChargedSkill(slot) {
+    if (this.skillChargeSlot !== slot) return;
+    const skillId = this.skills[slot];
+    if (!skillId) {
+      this.skillChargeSlot = null;
+      return;
+    }
+    const chargeDuration = this.time - this.skillChargeStartTime;
+    const chargeMult = 1 + Math.min(1, chargeDuration / 2);
+    this.skillChargeSlot = null;
+    const def = SKILL_DEFS.find((s) => s.id === skillId);
+    if (this.skillCooldowns[slot] > 0) return;
+    this.executeSkill(skillId, slot, { chargeMult });
     if (def) {
       const cdMult = this.getSkillCooldownMult();
-      this.skillCooldowns[slot] = def.baseCd * cdMult;
+      const mods = getModsForSkillSlot(this, slot);
+      const baseCd = def.baseCd + (mods.includes("amplify") ? 0.5 : 0);
+      this.skillCooldowns[slot] = baseCd * cdMult;
     }
   }
 
-  executeSkill(skillId, slot) {
+  executeSkill(skillId, slot, options = {}) {
     const atk = this.currentStats.attack;
     const px = this.player.position.x + this.player.size / 2;
     const py = this.player.position.y + this.player.size / 2;
-    const tx = this.lastMouseWorld.x;
-    const ty = this.lastMouseWorld.y;
+    let tx = this.lastMouseWorld.x;
+    let ty = this.lastMouseWorld.y;
+    const mods = getModsForSkillSlot(this, slot);
+    const chargeMult = options.chargeMult ?? 1;
+
+    let sacrificeMult = 1;
+    if (mods.includes("sacrifice")) {
+      const cost = Math.max(1, Math.round(this.currentStats.maxHealth * 0.03 * getModEffectMult(this)));
+      if (this.currentHealth > cost) {
+        this.currentHealth -= cost;
+        this.updateHealthBar();
+        sacrificeMult = 1 + 0.5 * getModEffectMult(this);
+      }
+    }
+    if (mods.includes("adrenaline")) {
+      this.playerHasteUntil = this.time + 2;
+      this.playerHasteMult = 1 + 0.2 * getModEffectMult(this);
+    }
+    if (mods.includes("empower")) {
+      this.empowerStacks[slot] = Math.min(10, (this.empowerStacks[slot] || 0) + 1);
+    }
+
+    if (options.onKill) {
+      const nearest = this.getNearestEnemy(px, py, 800);
+      if (nearest) {
+        tx = nearest.position.x + nearest.size / 2;
+        ty = nearest.position.y + nearest.size / 2;
+      }
+    }
+
+    const pushFireball = (dirX, dirY, mult, modList) => {
+      const dist = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
+      const speed = 180;
+      const eff = {
+        type: "fireball",
+        x: px, y: py, vx: (dirX / dist) * speed, vy: (dirY / dist) * speed,
+        mult: mult * chargeMult, radius: 60, t: 0, mods: modList || mods,
+        maxRange: 360, distanceTraveled: 0,
+        slot, modList: modList || mods, sacrificeMult
+      };
+      if (modList && modList.includes("orbiting")) {
+        eff.phase = "orbit";
+        eff.orbitT = 0;
+        eff.orbitDuration = 3;
+        eff.px0 = px;
+        eff.py0 = py;
+      }
+      eff.bouncesLeft = (modList && modList.includes("bouncing")) ? 3 : 0;
+      this.skillEffects.push(eff);
+    };
+
+    const pushIceShard = (dirX, dirY, mult, modList) => {
+      const dist = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
+      const speed = 400;
+      const eff = {
+        type: "iceShard",
+        x: px, y: py, vx: (dirX / dist) * speed, vy: (dirY / dist) * speed,
+        mult: mult * chargeMult, pierces: 5, t: 0, mods: modList || mods,
+        maxRange: 600, distanceTraveled: 0,
+        slot, modList: modList || mods, sacrificeMult
+      };
+      if (modList && modList.includes("orbiting")) {
+        eff.phase = "orbit";
+        eff.orbitT = 0;
+        eff.orbitDuration = 3;
+        eff.px0 = px;
+        eff.py0 = py;
+      }
+      eff.bouncesLeft = (modList && modList.includes("bouncing")) ? 3 : 0;
+      this.skillEffects.push(eff);
+    };
 
     if (skillId === "fireball") {
       this.damageSkillsUsedThisRun.add("fireball");
-      const dx = tx - px; const dy = ty - py;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      this.skillEffects.push({
-        type: "fireball",
-        x: px, y: py, vx: (dx / dist) * 180, vy: (dy / dist) * 180,
-        mult: 1.5, radius: 60, t: 0
-      });
+      const dx = tx - px;
+      const dy = ty - py;
+      const baseMult = 1.5;
+      if (mods.includes("volley")) {
+        const spread = (30 * Math.PI) / 180;
+        for (let i = -1; i <= 1; i++) {
+          const angle = Math.atan2(dy, dx) + i * (spread / 2);
+          pushFireball(Math.cos(angle), Math.sin(angle), baseMult * 0.7, mods);
+        }
+      } else {
+        pushFireball(dx, dy, baseMult, mods);
+      }
     } else if (skillId === "iceShard") {
       this.damageSkillsUsedThisRun.add("iceShard");
-      const dx = tx - px; const dy = ty - py;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      this.skillEffects.push({
-        type: "iceShard",
-        x: px, y: py, vx: (dx / dist) * 400, vy: (dy / dist) * 400,
-        mult: 0.8, pierces: 5, t: 0
-      });
+      const dx = tx - px;
+      const dy = ty - py;
+      const baseMult = 0.8;
+      if (mods.includes("volley")) {
+        const spread = (30 * Math.PI) / 180;
+        for (let i = -1; i <= 1; i++) {
+          const angle = Math.atan2(dy, dx) + i * (spread / 2);
+          pushIceShard(Math.cos(angle), Math.sin(angle), baseMult * 0.7, mods);
+        }
+      } else {
+        pushIceShard(dx, dy, baseMult, mods);
+      }
     } else if (skillId === "lightningBolt") {
       this.damageSkillsUsedThisRun.add("lightningBolt");
       const target = this.getNearestEnemy(px, py, 400);
       if (target) {
         const tx1 = target.position.x + target.size / 2;
         const ty1 = target.position.y + target.size / 2;
-        let dmg = this.computeSkillDamage(target, 1);
-        this.dealDamageToEnemy(target, dmg);
+        let dmg = this.computeSkillDamage(target, 1, slot, { sacrificeMult });
+        this.dealDamageToEnemy(target, dmg, { isSkill: true, skillSlot: slot, modList: mods });
         const chain = this.getNearestEnemy(tx1, ty1, 120, target);
         let chainPos = null;
         if (chain) {
           chainPos = { x: chain.position.x + chain.size / 2, y: chain.position.y + chain.size / 2 };
-          this.dealDamageToEnemy(chain, Math.round(dmg * 0.5));
+          this.dealDamageToEnemy(chain, Math.round(dmg * 0.5), { isSkill: true, skillSlot: slot, modList: mods });
         }
         this.skillEffects.push({
           type: "lightningBolt",
@@ -4213,6 +5567,9 @@ class Game {
     } else if (skillId === "healPulse") {
       const heal = Math.max(15, Math.round(this.currentStats.maxHealth * 0.15));
       this.currentHealth = Math.min(this.currentStats.maxHealth, this.currentHealth + heal);
+      const hpx = this.player.position.x + this.player.size / 2;
+      const hpy = this.player.position.y + this.player.size / 2;
+      this.addFloatingText(hpx, hpy, `+${heal}`, "heal");
       this.updateHealthBar();
     } else if (skillId === "shieldBash") {
       this.damageSkillsUsedThisRun.add("shieldBash");
@@ -4221,14 +5578,15 @@ class Game {
       this.skillEffects.push({
         type: "shieldBash",
         x: px, y: py, dirX: dx / dist, dirY: dy / dist, t: 0, duration: 0.15,
-        mult: 0.5, stun: 0.5, knockback: 120
+        mult: 0.5, stun: 0.5, knockback: 120,
+        slot, modList: mods, sacrificeMult
       });
     } else if (skillId === "rapidFire") {
       this.damageSkillsUsedThisRun.add("rapidFire");
-      this.skillEffects.push({ type: "rapidFire", t: 0, duration: 3 });
+      this.skillEffects.push({ type: "rapidFire", t: 0, duration: 3, slot, modList: mods, sacrificeMult });
     } else if (skillId === "iceRain") {
       this.damageSkillsUsedThisRun.add("iceRain");
-      this.skillEffects.push({ type: "iceRain", x: px, y: py, t: 0, duration: 4, radius: 180 });
+      this.skillEffects.push({ type: "iceRain", x: px, y: py, t: 0, duration: 4, radius: 180, slot, modList: mods, sacrificeMult });
     } else if (skillId === "lightningSpear") {
       this.damageSkillsUsedThisRun.add("lightningSpear");
       const dx = tx - px; const dy = ty - py;
@@ -4236,32 +5594,36 @@ class Game {
       this.skillEffects.push({
         type: "lightningSpear",
         x: px, y: py, vx: (dx / dist) * 600, vy: (dy / dist) * 600,
-        mult: 1.2, t: 0, chargeTime: 0.5, stun: 1
+        mult: 1.2, t: 0, chargeTime: 0.5, stun: 1,
+        slot, modList: mods, sacrificeMult
       });
     } else if (skillId === "meteor") {
       this.damageSkillsUsedThisRun.add("meteor");
       this.skillEffects.push({
         type: "meteor",
-        targetX: tx, targetY: ty, t: 0, delay: 1, mult: 2.5, radius: 100, burnDuration: 5
+        targetX: tx, targetY: ty, t: 0, delay: 1, mult: 2.5, radius: 100, burnDuration: 5,
+        slot, modList: mods, sacrificeMult
       });
     } else if (skillId === "voidRift") {
       this.damageSkillsUsedThisRun.add("voidRift");
       this.skillEffects.push({
         type: "voidRift",
-        x: px, y: py, t: 0, duration: 3, radius: 150, mult: 1.5
+        x: px, y: py, t: 0, duration: 3, radius: 150, mult: 1.5,
+        slot, modList: mods, sacrificeMult
       });
     } else if (skillId === "phoenixStrike") {
       this.damageSkillsUsedThisRun.add("phoenixStrike");
       this.skillEffects.push({
         type: "phoenixStrike",
-        x: px, y: py, t: 0, duration: 0.1, radius: 120, mult: 2, invulnDuration: 3
+        x: px, y: py, t: 0, duration: 0.1, radius: 120, mult: 2, invulnDuration: 3,
+        slot, modList: mods, sacrificeMult
       });
     } else if (skillId === "chainFrost") {
       this.damageSkillsUsedThisRun.add("chainFrost");
       this.skillEffects.push({ type: "chainFrost", t: 0, freezeDuration: 2 });
     } else if (skillId === "stormCall") {
       this.damageSkillsUsedThisRun.add("stormCall");
-      this.skillEffects.push({ type: "stormCall", t: 0, duration: 6, mult: 0.6, strikeInterval: 0.5 });
+      this.skillEffects.push({ type: "stormCall", t: 0, duration: 6, mult: 0.6, strikeInterval: 0.5, slot, modList: mods, sacrificeMult });
     } else if (skillId === "timeWarp") {
       this.timeWarpUntil = this.time + 4;
       this.skillEffects.push({ type: "timeWarp", t: 0, duration: 4 });
@@ -4275,35 +5637,64 @@ class Game {
       this.bladeDashDirection.set(dx / dist, dy / dist);
       this.bladeDashSpeed = 600;
       this.bladeDashMult = 0.8;
+      this.bladeDashSlot = slot;
+      this.bladeDashSacrificeMult = sacrificeMult;
       this.skillEffects.push({
         type: "bladeDash",
         x: px, y: py, dirX: dx / dist, dirY: dy / dist, t: 0, duration: 0.25,
-        mult: 0.8, speed: 600
+        mult: 0.8, speed: 600,
+        slot, modList: mods, sacrificeMult
       });
     } else if (skillId === "whirlwind") {
       this.damageSkillsUsedThisRun.add("whirlwind");
       this.whirlwindActive = true;
-      this.skillEffects.push({ type: "whirlwind", t: 0, duration: 2, mult: 0.4, radius: 80, hitInterval: 0.15 });
+      this.skillEffects.push({ type: "whirlwind", t: 0, duration: 2, mult: 0.4, radius: 80, hitInterval: 0.15, slot, modList: mods, sacrificeMult });
     } else if (skillId === "groundSlam") {
       this.damageSkillsUsedThisRun.add("groundSlam");
       this.skillEffects.push({
         type: "groundSlam",
-        x: px, y: py, t: 0, duration: 0.2, mult: 1, radius: 120, knockback: 150
+        x: px, y: py, t: 0, duration: 0.2, mult: 1, radius: 120, knockback: 150,
+        slot, modList: mods, sacrificeMult
       });
     } else if (skillId === "bladeStorm") {
       this.damageSkillsUsedThisRun.add("bladeStorm");
-      this.skillEffects.push({ type: "bladeStorm", x: px, y: py, t: 0, duration: 3, mult: 0.5, bladeCount: 8 });
+      this.skillEffects.push({ type: "bladeStorm", x: px, y: py, t: 0, duration: 3, mult: 0.5, bladeCount: 8, slot, modList: mods, sacrificeMult });
     } else if (skillId === "earthquake") {
       this.damageSkillsUsedThisRun.add("earthquake");
-      this.skillEffects.push({ type: "earthquake", t: 0, duration: 3, mult: 0.3, slowMult: 0.6, slowDuration: 3 });
+      this.skillEffects.push({ type: "earthquake", t: 0, duration: 3, mult: 0.3, slowMult: 0.6, slowDuration: 3, slot, modList: mods, sacrificeMult });
+    }
+
+    const def = SKILL_DEFS.find((s) => s.id === skillId);
+    if (!options.noCooldown && !options.chainCast && def) {
+      const cdMult = this.getSkillCooldownMult();
+      const baseCd = def.baseCd + (mods.includes("amplify") ? 0.5 : 0);
+      this.skillCooldowns[slot] = baseCd * cdMult;
+    }
+    if (mods.includes("recoil")) {
+      const dx = tx - px;
+      const dy = ty - py;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const push = 80;
+      this.player.position.x -= (dx / dist) * push;
+      this.player.position.y -= (dy / dist) * push;
+    }
+    if (mods.includes("chainCast") && !options.chainCast) {
+      this.chainCastQueue.push({ t: this.time + 0.2, skillId, slot });
+    }
+    if (mods.includes("echo") && Math.random() < 0.3) {
+      this.executeSkill(skillId, slot, { noCooldown: true });
     }
   }
 
   getNearestEnemy(cx, cy, maxDist, exclude = null) {
     let best = null; let bestD = maxDist * maxDist;
     const es = this.enemySystem;
+    const excludeSet = exclude && exclude instanceof Set ? exclude : null;
+    const excludeSingle = exclude && !excludeSet ? exclude : null;
     for (const e of [...es.enemies, ...(es.boss ? [es.boss] : [])]) {
-      if (e.isDead || e === exclude) continue;
+      if (e.isDead) continue;
+      if (excludeSet && excludeSet.has(e.id)) continue;
+      if (excludeSingle && e === excludeSingle) continue;
       const dx = e.position.x + e.size / 2 - cx; const dy = e.position.y + e.size / 2 - cy;
       const d = dx * dx + dy * dy;
       if (d < bestD) { bestD = d; best = e; }
@@ -4317,37 +5708,298 @@ class Game {
     for (const eff of this.skillEffects) {
       eff.t += dt;
       if (eff.type === "fireball") {
-        eff.x += eff.vx * dt; eff.y += eff.vy * dt;
+        eff.mods = eff.mods || [];
+        eff.maxRange = eff.maxRange ?? 360;
+        eff.distanceTraveled = eff.distanceTraveled ?? 0;
+        const margin = this.world.wallThickness;
+        const w = this.world.width;
+        const h = this.world.height;
+
+        if (eff.phase === "orbit") {
+          eff.orbitT = (eff.orbitT ?? 0) + dt;
+          const px = this.player.position.x + this.player.size / 2;
+          const py = this.player.position.y + this.player.size / 2;
+          const orbitRadius = 70;
+          const angle = (eff.orbitT * 1.2) % (Math.PI * 2);
+          eff.x = px + Math.cos(angle) * orbitRadius;
+          eff.y = py + Math.sin(angle) * orbitRadius;
+          if (eff.orbitT >= (eff.orbitDuration ?? 3)) {
+            eff.phase = "seek";
+            const target = this.getNearestEnemy(eff.x, eff.y, 600);
+            if (target) {
+              const tx = target.position.x + target.size / 2;
+              const ty = target.position.y + target.size / 2;
+              const dx = tx - eff.x;
+              const dy = ty - eff.y;
+              const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+              const speed = 180;
+              eff.vx = (dx / dist) * speed;
+              eff.vy = (dy / dist) * speed;
+            }
+          }
+        } else {
+          if (eff.returning) {
+            const px = this.player.position.x + this.player.size / 2;
+            const py = this.player.position.y + this.player.size / 2;
+            const dx = px - eff.x;
+            const dy = py - eff.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            const speed = 180;
+            eff.vx = (dx / dist) * speed;
+            eff.vy = (dy / dist) * speed;
+          }
+          eff.x += eff.vx * dt;
+          eff.y += eff.vy * dt;
+          const moveLen = Math.sqrt(eff.vx * eff.vx + eff.vy * eff.vy) * dt;
+          eff.distanceTraveled += moveLen;
+
+          if (eff.mods.includes("homing") && eff.distanceTraveled >= 0.2 * eff.maxRange) {
+            const excludeHit = (eff.hitIds && eff.hitIds.size > 0) ? eff.hitIds : null;
+            const target = this.getNearestEnemy(eff.x, eff.y, 500, excludeHit);
+            if (target) {
+              const tx = target.position.x + target.size / 2;
+              const ty = target.position.y + target.size / 2;
+              const dx = tx - eff.x;
+              const dy = ty - eff.y;
+              const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+              const speed = 180;
+              eff.vx = (dx / dist) * speed * 0.15 + eff.vx * 0.85;
+              eff.vy = (dy / dist) * speed * 0.15 + eff.vy * 0.85;
+              const vlen = Math.sqrt(eff.vx * eff.vx + eff.vy * eff.vy) || 1;
+              eff.vx = (eff.vx / vlen) * speed;
+              eff.vy = (eff.vy / vlen) * speed;
+            }
+          }
+
+          if (eff.mods.includes("boomerang") && !eff.returning && eff.distanceTraveled >= eff.maxRange) {
+            eff.returning = true;
+            eff.hitIds = eff.hitIds || new Set();
+            eff.hitIds.clear();
+            eff.vx = -eff.vx;
+            eff.vy = -eff.vy;
+          }
+
+          if (eff.bouncesLeft != null && eff.bouncesLeft > 0) {
+            if (eff.x < margin) {
+              eff.x = margin;
+              eff.vx = -eff.vx;
+              eff.bouncesLeft--;
+            }
+            if (eff.x > w - margin) {
+              eff.x = w - margin;
+              eff.vx = -eff.vx;
+              eff.bouncesLeft--;
+            }
+            if (eff.y < margin) {
+              eff.y = margin;
+              eff.vy = -eff.vy;
+              eff.bouncesLeft--;
+            }
+            if (eff.y > h - margin) {
+              eff.y = h - margin;
+              eff.vy = -eff.vy;
+              eff.bouncesLeft--;
+            }
+            if (eff.bouncesLeft <= 0 && eff.mods.includes("bouncing")) {
+              continue;
+            }
+          }
+
+          if (eff.mods.includes("rebound") && !eff.rebounded) {
+            const hitWall = eff.x <= margin || eff.x >= w - margin || eff.y <= margin || eff.y >= h - margin;
+            if (hitWall) {
+              eff.rebounded = true;
+              const target = this.getNearestEnemy(eff.x, eff.y, 500);
+              if (target) {
+                const tx = target.position.x + target.size / 2;
+                const ty = target.position.y + target.size / 2;
+                const dx = tx - eff.x;
+                const dy = ty - eff.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                const speed = 180;
+                eff.vx = (dx / dist) * speed;
+                eff.vy = (dy / dist) * speed;
+              }
+            }
+          }
+        }
+
+        eff.hitIds = eff.hitIds || new Set();
         const hit = this.enemiesInRadius(eff.x, eff.y, eff.radius);
-        if (hit.length > 0 || eff.t > 2) {
-          for (const e of hit) this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+        for (const e of hit) {
+          if (!eff.hitIds.has(e.id)) {
+            eff.hitIds.add(e.id);
+            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
+          }
+        }
+        if (hit.length > 0 && !eff.mods.includes("piercing")) {
           if (this.hazardSystem) {
             const burnDmg = Math.round(this.currentStats.attack * 0.2);
             this.hazardSystem.addTemporaryPatch("burningGround", eff.x, eff.y, 70, 3, burnDmg, true);
           }
           continue;
         }
+        if (eff.t > 2 && !eff.mods.includes("boomerang")) {
+          if (this.hazardSystem) {
+            const burnDmg = Math.round(this.currentStats.attack * 0.2);
+            this.hazardSystem.addTemporaryPatch("burningGround", eff.x, eff.y, 70, 3, burnDmg, true);
+          }
+          continue;
+        }
+        if (eff.returning) {
+          const px = this.player.position.x + this.player.size / 2;
+          const py = this.player.position.y + this.player.size / 2;
+          const d = (eff.x - px) * (eff.x - px) + (eff.y - py) * (eff.y - py);
+          if (d < 900) {
+            if (this.hazardSystem) {
+              const burnDmg = Math.round(this.currentStats.attack * 0.2);
+              this.hazardSystem.addTemporaryPatch("burningGround", eff.x, eff.y, 70, 3, burnDmg, true);
+            }
+            continue;
+          }
+        }
         surviving.push(eff);
       } else if (eff.type === "iceShard") {
-        eff.x += eff.vx * dt; eff.y += eff.vy * dt;
+        eff.mods = eff.mods || [];
+        eff.maxRange = eff.maxRange ?? 600;
+        eff.distanceTraveled = eff.distanceTraveled ?? 0;
+        const margin = this.world.wallThickness;
+        const w = this.world.width;
+        const h = this.world.height;
+
+        if (eff.phase === "orbit") {
+          eff.orbitT = (eff.orbitT ?? 0) + dt;
+          const px = this.player.position.x + this.player.size / 2;
+          const py = this.player.position.y + this.player.size / 2;
+          const orbitRadius = 70;
+          const angle = (eff.orbitT * 1.2) % (Math.PI * 2);
+          eff.x = px + Math.cos(angle) * orbitRadius;
+          eff.y = py + Math.sin(angle) * orbitRadius;
+          if (eff.orbitT >= (eff.orbitDuration ?? 3)) {
+            eff.phase = "seek";
+            const target = this.getNearestEnemy(eff.x, eff.y, 600);
+            if (target) {
+              const tx = target.position.x + target.size / 2;
+              const ty = target.position.y + target.size / 2;
+              const dx = tx - eff.x;
+              const dy = ty - eff.y;
+              const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+              const speed = 400;
+              eff.vx = (dx / dist) * speed;
+              eff.vy = (dy / dist) * speed;
+            }
+          }
+        } else {
+          if (eff.returning) {
+            const px = this.player.position.x + this.player.size / 2;
+            const py = this.player.position.y + this.player.size / 2;
+            const dx = px - eff.x;
+            const dy = py - eff.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            const speed = 400;
+            eff.vx = (dx / dist) * speed;
+            eff.vy = (dy / dist) * speed;
+          }
+          eff.x += eff.vx * dt;
+          eff.y += eff.vy * dt;
+          eff.distanceTraveled += Math.sqrt(eff.vx * eff.vx + eff.vy * eff.vy) * dt;
+
+          if (eff.mods.includes("homing") && eff.distanceTraveled >= 0.2 * eff.maxRange) {
+            const excludeHit = (eff.hitIds && eff.hitIds.size > 0) ? eff.hitIds : null;
+            const target = this.getNearestEnemy(eff.x, eff.y, 500, excludeHit);
+            if (target) {
+              const tx = target.position.x + target.size / 2;
+              const ty = target.position.y + target.size / 2;
+              const dx = tx - eff.x;
+              const dy = ty - eff.y;
+              const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+              const speed = 400;
+              eff.vx = (dx / dist) * speed * 0.15 + eff.vx * 0.85;
+              eff.vy = (dy / dist) * speed * 0.15 + eff.vy * 0.85;
+              const vlen = Math.sqrt(eff.vx * eff.vx + eff.vy * eff.vy) || 1;
+              eff.vx = (eff.vx / vlen) * speed;
+              eff.vy = (eff.vy / vlen) * speed;
+            }
+          }
+
+          if (eff.mods.includes("boomerang") && !eff.returning && eff.distanceTraveled >= eff.maxRange) {
+            eff.returning = true;
+            eff.hitIds = eff.hitIds || new Set();
+            eff.hitIds.clear();
+            eff.vx = -eff.vx;
+            eff.vy = -eff.vy;
+          }
+
+          if (eff.bouncesLeft != null && eff.bouncesLeft > 0) {
+            if (eff.x < margin) {
+              eff.x = margin;
+              eff.vx = -eff.vx;
+              eff.bouncesLeft--;
+            }
+            if (eff.x > w - margin) {
+              eff.x = w - margin;
+              eff.vx = -eff.vx;
+              eff.bouncesLeft--;
+            }
+            if (eff.y < margin) {
+              eff.y = margin;
+              eff.vy = -eff.vy;
+              eff.bouncesLeft--;
+            }
+            if (eff.y > h - margin) {
+              eff.y = h - margin;
+              eff.vy = -eff.vy;
+              eff.bouncesLeft--;
+            }
+            if (eff.bouncesLeft <= 0 && eff.mods.includes("bouncing")) {
+              continue;
+            }
+          }
+
+          if (eff.mods.includes("rebound") && !eff.rebounded) {
+            const hitWall = eff.x <= margin || eff.x >= w - margin || eff.y <= margin || eff.y >= h - margin;
+            if (hitWall) {
+              eff.rebounded = true;
+              const target = this.getNearestEnemy(eff.x, eff.y, 500);
+              if (target) {
+                const tx = target.position.x + target.size / 2;
+                const ty = target.position.y + target.size / 2;
+                const dx = tx - eff.x;
+                const dy = ty - eff.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                const speed = 400;
+                eff.vx = (dx / dist) * speed;
+                eff.vy = (dy / dist) * speed;
+              }
+            }
+          }
+        }
+
         eff.hitIds = eff.hitIds || new Set();
         const hit = this.enemiesInRadius(eff.x, eff.y, 20);
         for (const e of hit) {
           if (!eff.hitIds.has(e.id)) {
             eff.hitIds.add(e.id);
-            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
-            e.slowUntil = this.time + 2; e.slowMult = 0.7;
+            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
+            e.slowUntil = this.time + 2;
+            e.slowMult = 0.7;
             this.iceShardHitsThisRun++;
             if (this.iceShardHitsThisRun >= 5) setSkillUnlock("iceShard5", true);
           }
         }
-        if (eff.t > 1.5) continue;
+        if (eff.t > 1.5 && !eff.mods.includes("boomerang") && !eff.returning) continue;
+        if (eff.returning) {
+          const px = this.player.position.x + this.player.size / 2;
+          const py = this.player.position.y + this.player.size / 2;
+          const d = (eff.x - px) * (eff.x - px) + (eff.y - py) * (eff.y - py);
+          if (d < 900) continue;
+        }
         surviving.push(eff);
       } else if (eff.type === "shieldBash") {
         if (eff.t >= eff.duration) {
           const hit = this.enemiesInCone(eff.x, eff.y, eff.dirX, eff.dirY, 120, 80);
           for (const e of hit) {
-            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
             e.stunUntil = this.time + eff.stun;
             const dx = e.position.x + e.size / 2 - eff.x; const dy = e.position.y + e.size / 2 - eff.y;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -4365,8 +6017,8 @@ class Game {
         if (Math.floor(eff.t * 3) > Math.floor((eff.t - dt) * 3)) {
           const target = this.getNearestEnemy(this.player.position.x + this.player.size / 2, this.player.position.y + this.player.size / 2, 500);
           if (target) {
-            const dmg = this.computeSkillDamage(target, 1);
-            this.dealDamageToEnemy(target, dmg);
+            const dmg = this.computeSkillDamage(target, 1, eff.slot, { sacrificeMult: eff.sacrificeMult });
+            this.dealDamageToEnemy(target, dmg, { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
             eff.lastTargetX = target.position.x + target.size / 2;
             eff.lastTargetY = target.position.y + target.size / 2;
             eff.lastShotTime = eff.t;
@@ -4382,7 +6034,7 @@ class Game {
         if (Math.floor(eff.t * 4) > Math.floor((eff.t - dt) * 4)) {
           const hit = this.enemiesInRadius(eff.x, eff.y, eff.radius);
           for (const e of hit) {
-            this.dealDamageToEnemy(e, this.computeSkillDamage(e, 0.4));
+            this.dealDamageToEnemy(e, this.computeSkillDamage(e, 0.4, eff.slot, { sacrificeMult: eff.sacrificeMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
             e.slowUntil = this.time + 0.5; e.slowMult = 0.5;
           }
         }
@@ -4394,7 +6046,7 @@ class Game {
         for (const e of hit) {
           if (!(eff.hitIds || (eff.hitIds = new Set())).has(e.id)) {
             eff.hitIds.add(e.id);
-            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
             e.stunUntil = this.time + eff.stun;
           }
         }
@@ -4404,7 +6056,7 @@ class Game {
         if (eff.t < eff.delay) { surviving.push(eff); continue; }
         if (eff.t - dt < eff.delay) {
           const hit = this.enemiesInRadius(eff.targetX, eff.targetY, eff.radius);
-          for (const e of hit) this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+          for (const e of hit) this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
           if (this.hazardSystem) {
             const burnDmg = Math.round(this.currentStats.attack * 0.25);
             this.hazardSystem.addTemporaryPatch("burningGround", eff.targetX, eff.targetY, 90, eff.burnDuration, burnDmg, true);
@@ -4415,7 +6067,7 @@ class Game {
       } else if (eff.type === "voidRift") {
         if (eff.t >= eff.duration) {
           const hit = this.enemiesInRadius(eff.x, eff.y, eff.radius);
-          for (const e of hit) this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+          for (const e of hit) this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
           continue;
         }
         const hit = this.enemiesInRadius(eff.x, eff.y, eff.radius * 1.5);
@@ -4431,7 +6083,7 @@ class Game {
       } else if (eff.type === "phoenixStrike") {
         if (eff.t >= eff.duration) {
           const hit = this.enemiesInRadius(eff.x, eff.y, eff.radius);
-          for (const e of hit) this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+          for (const e of hit) this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
           this.phoenixInvulnUntil = this.time + eff.invulnDuration;
           continue;
         }
@@ -4454,7 +6106,7 @@ class Game {
           const all = [...es.enemies, ...(es.boss ? [es.boss] : [])].filter((e) => !e.isDead);
           if (all.length > 0) {
             const target = all[Math.floor(Math.random() * all.length)];
-            this.dealDamageToEnemy(target, this.computeSkillDamage(target, eff.mult));
+            this.dealDamageToEnemy(target, this.computeSkillDamage(target, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
           }
         }
         surviving.push(eff);
@@ -4472,14 +6124,14 @@ class Game {
           const px = this.player.position.x + this.player.size / 2;
           const py = this.player.position.y + this.player.size / 2;
           const hit = this.enemiesInRadius(px, py, eff.radius);
-          for (const e of hit) this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+          for (const e of hit) this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
         }
         surviving.push(eff);
       } else if (eff.type === "groundSlam") {
         if (eff.t >= eff.duration) {
           const hit = this.enemiesInRadius(eff.x, eff.y, eff.radius);
           for (const e of hit) {
-            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
             const dx = e.position.x + e.size / 2 - eff.x;
             const dy = e.position.y + e.size / 2 - eff.y;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -4512,7 +6164,7 @@ class Game {
           for (const e of hit) {
             if (!b.hitIds.has(e.id)) {
               b.hitIds.add(e.id);
-              this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+              this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
             }
           }
         }
@@ -4527,11 +6179,23 @@ class Game {
           const es = this.enemySystem;
           const all = [...es.enemies, ...(es.boss ? [es.boss] : [])].filter((e) => !e.isDead);
           for (const e of all) {
-            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult));
+            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
             e.slowUntil = this.time + eff.slowDuration;
             e.slowMult = eff.slowMult;
           }
         }
+        surviving.push(eff);
+      } else if (eff.type === "pulseStrike") {
+        if (eff.t >= eff.delay && !eff.done) {
+          eff.done = true;
+          const hit = this.enemiesInRadius(eff.x, eff.y, eff.radius);
+          for (const e of hit) this.dealDamageToEnemy(e, eff.damage);
+          this.skillEffects.push({ type: "pulseDetonation", x: eff.x, y: eff.y, radius: eff.radius, t: 0, duration: 0.25 });
+        }
+        if (eff.t >= (eff.duration || 0.6)) continue;
+        surviving.push(eff);
+      } else if (["attackFanArc", "attackThrustLunge", "dashStrikeSurge", "dashStrikeFan", "backfireTrail", "pulseDetonation"].includes(eff.type)) {
+        if (eff.t >= (eff.duration || 0.25)) continue;
         surviving.push(eff);
       }
     }
@@ -4546,25 +6210,29 @@ class Game {
     const overlapX = Math.min(ax2, bx2) - Math.max(ax1, bx1);
     const overlapY = Math.min(ay2, by2) - Math.max(ay1, by1);
     if (overlapX <= 0 || overlapY <= 0) return;
+    const aRooted = a.affixes && a.affixes.includes("rooted");
+    const bRooted = b.affixes && b.affixes.includes("rooted");
+    const pushA = bRooted ? 1 : (aRooted ? 0 : 0.5);
+    const pushB = aRooted ? 1 : (bRooted ? 0 : 0.5);
     const pushX = overlapX * 0.5;
     const pushY = overlapY * 0.5;
     const acx = ax1 + asz / 2, acy = ay1 + asz / 2;
     const bcx = bx1 + bsz / 2, bcy = by1 + bsz / 2;
     if (overlapX < overlapY) {
       if (acx < bcx) {
-        a.position.x -= pushX;
-        b.position.x += pushX;
+        if (pushA > 0) a.position.x -= pushX * (pushA * 2);
+        if (pushB > 0) b.position.x += pushX * (pushB * 2);
       } else {
-        a.position.x += pushX;
-        b.position.x -= pushX;
+        if (pushA > 0) a.position.x += pushX * (pushA * 2);
+        if (pushB > 0) b.position.x -= pushX * (pushB * 2);
       }
     } else {
       if (acy < bcy) {
-        a.position.y -= pushY;
-        b.position.y += pushY;
+        if (pushA > 0) a.position.y -= pushY * (pushA * 2);
+        if (pushB > 0) b.position.y += pushY * (pushB * 2);
       } else {
-        a.position.y += pushY;
-        b.position.y -= pushY;
+        if (pushA > 0) a.position.y += pushY * (pushA * 2);
+        if (pushB > 0) b.position.y -= pushY * (pushB * 2);
       }
     }
   }
@@ -4623,6 +6291,28 @@ class Game {
       if (dot > Math.cos(angle * Math.PI / 180)) out.push(e);
     }
     return out;
+  }
+
+  getFirstEnemyInLine(px, py, dirX, dirY, maxDist, halfWidth = 8) {
+    const all = this.getEnemiesInLine(px, py, dirX, dirY, maxDist, halfWidth);
+    return all.length > 0 ? all[0] : null;
+  }
+
+  getEnemiesInLine(px, py, dirX, dirY, maxDist, halfWidth = 8) {
+    const es = this.enemySystem;
+    const candidates = [];
+    for (const e of [...es.enemies, ...(es.boss ? [es.boss] : [])]) {
+      if (e.isDead) continue;
+      const ex = e.position.x + e.size / 2 - px;
+      const ey = e.position.y + e.size / 2 - py;
+      const t = ex * dirX + ey * dirY;
+      if (t <= 0 || t > maxDist) continue;
+      const perp = Math.abs(ex * dirY - ey * dirX);
+      if (perp > halfWidth + e.size / 2) continue;
+      candidates.push({ e, t });
+    }
+    candidates.sort((a, b) => a.t - b.t);
+    return candidates.map((c) => c.e);
   }
 
   drawAuraEffects(ctx) {
@@ -4801,6 +6491,78 @@ class Game {
         grad.addColorStop(1, "rgba(249, 115, 22, 0)");
         ctx.fillStyle = grad;
         ctx.fillRect(sx - 15, sy - beamHeight, 30, beamHeight);
+      } else if (eff.type === "attackFanArc") {
+        const sx = eff.x + ox; const sy = eff.y + oy;
+        const alpha = 1 - eff.t / (eff.duration || 0.2);
+        const range = eff.range || 65;
+        ctx.strokeStyle = `rgba(251, 191, 36, ${0.9 * alpha})`;
+        ctx.lineWidth = 5;
+        const angle = Math.atan2(eff.dirY, eff.dirX);
+        ctx.beginPath();
+        ctx.arc(sx, sy, range, angle - (120 * Math.PI / 360), angle + (120 * Math.PI / 360));
+        ctx.stroke();
+      } else if (eff.type === "attackThrustLunge") {
+        const sx0 = eff.x + ox; const sy0 = eff.y + oy;
+        const sx1 = eff.hitX + ox; const sy1 = eff.hitY + oy;
+        const alpha = 1 - eff.t / (eff.duration || 0.15);
+        ctx.strokeStyle = `rgba(96, 165, 250, ${alpha})`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(sx0, sy0);
+        ctx.lineTo(sx1, sy1);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+        ctx.beginPath();
+        ctx.arc(sx1, sy1, 6, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (eff.type === "dashStrikeSurge") {
+        const alpha = 1 - eff.t / (eff.duration || 0.25);
+        ctx.fillStyle = `rgba(200, 200, 255, ${0.3 * alpha})`;
+        const px = this.player.position.x + ox; const py = this.player.position.y + oy;
+        ctx.fillRect(px - this.player.size, py - this.player.size, this.player.size * 2, this.player.size * 2);
+      } else if (eff.type === "dashStrikeFan") {
+        const sx = eff.x + ox; const sy = eff.y + oy;
+        const alpha = 1 - eff.t / (eff.duration || 0.12);
+        const range = eff.range || 48;
+        ctx.strokeStyle = `rgba(251, 191, 36, ${0.85 * alpha})`;
+        ctx.lineWidth = 4;
+        const angle = Math.atan2(eff.dirY, eff.dirX);
+        ctx.beginPath();
+        ctx.arc(sx, sy, range, angle - Math.PI / 4, angle + Math.PI / 4);
+        ctx.stroke();
+      } else if (eff.type === "backfireTrail") {
+        const sx = eff.x + ox; const sy = eff.y + oy;
+        const alpha = 1 - eff.t / (eff.duration || 0.2);
+        ctx.strokeStyle = `rgba(248, 250, 252, ${0.6 * alpha})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx - eff.dirX * 40, sy - eff.dirY * 40);
+        ctx.stroke();
+      } else if (eff.type === "pulseStrike") {
+        const sx = eff.x + ox; const sy = eff.y + oy;
+        const progress = eff.delay ? Math.min(1, eff.t / eff.delay) : 1;
+        const r = (eff.radius || 55) * (0.3 + 0.7 * progress);
+        const alpha = 0.4 + 0.3 * Math.sin(this.time * 12);
+        ctx.strokeStyle = `rgba(147, 197, 253, ${alpha})`;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (eff.type === "pulseDetonation") {
+        const sx = eff.x + ox; const sy = eff.y + oy;
+        const r = (eff.radius || 55) * Math.min(1, eff.t / (eff.duration || 0.25));
+        const alpha = 1 - eff.t / (eff.duration || 0.25);
+        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+        g.addColorStop(0, `rgba(147, 197, 253, ${0.7 * alpha})`);
+        g.addColorStop(0.6, `rgba(96, 165, 250, ${0.4 * alpha})`);
+        g.addColorStop(1, "rgba(96, 165, 250, 0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   }
@@ -4829,13 +6591,34 @@ class Game {
           if (def.auraUpkeep) nameText += ` -${(def.auraUpkeep * 100).toFixed(1)}% HP/s`;
         }
         if (nameEl) nameEl.textContent = nameText;
+        const empowerStacks = this.empowerStacks?.[i] || 0;
+        const cascadeFlash = this.skillCascadeFlashUntil?.[i] != null && this.time < this.skillCascadeFlashUntil[i];
+        slotEl.classList.toggle("skill-cascade-flash", !!cascadeFlash);
+        const stackEl = slotEl.querySelector(".skill-empower-stacks");
+        if (stackEl) {
+          stackEl.textContent = empowerStacks > 0 ? String(empowerStacks) : "";
+          stackEl.style.display = empowerStacks > 0 ? "block" : "none";
+        }
       }
+      const isCharging = this.skillChargeSlot === i;
+      slotEl.classList.toggle("skill-slot-charging", isCharging);
       const cd = this.skillCooldowns[i] || 0;
       const baseCd = def ? def.baseCd : 1;
       const isAura = def && def.category === "aura";
-      const pct = !isAura && baseCd > 0 ? Math.min(1, cd / (baseCd * this.getSkillCooldownMult())) : 0;
-      if (cdEl) {
-        cdEl.style.background = pct > 0 ? `conic-gradient(#374151 0deg, #374151 ${pct * 360}deg, transparent ${pct * 360}deg)` : "none";
+      let pct = 0;
+      if (isCharging && this.skillChargeStartTime != null) {
+        const chargeDur = Math.min(2, this.time - this.skillChargeStartTime);
+        pct = chargeDur / 2;
+        if (cdEl) {
+          cdEl.style.background = `conic-gradient(#eab308 0deg, #f59e0b ${pct * 360}deg, transparent ${pct * 360}deg)`;
+        }
+      } else {
+        const mods = getModsForSkillSlot(this, i);
+        const effectiveBaseCd = baseCd + (mods.includes("amplify") ? 0.5 : 0);
+        pct = !isAura && effectiveBaseCd > 0 ? Math.min(1, cd / (effectiveBaseCd * this.getSkillCooldownMult())) : 0;
+        if (cdEl) {
+          cdEl.style.background = pct > 0 ? `conic-gradient(#374151 0deg, #374151 ${pct * 360}deg, transparent ${pct * 360}deg)` : "none";
+        }
       }
       slotEl.classList.toggle("aura-active", isAura && this.activeAuras.has(skillId));
     }
@@ -4843,6 +6626,9 @@ class Game {
 
   computePlayerDamage(enemy) {
     let dmg = this.currentStats.attack;
+    dmg += this.getAttackUpgradeValue("flatDamage");
+    dmg *= 1 + this.getAttackUpgradeValue("damageBoost");
+    dmg *= 1 - this.getAttackPenaltyValue("damageReduction");
     if (this.playerCursedWeakenUntil > this.time) dmg = Math.round(dmg * 0.8);
     if (this.hasBlessing("berserking")) dmg = Math.round(dmg * 1.5);
     if (this.hasUpgradeCard("glassCannon")) dmg = Math.round(dmg * 1.5);
@@ -4853,7 +6639,7 @@ class Game {
         dmg *= 2;
       }
     }
-    if (this.hasUpgradeCard("berserker")) {
+    if (this.hasUpgradeCard("berserkerRage")) {
       const ratio =
         this.currentStats.maxHealth > 0
           ? this.currentHealth / this.currentStats.maxHealth
@@ -4881,6 +6667,8 @@ class Game {
     const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
     if (boss.hitFlashTimer > 0) boss.hitFlashTimer -= dt;
+    this.processEnemyDebuffs(dt, boss);
+    if (boss.stunUntil != null && this.time < boss.stunUntil) return;
 
     // Charge attack
     if (boss.chargeActive) {
@@ -4980,10 +6768,19 @@ class Game {
       const count = 3 + Math.floor(Math.random() * 2);
       this.lootSystem.spawnBurstAt(bx, by, count, 0.6);
       if (hasTalent("warlord")) this.lootSystem.spawnGuaranteedWeaponAt(bx, by);
+      if (Math.random() < 0.4) {
+        const card = MODIFICATION_CARD_DEFS[Math.floor(Math.random() * MODIFICATION_CARD_DEFS.length)];
+        addModCardToInventory(card.id);
+        if (hasTalent("luckyDraw") && Math.random() < 0.25) {
+          const card2 = MODIFICATION_CARD_DEFS[Math.floor(Math.random() * MODIFICATION_CARD_DEFS.length)];
+          addModCardToInventory(card2.id);
+        }
+        if (hasTalent("cardSurge")) this.cardSurgeUntil = this.time + 8;
+      }
       const legDropChance = this.difficulty >= 4 ? 0.25 : 0.15;
       if (Math.random() < legDropChance) {
         const cube = LEGENDARY_CUBES[Math.floor(Math.random() * LEGENDARY_CUBES.length)];
-        this.addCubeToInventory(cube.id);
+        this.lootSystem.spawnCubeAt(bx, by, cube.id);
         this.skillEffects.push({ type: "legendaryBeam", x: bx, y: by, t: 0, duration: 3 });
       }
       const hasGenerative = (item) => item?.modifiers?.some((m) => m.id === "generative");
@@ -5003,6 +6800,77 @@ class Game {
       const portalSize = 96;
       this.victoryPortal = { x: bx - portalSize / 2, y: by - portalSize / 2, w: portalSize, h: portalSize };
       this.victoryPortalTimer = 3;
+      if (hasTalent("livingItem")) {
+        const living = this.getLivingItem();
+        if (living && (living.modifiers?.length ?? 0) < 6) {
+          const pool = getModifierPoolForType(living.type);
+          const d = Math.min(5, Math.max(1, this.difficulty ?? 1));
+          for (let add = 0; add < 2 && (living.modifiers?.length ?? 0) < 6; add++) {
+            const available = pool.filter((p) => !living.modifiers?.some((m) => m.id === p.id));
+            if (available.length === 0) break;
+            const m = available[Math.floor(Math.random() * available.length)];
+            const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValueForDifficulty(d) : rollModifierValueForDifficulty(d);
+            living.modifiers = living.modifiers || [];
+            living.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, addedAt: Date.now() });
+          }
+          this.rebuildItemStats(living);
+          this.recalculateStats();
+          this.updateEquippedUI();
+        }
+      }
+      if (this.difficulty === 5) {
+        if (hasTalent("forgeMastery") && Math.random() < 0.1) {
+          this.mapInteractables.push({ type: "foresightShrine", x: bx + 100, y: by - 60, w: 64, h: 64 });
+        }
+        if (hasTalent("perfectCraft") && Math.random() < 0.05) {
+          this.mapInteractables.push({ type: "perfectionWorkshop", x: bx - 100, y: by - 60, w: 64, h: 64 });
+        }
+      }
+    }
+  }
+
+  interactWithMapObject(obj) {
+    if (obj.type === "socketWorkshop") {
+      for (const slot of ["Helmet", "Body Armour", "Weapon", "Boots"]) {
+        const item = this.equipment[slot];
+        if (item && (item.sockets ?? 0) < 2) {
+          let add = 1;
+          if (item.rarity === "rare" && (item.sockets ?? 0) === 1 && hasTalent("tinkererSocketMastery") && Math.random() < 0.05) add = 2;
+          item.sockets = Math.min(3, (item.sockets ?? 0) + add);
+          this.rebuildItemStats(item);
+          this.recalculateStats();
+          this.updateEquippedUI();
+          break;
+        }
+      }
+    } else if (obj.type === "foresightShrine") {
+      for (const slot of ["Helmet", "Body Armour", "Weapon", "Boots"]) {
+        const item = this.equipment[slot];
+        if (item) {
+          item.modifiers = item.modifiers || [];
+          if (!item.modifiers.some((m) => m.id === "foresight")) {
+            item.modifiers.push({ id: "foresight", label: "Foresight", statKey: null, value: 0, addedAt: Date.now() });
+            this.rebuildItemStats(item);
+            this.recalculateStats();
+            this.updateEquippedUI();
+            break;
+          }
+        }
+      }
+    } else if (obj.type === "perfectionWorkshop") {
+      for (const slot of ["Helmet", "Body Armour", "Weapon", "Boots"]) {
+        const item = this.equipment[slot];
+        if (item && item.modifiers?.length > 0) {
+          const idx = Math.floor(Math.random() * item.modifiers.length);
+          if (!LEGENDARY_MODIFIER_IDS.includes(item.modifiers[idx].id)) {
+            item.modifiers[idx].value = 0.45 + Math.random() * 0.05;
+            this.rebuildItemStats(item);
+            this.recalculateStats();
+            this.updateEquippedUI();
+          }
+          break;
+        }
+      }
     }
   }
 
@@ -5112,16 +6980,10 @@ class Game {
       if (this.fieryTimer > 0) {
         const types = ["Helmet", "Boots", "Body Armour", "Weapon"];
         const type = types[Math.floor(Math.random() * types.length)];
-        const def = generateEquipmentItem(type, 1, 0.8);
+        const diff = Math.min(5, Math.max(1, this.difficulty ?? 1));
+        const def = generateEquipmentItem(type, 1, 0.8, null, { difficulty: diff });
         const item = new LootItem(this.lootSystem.nextId++, ex - 10, ey - 10, def, ex, ey);
         this.lootSystem.items.push(item);
-        const cards = getUpgradeCardDefs();
-        for (let i = 0; i < 2; i++) {
-          const card = cards[Math.floor(Math.random() * cards.length)];
-          const cardDef = { type: "Upgrade Card", name: card.name, cardKey: card.cardKey, description: card.description };
-          const cardItem = new LootItem(this.lootSystem.nextId++, ex + i * 25 - 10, ey - 10, cardDef, ex, ey);
-          this.lootSystem.items.push(cardItem);
-        }
         this.grantXP(80);
       }
       return martyrMinions;
@@ -5137,27 +6999,66 @@ class Game {
 
     let dropMult = enemy.affixes?.includes("evasive") ? 2 : 1;
     if (this.hasBlessing("fortune")) dropMult *= 2;
+    const equipDropMult = hasTalent("keenEye") ? 1.15 : 1;
+    const difficulty = Math.min(5, Math.max(1, this.difficulty ?? 1));
+    const equipOpts = { qualityEye: hasTalent("qualityEye"), socketSense: hasTalent("socketSense"), difficulty };
     if (tier === "minion") {
-      if (Math.random() < 0.05 * dropMult) {
+      if (Math.random() < 0.05 * dropMult * equipDropMult) {
         const type = types[Math.floor(Math.random() * types.length)];
-        const def = generateEquipmentItem(type, lootQual, 0, "common");
+        const def = generateEquipmentItem(type, lootQual, 0, "common", equipOpts);
         this.lootSystem.spawnEquipmentAt(ex, ey, def);
       }
     } else if (tier === "elite") {
-      if (Math.random() < 0.2 * dropMult) {
+      if (Math.random() < 0.2 * dropMult * equipDropMult) {
         const type = types[Math.floor(Math.random() * types.length)];
-        const def = generateEquipmentItem(type, Math.min(1, lootQual + 0.35), 0.3, "magic");
+        const def = generateEquipmentItem(type, Math.min(1, lootQual + 0.35), 0.3, "magic", equipOpts);
         this.lootSystem.spawnEquipmentAt(ex, ey, def);
       }
     } else if (tier === "miniBoss") {
       const type = types[Math.floor(Math.random() * types.length)];
-      const def = generateEquipmentItem(type, 1, 0.8, "rare");
+      const def = generateEquipmentItem(type, 1, 0.8, "rare", equipOpts);
       this.lootSystem.spawnEquipmentAt(ex, ey, def);
-      if (Math.random() < 0.1 * dropMult) {
+      if (Math.random() < 0.1 * dropMult * equipDropMult) {
         const type2 = types[Math.floor(Math.random() * types.length)];
-        const def2 = generateEquipmentItem(type2, 1, 0.8, "rare");
+        const def2 = generateEquipmentItem(type2, 1, 0.8, "rare", equipOpts);
         this.lootSystem.spawnEquipmentAt(ex + 25, ey, def2);
       }
+      if (hasTalent("philosophersStone") && Math.random() < 0.05) {
+        const legType = types[Math.floor(Math.random() * types.length)];
+        const legDef = this.generateLegendaryEquipment(legType);
+        this.lootSystem.spawnEquipmentAt(ex + 15, ey - 20, legDef);
+      }
+      if (hasTalent("livingItem")) {
+        const living = this.getLivingItem();
+        if (living && (living.modifiers?.length ?? 0) < 6) {
+          const pool = getModifierPoolForType(living.type).filter((p) => !living.modifiers?.some((m) => m.id === p.id));
+          if (pool.length > 0) {
+            const m = pool[Math.floor(Math.random() * pool.length)];
+            const d = Math.min(5, Math.max(1, this.difficulty ?? 1));
+            const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValueForDifficulty(d) : rollModifierValueForDifficulty(d);
+            living.modifiers = living.modifiers || [];
+            living.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, addedAt: Date.now() });
+            this.rebuildItemStats(living);
+            this.recalculateStats();
+            this.updateEquippedUI();
+          }
+        }
+      }
+    }
+
+    let modCardChance = tier === "minion" ? 0.02 : tier === "elite" ? 0.05 : tier === "miniBoss" ? 0.15 : 0;
+    if (hasTalent("arcaneEye")) modCardChance *= 1.2;
+    if (modCardChance > 0 && Math.random() < modCardChance * dropMult) {
+      const card = MODIFICATION_CARD_DEFS[Math.floor(Math.random() * MODIFICATION_CARD_DEFS.length)];
+      addModCardToInventory(card.id);
+      if (hasTalent("luckyDraw") && Math.random() < 0.25) {
+        const card2 = MODIFICATION_CARD_DEFS[Math.floor(Math.random() * MODIFICATION_CARD_DEFS.length)];
+        addModCardToInventory(card2.id);
+      }
+      if (hasTalent("cardSurge")) this.cardSurgeUntil = this.time + 8;
+    }
+    if (tier === "elite" && hasTalent("fluxFinder") && Math.random() < 0.15) {
+      addFlux(1);
     }
 
     const baseType = ENEMY_TYPES.find((t) => t.name === enemy.name);
@@ -5191,6 +7092,7 @@ class Game {
 
   onPlayerDamaged(rawAmount, fromEnemy = false) {
     if (this.gameOver) return;
+    if (fromEnemy && (this.ghostLooterUntargetableUntil > this.time || this.phantomExtractorUntil > this.time)) return;
     if (fromEnemy && this.hasCondition("enemyDmg")) rawAmount = Math.round(rawAmount * 1.15);
     if (fromEnemy && this.lastDamagingEnemy?._auraBuffed) rawAmount = Math.round(rawAmount * 1.2);
     if (fromEnemy && this.lastDamagingEnemy?.affixes?.includes("cursing")) {
@@ -5204,7 +7106,7 @@ class Game {
     if (this.activeAuras.has("barrierAura")) rawAmount = Math.round(rawAmount * 0.85);
 
     // Ghost Step: invulnerability window
-    if (this.hasUpgradeCard("ghostStep") && this.ghostStepTimer > 0) return;
+    if (this.hasUpgradeCard("ghostForm") && this.ghostStepTimer > 0) return;
 
     // Phoenix Strike: invulnerability
     if (this.phoenixInvulnUntil && this.time < this.phoenixInvulnUntil) return;
@@ -5216,7 +7118,7 @@ class Game {
     if (this.bladeDashActive) return;
 
     // Iron Skin: absorbs one hit
-    if (this.hasUpgradeCard("ironSkin") && this.ironSkinShieldReady) {
+    if (this.hasUpgradeCard("ironWill") && this.ironSkinShieldReady) {
       this.ironSkinShieldReady = false;
       return;
     }
@@ -5232,10 +7134,14 @@ class Game {
     const effectiveDamage = Math.max(0, rawAmount - this.currentStats.defense);
     if (effectiveDamage <= 0) return;
 
+    const px = this.player.position.x + this.player.size / 2;
+    const py = this.player.position.y + this.player.size / 2;
+    this.addFloatingText(px, py, effectiveDamage, "playerDamage");
+
     this.currentHealth -= effectiveDamage;
     this.timeSinceLastHit = 0;
 
-    if (this.hasUpgradeCard("ghostStep")) {
+    if (this.hasUpgradeCard("ghostForm")) {
       this.ghostStepTimer = 1.5;
     }
 
@@ -5275,7 +7181,7 @@ class Game {
   }
 
   updateUpgradeCardEffects(dt) {
-    if (this.hasUpgradeCard("ironSkin")) {
+    if (this.hasUpgradeCard("ironWill")) {
       this.ironSkinTimer += dt;
       if (this.ironSkinTimer >= 10 && !this.ironSkinShieldReady) {
         this.ironSkinShieldReady = true;
@@ -5286,7 +7192,7 @@ class Game {
       this.ironSkinShieldReady = false;
     }
 
-    if (this.hasUpgradeCard("ghostStep")) {
+    if (this.hasUpgradeCard("ghostForm")) {
       if (this.ghostStepTimer > 0) {
         this.ghostStepTimer -= dt;
         if (this.ghostStepTimer < 0) this.ghostStepTimer = 0;
@@ -5313,7 +7219,7 @@ class Game {
     this.world.draw(ctx, this.camera);
     if (this.hazardSystem) this.hazardSystem.draw(ctx, this.camera, this.time);
     this.lootSystem.draw(ctx, this.camera, this.time);
-    this.enemySystem.draw(ctx, this.camera);
+    this.enemySystem.draw(ctx, this.camera, this.time);
 
     if (this.victoryPortal) {
       const p = this.victoryPortal;
@@ -5334,6 +7240,52 @@ class Game {
       ctx.textBaseline = "alphabetic";
     }
 
+    for (const obj of this.mapInteractables) {
+      const sx = obj.x - this.camera.position.x;
+      const sy = obj.y - this.camera.position.y;
+      const pulse = 0.7 + Math.sin(this.time * 4 + obj.x) * 0.15;
+      let fill = "#60a5fa";
+      let label = "?";
+      if (obj.type === "socketWorkshop") {
+        fill = "#38bdf8";
+        label = "⚙ Socket";
+      } else if (obj.type === "foresightShrine") {
+        fill = "#a78bfa";
+        label = "👁 Foresight";
+      } else if (obj.type === "perfectionWorkshop") {
+        fill = "#fbbf24";
+        label = "✨ Perfect";
+      }
+      ctx.fillStyle = fill;
+      ctx.globalAlpha = 0.4 + pulse * 0.3;
+      ctx.fillRect(sx, sy, obj.w, obj.h);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(sx, sy, obj.w, obj.h);
+      ctx.font = "bold 12px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#fff";
+      ctx.fillText(label, sx + obj.w / 2, sy + obj.h / 2);
+    }
+    ctx.textAlign = "start";
+    ctx.textBaseline = "alphabetic";
+
+    if (this.nearInteractable) {
+      const sx = this.viewWidth / 2 - 80;
+      const sy = this.viewHeight - 50;
+      ctx.fillStyle = "rgba(0,0,0,0.7)";
+      ctx.fillRect(sx, sy, 160, 28);
+      ctx.strokeStyle = "#94a3b8";
+      ctx.strokeRect(sx, sy, 160, 28);
+      ctx.fillStyle = "#e2e8f0";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Press E to interact", this.viewWidth / 2, sy + 16);
+      ctx.textAlign = "start";
+    }
+
     if (this.dashTrail.length > 0) {
       for (let i = 0; i < this.dashTrail.length; i++) {
         const t = this.dashTrail[i];
@@ -5343,6 +7295,18 @@ class Game {
         ctx.globalAlpha = alpha;
         ctx.fillStyle = "#ffff4d";
         ctx.fillRect(sx, sy, this.player.size, this.player.size);
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (this.adrenalineTrail && this.adrenalineTrail.length > 0) {
+      for (let i = 0; i < this.adrenalineTrail.length; i++) {
+        const t = this.adrenalineTrail[i];
+        const alpha = 0.15 + (i / this.adrenalineTrail.length) * 0.25;
+        const sx = Math.floor(t.x - this.camera.position.x);
+        const sy = Math.floor(t.y - this.camera.position.y);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = "#38bdf8";
+        ctx.fillRect(sx + 2, sy + 2, this.player.size - 4, this.player.size - 4);
       }
       ctx.globalAlpha = 1;
     }
@@ -5397,14 +7361,77 @@ class Game {
     this.drawAuraEffects(ctx);
     this.drawSkillEffects(ctx);
 
+    for (const orb of this.pulseOrbs) {
+      const sx = orb.x - this.camera.position.x;
+      const sy = orb.y - this.camera.position.y;
+      const pulse = 0.85 + 0.15 * Math.sin(this.time * 8);
+      const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, 14);
+      g.addColorStop(0, "#e0f2fe");
+      g.addColorStop(0.5, "#7dd3fc");
+      g.addColorStop(1, "rgba(56, 189, 248, 0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 14 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     for (const proj of this.playerProjectiles) {
       proj.draw(ctx, this.camera);
+    }
+
+    // Floating combat text — on top of everything
+    const camX = this.camera.position.x;
+    const camY = this.camera.position.y;
+    for (const entry of this.floatingCombatText) {
+      const age = this.time - entry.t;
+      if (age > 0.8) continue;
+      const yOffset = age * 80;
+      const alpha = 1 - age / 0.8;
+      const sx = entry.x - camX + entry.offsetX;
+      const sy = entry.y - camY - yOffset;
+
+      let color = "#fff";
+      let size = 16;
+      if (entry.type === "crit") {
+        color = "#facc15";
+        size = 22;
+      } else if (entry.type === "skill") {
+        color = "#fb923c";
+        size = 16;
+      } else if (entry.type === "dot") {
+        color = "#4ade80";
+        size = 12;
+      } else if (entry.type === "playerDamage") {
+        color = "#ef4444";
+        size = 18;
+      } else if (entry.type === "heal") {
+        color = "#22c55e";
+        size = 18;
+      }
+      if (entry.isKillingBlow) size = Math.round(size * 1.25);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = `${entry.isKillingBlow ? "bold " : ""}${size}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = color;
+      ctx.fillText(entry.text, sx, sy);
+      ctx.restore();
     }
 
     ctx.restore();
   }
 
   handleLootPickup(lootItem) {
+    if (lootItem.type === "Cube" && lootItem.cubeKey) {
+      this.addCubeToInventory(lootItem.cubeKey);
+      if (hasTalent("secureFooting")) this.secureFootingUntil = this.time + 1;
+      if (this.hasUpgradeCard("secureFooting")) this.swiftFeetTimer = 2.0;
+      this.updateInventoryUI();
+      return;
+    }
+
     const newItem = {
       id: lootItem.id,
       name: lootItem.name,
@@ -5415,12 +7442,21 @@ class Game {
       weight: lootItem.weight || null,
       rarity: lootItem.rarity || null,
       modifiers: lootItem.modifiers || [],
-      baseStat: lootItem.baseStat || null
+      baseStat: lootItem.baseStat || null,
+      sockets: lootItem.sockets ?? 0
     };
 
     this.inventory.push(newItem);
 
-    if (this.hasUpgradeCard("swiftFeet")) {
+    if (hasTalent("secureFooting")) this.secureFootingUntil = this.time + 1;
+    if (hasTalent("ghostLooter")) this.ghostLooterUntargetableUntil = this.time + 0.5;
+    const isRareOrBetter = lootItem.rarity === "rare" || lootItem.rarity === "legendary" || lootItem.rarity === "magic";
+    if (hasTalent("phantomExtractor") && isRareOrBetter && this.time >= (this.phantomExtractorCooldownUntil || 0)) {
+      this.phantomExtractorUntil = this.time + 3;
+      this.phantomExtractorCooldownUntil = this.time + 20;
+    }
+
+    if (this.hasUpgradeCard("secureFooting")) {
       this.swiftFeetTimer = 2.0;
     }
     if (this.hasUpgradeCard("vampiric") && !this.hasCondition("noHealthDrops")) {
@@ -5433,23 +7469,92 @@ class Game {
     this.updateInventoryUI();
   }
 
+  generateLegendaryEquipment(type) {
+    const baseKey = EQUIPMENT_BASE_STAT[type];
+    const range = EQUIPMENT_BASE_RANGES[type];
+    const baseValue = Math.round(range.min + (range.max - range.min) * 0.9);
+    const baseStat = { [baseKey]: baseValue };
+    const sec = EQUIPMENT_SECONDARY_BASE[type];
+    if (sec) {
+      const secValue = Math.round(sec.range.min + (sec.range.max - sec.range.min) * 0.9);
+      baseStat[sec.statKey] = secValue;
+    }
+    const modifiers = [];
+    const legPool = [...LEGENDARY_CUBES].sort(() => Math.random() - 0.5);
+    for (let i = 0; i < 2; i++) {
+      const c = legPool[i];
+      modifiers.push({ id: c.modifierId, label: c.modifierLabel, statKey: null, value: 0, addedAt: Date.now() });
+    }
+    const pool = getModifierPoolForType(type).sort(() => Math.random() - 0.5);
+    const diff = Math.min(5, Math.max(1, this.difficulty ?? 1));
+    for (let i = 0; i < 2; i++) {
+      const m = pool[i];
+      const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValueForDifficulty(diff) : rollModifierValueForDifficulty(diff);
+      modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, addedAt: Date.now() });
+    }
+    const baseNames = EQUIPMENT_BASE_NAMES[type];
+    const baseName = baseNames[Math.floor(Math.random() * baseNames.length)];
+    const name = `Legendary ${baseName}`;
+    const stats = { ...baseStat };
+    for (const m of modifiers) {
+      if (LEGENDARY_MODIFIER_IDS.includes(m.id)) continue;
+      if (m.id === "defenseStatScale") stats.defense = Math.round((stats.defense || 0) * (1 + m.value));
+      else if (m.id === "maxHealthStatScale") stats.maxHealth = Math.round((stats.maxHealth || 0) * (1 + m.value));
+      else if (m.statKey === "attackSpeed") stats.attackSpeed = (stats.attackSpeed || 1) * (1 + m.value);
+      else if (m.statKey === "cooldownRecovery") stats.cooldownRecovery = (stats.cooldownRecovery || 1) * (1 - m.value);
+      else if (m.statKey) {
+        const key = ["attack", "maxHealth", "defense", "speed"].includes(m.statKey) ? `${m.statKey}Percent` : m.statKey;
+        stats[key] = (stats[key] || 0) + m.value;
+      }
+    }
+    return { type, name, rarity: "legendary", baseStat, modifiers, stats, sockets: 0 };
+  }
+
   addCubeToInventory(cubeKey) {
+    if (hasTalent("cubeExpert")) {
+      const match = cubeKey.match(/^(.+?)T1$/);
+      if (match && MODIFIER_CUBES.some((c) => cubeKey.startsWith(c.id))) {
+        cubeKey = match[1] + "T2";
+      }
+    }
     this.cubeInventory[cubeKey] = (this.cubeInventory[cubeKey] || 0) + 1;
     if (this.inventoryOverlayOpen) this.populateInventoryOverlay();
+    if (hasTalent("tinkerersEye") && Math.random() < 0.15) {
+      const tierMatch = cubeKey.match(/T(\d)$/);
+      const tier = tierMatch ? parseInt(tierMatch[1], 10) : 1;
+      const allCubes = [...MODIFIER_CUBES, ...UPGRADE_CUBES];
+      const cube = allCubes[Math.floor(Math.random() * allCubes.length)];
+      const bonusKey = tierMatch ? `${cube.id}T${tier}` : cube.id;
+      this.cubeInventory[bonusKey] = (this.cubeInventory[bonusKey] || 0) + 1;
+    }
   }
 
   tryDropCubeFromEnemy(enemy) {
+    const ex = enemy.position.x + enemy.size / 2;
+    const ey = enemy.position.y + enemy.size / 2;
     const isMiniBoss = !!(enemy.enemyTier === "miniBoss" || enemy.isFiery || enemy.isCursedChestGuardian);
     const isElite = !!(enemy.enemyTier === "elite" || enemy.isElite);
-    const dropMult = this.hasBlessing("fortune") ? 2 : 1;
+    let dropMult = this.hasBlessing("fortune") ? 2 : 1;
+    if (hasTalent("cubeMagnet")) dropMult *= 1.2;
 
     const allCubes = [...MODIFIER_CUBES, ...UPGRADE_CUBES];
+    const upgradeCubes = [...UPGRADE_CUBES];
+    const magicRareCubes = UPGRADE_CUBES.filter((c) => c.id === "magicCube" || c.id === "rareCube");
     const pickRandomCube = (tier) => {
-      const cube = allCubes[Math.floor(Math.random() * allCubes.length)];
-      this.addCubeToInventory(`${cube.id}T${tier}`);
+      let cube;
+      if (hasTalent("transmuter") && magicRareCubes.length > 0 && Math.random() < 0.2) {
+        cube = magicRareCubes[Math.floor(Math.random() * magicRareCubes.length)];
+      } else {
+        cube = allCubes[Math.floor(Math.random() * allCubes.length)];
+      }
+      this.lootSystem.spawnCubeAt(ex, ey, `${cube.id}T${tier}`);
     };
 
     if (isMiniBoss) {
+      if (hasTalent("rarityRush") && this.difficulty >= 3 && Math.random() < 0.05) {
+        const cube = LEGENDARY_CUBES[Math.floor(Math.random() * LEGENDARY_CUBES.length)];
+        this.lootSystem.spawnCubeAt(ex, ey, cube.id);
+      }
       if (Math.random() < 0.05 * dropMult) pickRandomCube(3);
     } else if (isElite) {
       if (Math.random() < 0.1 * dropMult) pickRandomCube(2);
@@ -5463,8 +7568,23 @@ class Game {
       this.currentHealth + amount,
       this.currentStats.maxHealth
     );
+    const px = this.player.position.x + this.player.size / 2;
+    const py = this.player.position.y + this.player.size / 2;
+    this.addFloatingText(px, py, `+${Math.round(amount)}`, "heal");
     this.updateStatsUI();
     this.updateHealthBar();
+  }
+
+  addFloatingText(worldX, worldY, text, type, isKillingBlow = false) {
+    this.floatingCombatText.push({
+      x: worldX,
+      y: worldY,
+      text: String(text),
+      type: type || "normal",
+      t: this.time,
+      isKillingBlow: !!isKillingBlow,
+      offsetX: (Math.random() - 0.5) * 24
+    });
   }
 
   updateHealthBar() {
@@ -5494,7 +7614,27 @@ class Game {
   }
 
   hasUpgradeCard(key) {
-    return this.activeUpgradeCards.some((card) => card.cardKey === key);
+    return hasTalent(key);
+  }
+
+  hasAttackUpgrade(id) {
+    return (this.runAttackUpgrades || []).some((u) => u.id === id);
+  }
+
+  getAttackUpgradeValue(id) {
+    const u = (this.runAttackUpgrades || []).find((x) => x.id === id);
+    if (!u || u.value === undefined) return 0;
+    return u.percent ? u.value / 100 : u.value;
+  }
+
+  hasAttackPenalty(id) {
+    return (this.runAttackPenalties || []).some((p) => p.id === id);
+  }
+
+  getAttackPenaltyValue(id) {
+    const p = (this.runAttackPenalties || []).find((x) => x.id === id);
+    if (!p || p.value === undefined) return 0;
+    return p.percent ? p.value / 100 : p.value;
   }
 
   hasBlessing(id) {
@@ -5516,6 +7656,8 @@ class Game {
       const ty = py + Math.sin(angle) * dist;
       const damage = this.computePlayerDamage(null);
       const proj = new PlayerProjectile(px - PLAYER_PROJECTILE_SIZE / 2, py - PLAYER_PROJECTILE_SIZE / 2, tx, ty, damage);
+      if (this.hasUpgradeCard("homing")) proj.maxLifetime = 3;
+      proj.piercing = !!this.hasUpgradeCard("piercing");
       this.playerProjectiles.push(proj);
     }
   }
@@ -5592,8 +7734,8 @@ class Game {
     );
   }
 
-  isUpgradeCard(item) {
-    return item.type === "Upgrade Card" && !!item.cardKey;
+  isUpgradeCard(_item) {
+    return false;
   }
 
   handleInventoryItemClick(item) {
@@ -5615,22 +7757,8 @@ class Game {
     }
   }
 
-  equipUpgradeCardAtIndex(index) {
-    const item = this.inventory[index];
-    if (!item || !this.isUpgradeCard(item)) return;
-
-    if (this.activeUpgradeCards.length >= this.maxUpgradeCards) {
-      const removed = this.activeUpgradeCards.shift();
-      if (removed) this.inventory.push(removed);
-    }
-
-    this.activeUpgradeCards.push(item);
-    this.inventory.splice(index, 1);
-
-    this.updateInventoryUI();
-    this.updateUpgradeCardsUI();
-    this.recalculateStats();
-    if (this.inventoryOverlayOpen) this.populateInventoryOverlay();
+  equipUpgradeCardAtIndex(_index) {
+    // Upgrade cards removed
   }
 
   updateEquippedUI() {
@@ -5717,55 +7845,42 @@ class Game {
       const pct = percentMods[key] || 0;
       if (pct !== 0) stats[key] = Math.round((stats[key] || 0) * (1 + pct));
     }
-    if (hasTalent("fortified")) {
-      stats.defense = Math.round((stats.defense || 0) * 1.2);
-    }
-    stats.maxHealth = Math.round(stats.maxHealth * (this.levelHealthMult || 1));
-    stats.speed = Math.round(stats.speed * (this.levelSpeedMult || 1));
-    stats.attack = Math.round(stats.attack * (this.levelAttackMult || 1));
+    if (hasTalent("fortified")) stats.defense = Math.round((stats.defense || 0) * 1.2);
+    if (hasTalent("bulwark")) stats.defense = Math.round((stats.defense || 0) * 1.1);
+    if (hasTalent("thickSkin")) stats.defense = Math.round((stats.defense || 0) * 1.1);
+    stats.maxHealth = Math.round(stats.maxHealth);
+    stats.speed = Math.round(stats.speed);
+    stats.attack = Math.round(stats.attack);
     if (hasTalent("ironFist")) stats.attack = Math.round(stats.attack * 1.1);
-    if (hasTalent("synergist") && this.activeUpgradeCards.length >= 2) {
-      stats.maxHealth = Math.round(stats.maxHealth * 1.1);
-      stats.defense = Math.round((stats.defense || 0) * 1.1);
-      stats.speed = Math.round(stats.speed * 1.1);
-      stats.attack = Math.round(stats.attack * 1.1);
+    if (hasTalent("synergyMaster")) {
+      const sockets = getSkillModSockets();
+      let count = 0;
+      const slots = this.skills || [];
+      for (let i = 0; i < slots.length; i++) {
+        const skillId = slots[i];
+        if (!skillId) continue;
+        const arr = sockets[skillId];
+        if (Array.isArray(arr) && arr.some((c) => c)) count++;
+      }
+      const filled = (this.skills || []).filter(Boolean).length;
+      const allFour = filled >= 4 && count >= 4;
+      const mult = 1 + count * (allFour ? 0.1 : 0.06);
+      stats.attack = Math.round(stats.attack * mult);
+    }
+    if (hasTalent("grandSocketeer")) {
+      const sockets = getSkillModSockets();
+      let hasAny = false;
+      for (const skillId of (this.skills || [])) {
+        if (!skillId) continue;
+        const arr = sockets[skillId];
+        if (Array.isArray(arr) && arr.some((c) => c)) { hasAny = true; break; }
+      }
+      if (hasAny) stats.attack = Math.round(stats.attack * 1.5);
     }
     this.currentStats = stats;
     this.currentHealth = Math.min(this.currentHealth, stats.maxHealth);
     this.updateStatsUI();
     this.updateHealthBar();
-  }
-
-  updateUpgradeCardsUI() {
-    if (!this.upgradeCardListEl) return;
-    this.upgradeCardListEl.innerHTML = "";
-
-    if (this.activeUpgradeCards.length === 0) {
-      const li = document.createElement("li");
-      li.className = "inventory-empty";
-      li.textContent = "No upgrade cards equipped";
-      this.upgradeCardListEl.appendChild(li);
-      return;
-    }
-
-    for (const card of this.activeUpgradeCards) {
-      const li = document.createElement("li");
-      li.className = "upgrade-card-item";
-
-      const nameEl = document.createElement("div");
-      nameEl.className = "upgrade-card-name";
-      nameEl.textContent = card.name;
-
-      const descEl = document.createElement("div");
-      descEl.className = "upgrade-card-desc";
-      descEl.textContent = card.description || "";
-
-      li.addEventListener("mouseenter", (e) => showItemTooltip(e, card, this));
-      li.addEventListener("mouseleave", hideItemTooltip);
-      li.appendChild(nameEl);
-      li.appendChild(descEl);
-      this.upgradeCardListEl.appendChild(li);
-    }
   }
 
   updateStatsUI() {
@@ -5804,26 +7919,12 @@ class Game {
 
   // ---- Dev helpers ----
 
-  spawnUpgradeCardToInventory(cardDef) {
-    if (!cardDef || !cardDef.cardKey) return;
-    const id = this.lootSystem ? this.lootSystem.nextId++ : Date.now();
-    const newItem = {
-      id,
-      name: cardDef.name,
-      type: "Upgrade Card",
-      stats: {},
-      cardKey: cardDef.cardKey,
-      description: cardDef.description || ""
-    };
-    this.inventory.push(newItem);
-    this.updateInventoryUI();
+  spawnUpgradeCardToInventory(_cardDef) {
+    // Upgrade cards removed
   }
 
   handleDevGiveAllCards() {
-    const cards = getUpgradeCardDefs();
-    for (const def of cards) {
-      this.spawnUpgradeCardToInventory(def);
-    }
+    // Upgrade cards removed
   }
 
   handleDevGiveAllCubes() {
@@ -5843,7 +7944,8 @@ class Game {
     const type = types[Math.floor(Math.random() * types.length)];
     const forceRarity = Math.random() < 0.5 ? "magic" : "rare";
     const lootQuality = this.currentMap?.lootQuality ?? 0.5;
-    const def = generateEquipmentItem(type, lootQuality, 0.5, forceRarity);
+    const diff = Math.min(5, Math.max(1, this.difficulty ?? 1));
+    const def = generateEquipmentItem(type, lootQuality, 0.5, forceRarity, { difficulty: diff });
     this.inventory.push({
       id: 70000 + Math.floor(Math.random() * 10000),
       name: def.name,
@@ -5989,40 +8091,51 @@ function loadSavedCharacters() {
 function buildLegacyVault() {
   const saved = loadSavedCharacters();
   const conquerorItems = loadConquerorVault();
-  const vault = [...conquerorItems];
-  for (const char of saved) {
+  const vault = [];
+
+  // Conqueror / Eternal items
+  for (let i = 0; i < conquerorItems.length; i++) {
+    const entry = conquerorItems[i];
+    vault.push({
+      item: { ...entry.item },
+      collectedBy: entry.collectedBy || "Unknown",
+      source: "conqueror",
+      conquerorIndex: i
+    });
+  }
+
+  // Items from saved characters
+  for (let charIndex = 0; charIndex < saved.length; charIndex++) {
+    const char = saved[charIndex];
     const name = char.name || "Unknown";
+
     if (char.equipment) {
       for (const [slot, item] of Object.entries(char.equipment)) {
-        if (item) {
-          vault.push({
-            item: { ...item, type: item.type || slot },
-            collectedBy: name
-          });
-        }
+        if (!item) continue;
+        vault.push({
+          item: { ...item, type: item.type || slot },
+          collectedBy: name,
+          source: "character-equipment",
+          charIndex,
+          slot
+        });
       }
     }
-    if (char.activeUpgradeCards) {
-      for (const card of char.activeUpgradeCards) {
-        if (card) {
-          vault.push({
-            item: { ...card, type: "Upgrade Card" },
-            collectedBy: name
-          });
-        }
-      }
-    }
-    if (char.inventory) {
-      for (const inv of char.inventory) {
-        if (inv) {
-          vault.push({
-            item: { ...inv },
-            collectedBy: name
-          });
-        }
-      }
+
+    if (Array.isArray(char.inventory)) {
+      char.inventory.forEach((inv, invIndex) => {
+        if (!inv) return;
+        vault.push({
+          item: { ...inv },
+          collectedBy: name,
+          source: "character-inventory",
+          charIndex,
+          invIndex
+        });
+      });
     }
   }
+
   return vault;
 }
 
@@ -6057,6 +8170,8 @@ function formatItemModifiers(item) {
       const effect = LEGENDARY_MODIFIER_EFFECTS[m.id] || "";
       return effect ? `${m.label} (${effect})` : m.label;
     }
+    if (m.id === "defenseStatScale") return `Defense of this item +${Math.round(m.value * 100)}%`;
+    if (m.id === "maxHealthStatScale") return `Max Health of this item +${Math.round(m.value * 100)}%`;
     return `+${Math.round(m.value * 100)}% ${m.label}`;
   });
 }
@@ -6180,7 +8295,7 @@ function renderHallOfChampions() {
           ${formatEquipment(char.equipment)}
         </div>
         <div class="champion-cards">
-          ${formatCards(char.activeUpgradeCards)}
+          ${formatCards(char.activeUpgradeCards || [])}
         </div>
       </div>
       <button class="champion-delete-btn" aria-label="Delete character">Delete</button>
@@ -6280,7 +8395,7 @@ function toggleLegacySelection(idx, cardEl) {
 }
 
 function maxLegacySelection() {
-  return hasTalent("hoarder") ? 5 : 3;
+  return hasTalent("vaultMaster") ? 8 : 3;
 }
 
 function updateLegacySelectionUI() {
@@ -6300,12 +8415,257 @@ function getSelectedLegacyItems() {
     .map((idx) => ({ ...vault[idx].item }));
 }
 
+function deleteLegacySelectedItems() {
+  if (legacySelectedIndices.size === 0) return;
+  if (!confirm("Delete selected items from the Legacy Vault? This cannot be undone.")) return;
+
+  const vault = buildLegacyVault();
+  const saved = loadSavedCharacters();
+  let conquerorVault = loadConquerorVault();
+
+  const conquerorToDelete = new Set();
+  const equipToClear = new Map();
+  const cardsToDelete = new Map();
+  const invToDelete = new Map();
+
+  for (const idx of legacySelectedIndices) {
+    const entry = vault[idx];
+    if (!entry) continue;
+    if (entry.source === "conqueror") {
+      if (typeof entry.conquerorIndex === "number") {
+        conquerorToDelete.add(entry.conquerorIndex);
+      }
+    } else if (entry.source === "character-equipment") {
+      const key = entry.charIndex;
+      if (key == null || !entry.slot) continue;
+      let set = equipToClear.get(key);
+      if (!set) {
+        set = new Set();
+        equipToClear.set(key, set);
+      }
+      set.add(entry.slot);
+    } else if (entry.source === "character-card") {
+      const key = entry.charIndex;
+      if (key == null || typeof entry.cardIndex !== "number") continue;
+      let set = cardsToDelete.get(key);
+      if (!set) {
+        set = new Set();
+        cardsToDelete.set(key, set);
+      }
+      set.add(entry.cardIndex);
+    } else if (entry.source === "character-inventory") {
+      const key = entry.charIndex;
+      if (key == null || typeof entry.invIndex !== "number") continue;
+      let set = invToDelete.get(key);
+      if (!set) {
+        set = new Set();
+        invToDelete.set(key, set);
+      }
+      set.add(entry.invIndex);
+    }
+  }
+
+  // Apply deletions to saved characters
+  for (const [charIndex, slots] of equipToClear.entries()) {
+    const ch = saved[charIndex];
+    if (!ch || !ch.equipment) continue;
+    for (const slot of slots) {
+      if (Object.prototype.hasOwnProperty.call(ch.equipment, slot)) {
+        ch.equipment[slot] = null;
+      }
+    }
+  }
+
+  for (const [charIndex, indices] of cardsToDelete.entries()) {
+    const ch = saved[charIndex];
+    if (!ch || !Array.isArray(ch.activeUpgradeCards)) continue;
+    ch.activeUpgradeCards = ch.activeUpgradeCards.filter((_, i) => !indices.has(i));
+  }
+
+  for (const [charIndex, indices] of invToDelete.entries()) {
+    const ch = saved[charIndex];
+    if (!ch || !Array.isArray(ch.inventory)) continue;
+    ch.inventory = ch.inventory.filter((_, i) => !indices.has(i));
+  }
+
+  localStorage.setItem(SAVE_KEY, JSON.stringify(saved));
+
+  // Apply deletions to conqueror vault
+  if (conquerorToDelete.size > 0) {
+    conquerorVault = conquerorVault.filter((_, i) => !conquerorToDelete.has(i));
+    localStorage.setItem(CONQUEROR_VAULT_KEY, JSON.stringify(conquerorVault));
+  }
+
+  legacySelectedIndices = new Set();
+  renderLegacyVault();
+}
+
 function openLegacyVault() {
   renderLegacyVault();
   const overlay = document.getElementById("legacy-vault-overlay");
   const mainMenu = document.getElementById("main-menu");
   if (overlay) overlay.classList.remove("hidden");
   if (mainMenu) mainMenu.classList.add("hidden");
+}
+
+function openSkillLibrary() {
+  renderSkillLibrary();
+  const overlay = document.getElementById("skill-library-overlay");
+  const mainMenu = document.getElementById("main-menu");
+  if (overlay) overlay.classList.remove("hidden");
+  if (mainMenu) mainMenu.classList.add("hidden");
+}
+
+function closeSkillLibrary() {
+  const overlay = document.getElementById("skill-library-overlay");
+  if (overlay) overlay.classList.add("hidden");
+  const mainMenu = document.getElementById("main-menu");
+  if (mainMenu) mainMenu.classList.remove("hidden");
+}
+
+function renderSkillLibraryCardsPanel() {
+  const titleEl = document.getElementById("skill-library-cards-title");
+  const listEl = document.getElementById("skill-library-cards-list");
+  if (!titleEl || !listEl) return;
+
+  const inv = getModCardInventory();
+  const target = skillLibraryPickerTarget;
+
+  if (target) {
+    const def = SKILL_DEFS.find((s) => s.id === target.skillId);
+    const skillName = def ? def.name : target.skillId;
+    titleEl.textContent = `Choose card to socket → ${escapeHtml(skillName)} (slot ${target.slotIndex + 1})`;
+  } else {
+    titleEl.textContent = inv.length === 0 ? "Modification cards" : "Modification cards — click a + slot on a skill to socket";
+  }
+
+  listEl.innerHTML = "";
+  inv.forEach((cardId, invIdx) => {
+    const cardDef = MODIFICATION_CARD_DEFS.find((c) => c.id === cardId);
+    if (!cardDef) return;
+    if (target) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "skill-library-picker-btn";
+      btn.textContent = cardDef.name;
+      btn.title = cardDef.desc;
+      btn.addEventListener("click", () => {
+        const socketsData = getSkillModSockets();
+        if (!socketsData[target.skillId]) socketsData[target.skillId] = [];
+        const slotCards = socketsData[target.skillId];
+        removeModCardFromInventoryAtIndex(invIdx);
+        while (slotCards.length <= target.slotIndex) slotCards.push(null);
+        slotCards[target.slotIndex] = cardId;
+        setSkillModSockets(socketsData);
+        skillLibraryPickerTarget = null;
+        renderSkillLibrary();
+      });
+      listEl.appendChild(btn);
+    } else {
+      const span = document.createElement("span");
+      span.className = "skill-library-picker-btn";
+      span.style.pointerEvents = "none";
+      span.textContent = cardDef.name;
+      span.title = cardDef.desc;
+      listEl.appendChild(span);
+    }
+  });
+}
+
+function renderSkillLibrary() {
+  const skillsPanel = document.getElementById("skill-library-skills-panel");
+  const fluxEl = document.getElementById("skill-library-flux-value");
+  if (fluxEl) fluxEl.textContent = getFlux();
+  if (!skillsPanel) return;
+
+  const levels = getSkillLevels();
+  const sockets = getSkillModSockets();
+  const skillIds = SKILL_DEFS.map((s) => s.id);
+
+  let html = '<div class="skill-library-list">';
+  for (const skillId of skillIds) {
+    const def = SKILL_DEFS.find((s) => s.id === skillId);
+    if (!def) continue;
+    const level = getSkillLevel(skillId);
+    const xp = getSkillXp(skillId);
+    const xpForCurrent = getXpForSkillLevel(level);
+    const xpForNext = getXpForSkillLevel(level + 1);
+    const xpInLevel = level >= SKILL_MAX_LEVEL ? 0 : xp - xpForCurrent;
+    const xpNeeded = level >= SKILL_MAX_LEVEL ? 1 : xpForNext - xpForCurrent;
+    const pct = level >= SKILL_MAX_LEVEL ? 1 : xpNeeded > 0 ? Math.min(1, xpInLevel / xpNeeded) : 0;
+
+    const maxSlots = getModSlotsForSkillLevel(level);
+    let slotCards = sockets[skillId];
+    if (!Array.isArray(slotCards)) slotCards = [];
+    while (slotCards.length < maxSlots) slotCards.push(null);
+    slotCards = slotCards.slice(0, maxSlots);
+
+    html += `<div class="skill-library-card" data-skill-id="${escapeHtml(skillId)}">
+      <div class="skill-library-card-header">
+        <span class="skill-library-card-icon">${escapeHtml(def.icon)}</span>
+        <span class="skill-library-card-name">${escapeHtml(def.name)}</span>
+        <span class="skill-library-card-level">Lv.${level}${level >= SKILL_MAX_LEVEL ? " (max)" : ""}</span>
+      </div>
+      <div class="skill-library-xp-label">${level >= SKILL_MAX_LEVEL ? "Max level" : `${xpInLevel} / ${xpNeeded} XP`}</div>
+      <div class="skill-library-xp-bar"><div class="skill-library-xp-fill" style="width:${Math.round(pct * 100)}%"></div></div>
+      <div class="skill-library-mods">`;
+
+    for (let i = 0; i < maxSlots; i++) {
+      const cardId = slotCards[i];
+      const cardDef = cardId ? MODIFICATION_CARD_DEFS.find((c) => c.id === cardId) : null;
+      const filled = !!cardId;
+      html += `<div class="skill-library-mod-slot ${filled ? "filled" : ""}" data-skill-id="${escapeHtml(skillId)}" data-slot-index="${i}" title="${cardDef ? escapeHtml(cardDef.desc) : "Click to socket a modification card"}">${cardDef ? escapeHtml(cardDef.name) : "+"}</div>`;
+    }
+    html += "</div></div>";
+  }
+  html += "</div>";
+  skillsPanel.innerHTML = html;
+
+  skillsPanel.querySelectorAll(".skill-library-mod-slot").forEach((el) => {
+    el.addEventListener("click", () => {
+      const skillId = el.dataset.skillId;
+      const slotIndex = parseInt(el.dataset.slotIndex, 10);
+      const socketsData = getSkillModSockets();
+      if (!socketsData[skillId]) socketsData[skillId] = [];
+      const slotCards = socketsData[skillId];
+      const cardId = slotCards[slotIndex];
+
+      if (cardId) {
+        if (getFlux() < 1) {
+          return;
+        }
+        if (!confirm("Unsocket this card? Costs 1 Flux.")) return;
+        addFlux(-1);
+        slotCards[slotIndex] = null;
+        addModCardToInventory(cardId);
+        setSkillModSockets(socketsData);
+        renderSkillLibrary();
+        return;
+      }
+
+      const inv = getModCardInventory();
+      if (inv.length === 0) return;
+      if (inv.length === 1) {
+        const cardId = inv[0];
+        removeModCardFromInventoryAtIndex(0);
+        while (slotCards.length <= slotIndex) slotCards.push(null);
+        slotCards[slotIndex] = cardId;
+        setSkillModSockets(socketsData);
+        renderSkillLibrary();
+        return;
+      }
+      showSkillLibraryCardPicker(skillId, slotIndex);
+    });
+  });
+
+  renderSkillLibraryCardsPanel();
+}
+
+let skillLibraryPickerTarget = null;
+
+function showSkillLibraryCardPicker(skillId, slotIndex) {
+  skillLibraryPickerTarget = { skillId, slotIndex };
+  renderSkillLibraryCardsPanel();
 }
 
 function closeLegacyVault(returnToMainMenu = true) {
@@ -6351,21 +8711,34 @@ function renderTalentTree() {
 
   let html = '<div class="talent-tree-branches">';
   for (const [branchName, nodes] of Object.entries(TALENT_TREE)) {
-    html += `<div class="talent-tree-branch"><div class="talent-tree-branch-title">${escapeHtml(branchName)}</div><div class="talent-tree-nodes">`;
-    for (let i = 0; i < nodes.length; i++) {
-      const node = nodes[i];
-      const isPurchased = purchased.includes(node.id);
-      const prevPurchased = i === 0 || purchased.includes(nodes[i - 1].id);
-      const isAvailable = !isPurchased && prevPurchased && lp >= node.cost;
-      const isLocked = !isPurchased && !prevPurchased;
-      const state = isPurchased ? "purchased" : isAvailable ? "available" : "locked";
-      html += `<div class="talent-tree-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}">
-        <div class="talent-tree-node-name">${escapeHtml(node.name)}</div>
-        <div class="talent-tree-node-desc">${escapeHtml(node.desc)}</div>
-        <div class="talent-tree-node-cost">${isPurchased ? "✓ Purchased" : `${node.cost} LP`}</div>
-      </div>`;
+    if (branchName === "Warrior") {
+      html += renderWarriorTalentBranch(nodes, purchased, lp);
+    } else if (branchName === "Survivalist") {
+      html += renderSurvivalistTalentBranch(nodes, purchased, lp);
+    } else if (branchName === "Scavenger") {
+      html += renderScavengerTalentBranch(nodes, purchased, lp);
+    } else if (branchName === "Tinkerer") {
+      html += renderTinkererTalentBranch(nodes, purchased, lp);
+    } else {
+      const genericPurchased = nodes.filter((n) => purchased.includes(n.id)).length;
+      html += `<div class="talent-tree-branch"><div class="talent-tree-branch-header"><div class="talent-tree-branch-title">${escapeHtml(branchName)}</div><button type="button" class="talent-tree-branch-refund-btn" data-branch="${escapeHtml(branchName)}" ${genericPurchased === 0 ? "disabled" : ""} title="Refund all talents in this branch">Refund all</button></div><div class="talent-tree-nodes">`;
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const isPurchased = purchased.includes(node.id);
+        const prevPurchased = i === 0 || purchased.includes(nodes[i - 1].id);
+        const isAvailable = !isPurchased && prevPurchased && lp >= node.cost;
+        const state = isPurchased ? "purchased" : isAvailable ? "available" : "locked";
+        const canRefund = isPurchased && canRefundTalent(node.id, purchased);
+        const tooltip = node.desc || "";
+        const title = tooltip + (canRefund ? " Click to refund." : "");
+        html += `<div class="talent-tree-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" title="${escapeHtml(title)}"${canRefund ? ' data-refundable="true"' : ""}>
+          <div class="talent-tree-node-name">${escapeHtml(node.name)}</div>
+          <div class="talent-tree-node-desc">${escapeHtml(node.desc)}</div>
+          <div class="talent-tree-node-cost">${isPurchased ? "✓ Purchased" : `${node.cost} LP`}</div>
+        </div>`;
+      }
+      html += "</div></div>";
     }
-    html += "</div></div>";
   }
   html += "</div>";
   content.innerHTML = html;
@@ -6379,6 +8752,338 @@ function renderTalentTree() {
       }
     });
   });
+
+  content.querySelectorAll(".talent-tree-node.purchased").forEach((el) => {
+    const id = el.dataset.talentId;
+    el.addEventListener("click", () => {
+      if (refundTalent(id)) renderTalentTree();
+    });
+  });
+
+  content.querySelectorAll(".talent-tree-branch-refund-btn").forEach((btn) => {
+    if (btn.disabled) return;
+    btn.addEventListener("click", () => {
+      const branch = btn.dataset.branch;
+      if (!branch) return;
+      const nodes = TALENT_TREE[branch];
+      const purchased = getPurchasedTalents();
+      const count = nodes ? nodes.filter((n) => purchased.includes(n.id)).length : 0;
+      if (count === 0) return;
+      if (!confirm(`Refund all ${count} talent(s) in ${branch}? You will recover their LP.`)) return;
+      refundBranch(branch);
+      renderTalentTree();
+    });
+  });
+}
+
+function renderWarriorTalentBranch(nodes, purchased, lp) {
+  // Predefined layout: 7-column grid, 4 tiers
+  const position = {
+    fierce: { row: 1, col: 2 },
+    rapid: { row: 1, col: 4 },
+    resilient: { row: 1, col: 6 },
+    bloodthirst: { row: 3, col: 2 },
+    predator: { row: 3, col: 3 },
+    reflexes: { row: 3, col: 5 },
+    ironWill: { row: 3, col: 6 },
+    frenzy: { row: 5, col: 2 },
+    executioner: { row: 5, col: 3 },
+    battleScarred: { row: 5, col: 4 },
+    endurance: { row: 5, col: 5 },
+    fortress: { row: 5, col: 6 },
+    berserkerRage: { row: 7, col: 2 },
+    warlord: { row: 7, col: 3 },
+    secondWind: { row: 7, col: 4 },
+    immortal: { row: 7, col: 5 }
+  };
+
+  const nodeById = {};
+  for (const n of nodes) nodeById[n.id] = n;
+
+  const maxRow = 7;
+  const maxCol = 7;
+
+  // Build node HTML
+  let gridHtml = "";
+  for (const node of nodes) {
+    const pos = position[node.id];
+    if (!pos) continue;
+    const isPurchased = purchased.includes(node.id);
+    const parentsAll = node.parentsAll || [];
+    const parentsAny = node.parentsAny || [];
+    const hasAll = parentsAll.length === 0 || parentsAll.every((p) => purchased.includes(p));
+    const hasAny = parentsAny.length === 0 || parentsAny.some((p) => purchased.includes(p));
+    const canUnlock = !isPurchased && hasAll && hasAny && lp >= node.cost;
+    const state = isPurchased ? "purchased" : canUnlock ? "available" : "locked";
+    const canRefund = isPurchased && canRefundTalent(node.id, purchased);
+    const tooltip = node.desc || "";
+    const title = tooltip + (canRefund ? " Click to refund." : "");
+    gridHtml += `<div class="talent-tree-node warrior-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" title="${escapeHtml(title)}"${canRefund ? ' data-refundable="true"' : ""} style="grid-row:${pos.row};grid-column:${pos.col};">
+      <div class="talent-tree-node-name">${escapeHtml(node.name)}</div>
+      <div class="talent-tree-node-desc">${escapeHtml(node.desc)}</div>
+      <div class="talent-tree-node-cost">${isPurchased ? "✓ Purchased" : `${node.cost} LP`}</div>
+    </div>`;
+  }
+
+  // Build connection lines between parent and child nodes
+  const edges = [];
+  for (const node of nodes) {
+    const id = node.id;
+    const parentsAll = node.parentsAll || [];
+    const parentsAny = node.parentsAny || [];
+    const parents = [...parentsAll, ...parentsAny];
+    for (const parentId of parents) {
+      const parentPos = position[parentId];
+      const childPos = position[id];
+      if (!parentPos || !childPos) continue;
+      const row = (parentPos.row + childPos.row) / 2;
+      const colStart = Math.min(parentPos.col, childPos.col);
+      const colEnd = Math.max(parentPos.col, childPos.col);
+      edges.push({ row, colStart, colEnd });
+    }
+  }
+
+  let connHtml = "";
+  for (const e of edges) {
+    connHtml += `<div class="warrior-connection" style="grid-row:${e.row};grid-column:${e.colStart} / ${e.colEnd + 1};"></div>`;
+  }
+
+  const warriorPurchased = nodes.filter((n) => purchased.includes(n.id)).length;
+  return `<div class="talent-tree-branch warrior-branch">
+    <div class="talent-tree-branch-header">
+      <div class="talent-tree-branch-title">Warrior</div>
+      <button type="button" class="talent-tree-branch-refund-btn" data-branch="Warrior" ${warriorPurchased === 0 ? "disabled" : ""} title="Refund all talents in this branch">Refund all</button>
+    </div>
+    <div class="warrior-tree-grid">
+      ${connHtml}
+      ${gridHtml}
+    </div>
+  </div>`;
+}
+
+function renderSurvivalistTalentBranch(nodes, purchased, lp) {
+  const position = {
+    fortitude: { row: 1, col: 2 },
+    bulwark: { row: 1, col: 4 },
+    nimble: { row: 1, col: 6 },
+    vitality: { row: 3, col: 2 },
+    thickSkin: { row: 3, col: 3 },
+    toughness: { row: 3, col: 5 },
+    fleetFooted: { row: 3, col: 6 },
+    lifebloom: { row: 5, col: 2 },
+    secondBreath: { row: 5, col: 3 },
+    retaliation: { row: 5, col: 4 },
+    evasion: { row: 5, col: 5 },
+    shadowStep: { row: 5, col: 6 },
+    undyingResolve: { row: 7, col: 2 },
+    livingFortress: { row: 7, col: 3 },
+    ghostForm: { row: 7, col: 4 },
+    untouchable: { row: 7, col: 5 }
+  };
+
+  let gridHtml = "";
+  for (const node of nodes) {
+    const pos = position[node.id];
+    if (!pos) continue;
+    const isPurchased = purchased.includes(node.id);
+    const parentsAll = node.parentsAll || [];
+    const parentsAny = node.parentsAny || [];
+    const hasAll = parentsAll.length === 0 || parentsAll.every((p) => purchased.includes(p));
+    const hasAny = parentsAny.length === 0 || parentsAny.some((p) => purchased.includes(p));
+    const canUnlock = !isPurchased && hasAll && hasAny && lp >= node.cost;
+    const state = isPurchased ? "purchased" : canUnlock ? "available" : "locked";
+    const canRefund = isPurchased && canRefundTalent(node.id, purchased);
+    const tooltip = node.desc || "";
+    const title = tooltip + (canRefund ? " Click to refund." : "");
+    gridHtml += `<div class="talent-tree-node survivalist-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" title="${escapeHtml(title)}"${canRefund ? ' data-refundable="true"' : ""} style="grid-row:${pos.row};grid-column:${pos.col};">
+      <div class="talent-tree-node-name">${escapeHtml(node.name)}</div>
+      <div class="talent-tree-node-desc">${escapeHtml(node.desc)}</div>
+      <div class="talent-tree-node-cost">${isPurchased ? "✓ Purchased" : `${node.cost} LP`}</div>
+    </div>`;
+  }
+
+  const edges = [];
+  for (const node of nodes) {
+    const id = node.id;
+    const parents = [...(node.parentsAll || []), ...(node.parentsAny || [])];
+    for (const parentId of parents) {
+      const parentPos = position[parentId];
+      const childPos = position[id];
+      if (!parentPos || !childPos) continue;
+      const row = (parentPos.row + childPos.row) / 2;
+      const colStart = Math.min(parentPos.col, childPos.col);
+      const colEnd = Math.max(parentPos.col, childPos.col);
+      edges.push({ row, colStart, colEnd });
+    }
+  }
+
+  let connHtml = "";
+  for (const e of edges) {
+    connHtml += `<div class="warrior-connection" style="grid-row:${e.row};grid-column:${e.colStart} / ${e.colEnd + 1};"></div>`;
+  }
+
+  const survivalistPurchased = nodes.filter((n) => purchased.includes(n.id)).length;
+  return `<div class="talent-tree-branch survivalist-branch">
+    <div class="talent-tree-branch-header">
+      <div class="talent-tree-branch-title">Survivalist</div>
+      <button type="button" class="talent-tree-branch-refund-btn" data-branch="Survivalist" ${survivalistPurchased === 0 ? "disabled" : ""} title="Refund all talents in this branch">Refund all</button>
+    </div>
+    <div class="warrior-tree-grid survivalist-tree-grid">
+      ${connHtml}
+      ${gridHtml}
+    </div>
+  </div>`;
+}
+
+function renderScavengerTalentBranch(nodes, purchased, lp) {
+  const position = {
+    arcaneEye: { row: 1, col: 2 },
+    swiftExtraction: { row: 1, col: 5 },
+    keenEye: { row: 1, col: 8 },
+    cardHoarder: { row: 3, col: 1 },
+    fluxFinder: { row: 3, col: 2 },
+    luckyDraw: { row: 3, col: 4 },
+    socketMastery: { row: 3, col: 5 },
+    secureFooting: { row: 3, col: 6 },
+    itemSense: { row: 3, col: 7 },
+    modSpecialist: { row: 3, col: 8 },
+    synergyMaster: { row: 5, col: 1 },
+    cardSurge: { row: 5, col: 2 },
+    ghostLooter: { row: 5, col: 3 },
+    treasureSense: { row: 5, col: 4 },
+    appraiser: { row: 5, col: 5 },
+    cardTranscendence: { row: 7, col: 1 },
+    phantomExtractor: { row: 7, col: 2 },
+    vaultMaster: { row: 7, col: 3 },
+    curator: { row: 7, col: 4 }
+  };
+
+  let gridHtml = "";
+  for (const node of nodes) {
+    const pos = position[node.id];
+    if (!pos) continue;
+    const isPurchased = purchased.includes(node.id);
+    const parentsAll = node.parentsAll || [];
+    const parentsAny = node.parentsAny || [];
+    const hasAll = parentsAll.length === 0 || parentsAll.every((p) => purchased.includes(p));
+    const hasAny = parentsAny.length === 0 || parentsAny.some((p) => purchased.includes(p));
+    const canUnlock = !isPurchased && hasAll && hasAny && lp >= node.cost;
+    const state = isPurchased ? "purchased" : canUnlock ? "available" : "locked";
+    const canRefund = isPurchased && canRefundTalent(node.id, purchased);
+    const tooltip = node.desc || "";
+    const title = tooltip + (canRefund ? " Click to refund." : "");
+    gridHtml += `<div class="talent-tree-node scavenger-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" title="${escapeHtml(title)}"${canRefund ? ' data-refundable="true"' : ""} style="grid-row:${pos.row};grid-column:${pos.col};">
+      <div class="talent-tree-node-name">${escapeHtml(node.name)}</div>
+      <div class="talent-tree-node-desc">${escapeHtml(node.desc)}</div>
+      <div class="talent-tree-node-cost">${isPurchased ? "✓ Purchased" : `${node.cost} LP`}</div>
+    </div>`;
+  }
+
+  const edges = [];
+  for (const node of nodes) {
+    const id = node.id;
+    const parents = [...(node.parentsAll || []), ...(node.parentsAny || [])];
+    for (const parentId of parents) {
+      const parentPos = position[parentId];
+      const childPos = position[id];
+      if (!parentPos || !childPos) continue;
+      const row = (parentPos.row + childPos.row) / 2;
+      const colStart = Math.min(parentPos.col, childPos.col);
+      const colEnd = Math.max(parentPos.col, childPos.col);
+      edges.push({ row, colStart, colEnd });
+    }
+  }
+
+  let connHtml = "";
+  for (const e of edges) {
+    connHtml += `<div class="warrior-connection scavenger-connection" style="grid-row:${e.row};grid-column:${e.colStart} / ${e.colEnd + 1};"></div>`;
+  }
+
+  const scavengerPurchased = nodes.filter((n) => purchased.includes(n.id)).length;
+  return `<div class="talent-tree-branch scavenger-branch">
+    <div class="talent-tree-branch-header">
+      <div class="talent-tree-branch-title">Scavenger</div>
+      <button type="button" class="talent-tree-branch-refund-btn" data-branch="Scavenger" ${scavengerPurchased === 0 ? "disabled" : ""} title="Refund all talents in this branch">Refund all</button>
+    </div>
+    <div class="warrior-tree-grid scavenger-tree-grid">
+      ${connHtml}
+      ${gridHtml}
+    </div>
+  </div>`;
+}
+
+function renderTinkererTalentBranch(nodes, purchased, lp) {
+  const position = {
+    cubeMagnet: { row: 1, col: 2 },
+    socketSense: { row: 1, col: 4 },
+    transmuter: { row: 1, col: 6 },
+    cubeExpert: { row: 3, col: 1 },
+    tinkerersEye: { row: 3, col: 3 },
+    socketFinder: { row: 3, col: 5 },
+    qualityEye: { row: 3, col: 7 },
+    forgeMastery: { row: 5, col: 1 },
+    cubeCascade: { row: 5, col: 2 },
+    tinkererSocketMastery: { row: 5, col: 4 },
+    rarityRush: { row: 5, col: 5 },
+    transmutation: { row: 5, col: 7 },
+    perfectCraft: { row: 7, col: 1 },
+    grandSocketeer: { row: 7, col: 2 },
+    livingItem: { row: 7, col: 4 },
+    philosophersStone: { row: 7, col: 6 }
+  };
+
+  let gridHtml = "";
+  for (const node of nodes) {
+    const pos = position[node.id];
+    if (!pos) continue;
+    const isPurchased = purchased.includes(node.id);
+    const parentsAll = node.parentsAll || [];
+    const parentsAny = node.parentsAny || [];
+    const hasAll = parentsAll.length === 0 || parentsAll.every((p) => purchased.includes(p));
+    const hasAny = parentsAny.length === 0 || parentsAny.some((p) => purchased.includes(p));
+    const canUnlock = !isPurchased && hasAll && hasAny && lp >= node.cost;
+    const state = isPurchased ? "purchased" : canUnlock ? "available" : "locked";
+    const canRefund = isPurchased && canRefundTalent(node.id, purchased);
+    const tooltip = node.desc || "";
+    const title = tooltip + (canRefund ? " Click to refund." : "");
+    gridHtml += `<div class="talent-tree-node tinkerer-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" title="${escapeHtml(title)}"${canRefund ? ' data-refundable="true"' : ""} style="grid-row:${pos.row};grid-column:${pos.col};">
+      <div class="talent-tree-node-name">${escapeHtml(node.name)}</div>
+      <div class="talent-tree-node-desc">${escapeHtml(node.desc)}</div>
+      <div class="talent-tree-node-cost">${isPurchased ? "✓ Purchased" : `${node.cost} LP`}</div>
+    </div>`;
+  }
+
+  const edges = [];
+  for (const node of nodes) {
+    const id = node.id;
+    const parents = [...(node.parentsAll || []), ...(node.parentsAny || [])];
+    for (const parentId of parents) {
+      const parentPos = position[parentId];
+      const childPos = position[id];
+      if (!parentPos || !childPos) continue;
+      const row = (parentPos.row + childPos.row) / 2;
+      const colStart = Math.min(parentPos.col, childPos.col);
+      const colEnd = Math.max(parentPos.col, childPos.col);
+      edges.push({ row, colStart, colEnd });
+    }
+  }
+
+  let connHtml = "";
+  for (const e of edges) {
+    connHtml += `<div class="warrior-connection tinkerer-connection" style="grid-row:${e.row};grid-column:${e.colStart} / ${e.colEnd + 1};"></div>`;
+  }
+
+  const tinkererPurchased = nodes.filter((n) => purchased.includes(n.id)).length;
+  return `<div class="talent-tree-branch tinkerer-branch">
+    <div class="talent-tree-branch-header">
+      <div class="talent-tree-branch-title">Tinkerer</div>
+      <button type="button" class="talent-tree-branch-refund-btn" data-branch="Tinkerer" ${tinkererPurchased === 0 ? "disabled" : ""} title="Refund all talents in this branch">Refund all</button>
+    </div>
+    <div class="warrior-tree-grid tinkerer-tree-grid">
+      ${connHtml}
+      ${gridHtml}
+    </div>
+  </div>`;
 }
 
 let preRunDifficulty = 1;
@@ -6460,6 +9165,7 @@ function renderPreRunScreen() {
 
 let pendingSkillsForRun = [null, null, null, null];
 let selectedSkillSlot = -1;
+let pendingAttackType = "projectile";
 
 function showSkillSelectScreen() {
   const overlay = document.getElementById("skill-select-overlay");
@@ -6472,9 +9178,25 @@ function showSkillSelectScreen() {
 }
 
 function renderSkillSelectScreen() {
+  const attackTypeEl = document.getElementById("skill-select-attack-type");
   const slotsEl = document.getElementById("skill-select-slots");
   const poolEl = document.getElementById("skill-select-pool");
   if (!slotsEl || !poolEl) return;
+
+  if (attackTypeEl) {
+    attackTypeEl.innerHTML = "";
+    for (const atk of ATTACK_TYPES) {
+      const btn = document.createElement("button");
+      btn.className = "skill-select-attack-btn" + (pendingAttackType === atk.id ? " selected" : "");
+      btn.dataset.attackType = atk.id;
+      btn.innerHTML = `<span class="skill-select-attack-name">${escapeHtml(atk.name)}</span><span class="skill-select-attack-desc">${escapeHtml(atk.desc)}</span>`;
+      btn.addEventListener("click", () => {
+        pendingAttackType = atk.id;
+        renderSkillSelectScreen();
+      });
+      attackTypeEl.appendChild(btn);
+    }
+  }
 
   const availableSlots = getAvailableSkillSlots();
   const unlocked = getUnlockedSkills();
@@ -6548,7 +9270,8 @@ function confirmSkillSelectAndStart() {
   startGame(legacyItems, {
     difficulty: preRunDifficulty,
     conditions: preRunConditions,
-    skills
+    skills,
+    attackType: pendingAttackType
   });
 }
 
@@ -6601,6 +9324,18 @@ function bootstrap() {
       talentTreeBtn.addEventListener("click", openTalentTree);
     }
 
+    const devAddLpBtn = document.getElementById("main-menu-dev-add-lp");
+    const devLpAmountEl = document.getElementById("main-menu-dev-lp-amount");
+    if (devAddLpBtn && devLpAmountEl) {
+      devAddLpBtn.addEventListener("click", () => {
+        const amount = parseInt(devLpAmountEl.value, 10) || 0;
+        if (amount > 0) {
+          addLegacyPoints(amount);
+          refreshMainMenuLP();
+        }
+      });
+    }
+
     const talentTreeCloseBtn = document.getElementById("talent-tree-close");
     if (talentTreeCloseBtn) {
       talentTreeCloseBtn.addEventListener("click", closeTalentTree);
@@ -6611,6 +9346,20 @@ function bootstrap() {
     const legacyCloseBtn = document.getElementById("legacy-vault-close");
     if (legacyCloseBtn) {
       legacyCloseBtn.addEventListener("click", closeLegacyVault);
+    }
+
+    const skillLibraryBtn = document.getElementById("main-menu-skill-library");
+    if (skillLibraryBtn) {
+      skillLibraryBtn.addEventListener("click", openSkillLibrary);
+    }
+    const skillLibraryCloseBtn = document.getElementById("skill-library-close");
+    if (skillLibraryCloseBtn) {
+      skillLibraryCloseBtn.addEventListener("click", closeSkillLibrary);
+    }
+
+    const legacyDeleteBtn = document.getElementById("legacy-delete-selected");
+    if (legacyDeleteBtn) {
+      legacyDeleteBtn.addEventListener("click", deleteLegacySelectedItems);
     }
 
     const legacyStartBtn = document.getElementById("legacy-start-run");
