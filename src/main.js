@@ -89,7 +89,7 @@ class Player {
     this.color = "#ffff4d";
   }
 
-  update(dt, input, world) {
+  update(dt, input, world, obstacles = [], subAreaWalls = []) {
     const axis = input.getAxis();
     const dx = axis.x * this.speed * dt;
     const dy = axis.y * this.speed * dt;
@@ -99,6 +99,67 @@ class Player {
 
     nx = Math.max(world.wallThickness, Math.min(nx, world.width - world.wallThickness - this.size));
     ny = Math.max(world.wallThickness, Math.min(ny, world.height - world.wallThickness - this.size));
+
+    // Check obstacle collision - test each axis separately first
+    const testX = { x: nx, y: this.position.y, w: this.size, h: this.size };
+    const testY = { x: this.position.x, y: ny, w: this.size, h: this.size };
+    const testBoth = { x: nx, y: ny, w: this.size, h: this.size };
+    
+    let canMoveX = true;
+    let canMoveY = true;
+    
+    // Check obstacles
+    for (const obstacle of obstacles) {
+      if (obstacle.destroyed || !obstacle.blocksMovement) continue;
+      const obsRect = { 
+        x: obstacle.position.x, 
+        y: obstacle.position.y, 
+        w: obstacle.size.w, 
+        h: obstacle.size.h 
+      };
+      
+      // Check if X-only movement would collide
+      if (testX.x < obsRect.x + obsRect.w && testX.x + testX.w > obsRect.x &&
+          testX.y < obsRect.y + obsRect.h && testX.y + testX.h > obsRect.y) {
+        canMoveX = false;
+      }
+      
+      // Check if Y-only movement would collide
+      if (testY.x < obsRect.x + obsRect.w && testY.x + testY.w > obsRect.x &&
+          testY.y < obsRect.y + obsRect.h && testY.y + testY.h > obsRect.y) {
+        canMoveY = false;
+      }
+    }
+    
+    // Check sub-area walls
+    for (const wall of subAreaWalls) {
+      const wallRect = { x: wall.x, y: wall.y, w: wall.w || wall.h, h: wall.h || wall.w };
+      
+      // Check if X-only movement would collide
+      if (testX.x < wallRect.x + wallRect.w && testX.x + testX.w > wallRect.x &&
+          testX.y < wallRect.y + wallRect.h && testX.y + testX.h > wallRect.y) {
+        canMoveX = false;
+      }
+      
+      // Check if Y-only movement would collide
+      if (testY.x < wallRect.x + wallRect.w && testY.x + testY.w > wallRect.x &&
+          testY.y < wallRect.y + wallRect.h && testY.y + testY.h > wallRect.y) {
+        canMoveY = false;
+      }
+    }
+    
+    // If both axes would collide, block movement completely
+    if (!canMoveX && !canMoveY) {
+      nx = this.position.x;
+      ny = this.position.y;
+    } else if (!canMoveX) {
+      // Block X movement, allow Y
+      nx = this.position.x;
+    } else if (!canMoveY) {
+      // Block Y movement, allow X
+      ny = this.position.y;
+    }
+    // If both can move, allow the diagonal movement (already set to nx, ny)
 
     this.position.set(nx, ny);
   }
@@ -247,6 +308,268 @@ function removeModCardFromInventoryAtIndex(index) {
 
 const SKILL_SLOT_UNLOCK = { 1: 0, 2: 1, 3: 3, 4: 5 };
 
+const OBSTACLE_TYPES = {
+  giantRock: {
+    id: "giantRock",
+    name: "Giant Rock",
+    maps: [0, 1, 2, 3, 4], // All maps
+    blocksMovement: true,
+    blocksProjectiles: true,
+    size: { w: 64, h: 64 },
+    color: "#4a5568",
+    shadowColor: "rgba(0, 0, 0, 0.3)"
+  },
+  ancientTree: {
+    id: "ancientTree",
+    name: "Ancient Tree",
+    maps: [0, 1], // Dungeon, Forest
+    blocksMovement: true,
+    blocksProjectiles: true,
+    size: { w: 48, h: 80 },
+    color: "#2d5016",
+    canopyColor: "#1a3d0a",
+    shadowColor: "rgba(0, 0, 0, 0.4)"
+  },
+  ruinedPillar: {
+    id: "ruinedPillar",
+    name: "Ruined Pillar",
+    maps: [0, 3], // Dungeon, Castle
+    blocksMovement: true,
+    blocksProjectiles: true,
+    size: { w: 32, h: 96 },
+    color: "#5a5a6a",
+    shadowColor: "rgba(0, 0, 0, 0.3)"
+  },
+  lavaRock: {
+    id: "lavaRock",
+    name: "Lava Rock",
+    maps: [4], // Wasteland
+    blocksMovement: true,
+    blocksProjectiles: true,
+    size: { w: 56, h: 56 },
+    color: "#8b4513",
+    glowColor: "#ff4500",
+    burnDamage: 2,
+    burnInterval: 0.5,
+    shadowColor: "rgba(255, 69, 0, 0.4)"
+  },
+  iceBlock: {
+    id: "iceBlock",
+    name: "Ice Block",
+    maps: [2], // Cave
+    blocksMovement: true,
+    blocksProjectiles: true,
+    size: { w: 48, h: 48 },
+    color: "#b0e0e6",
+    meltTime: 30,
+    shadowColor: "rgba(0, 0, 0, 0.2)"
+  },
+  barrel: {
+    id: "barrel",
+    name: "Barrel",
+    maps: [0, 1, 2, 3, 4], // All maps
+    blocksMovement: true,
+    blocksProjectiles: false,
+    size: { w: 40, h: 40 },
+    color: "#8b4513",
+    explosionDamage: 15,
+    explosionRadius: 60,
+    shadowColor: "rgba(0, 0, 0, 0.25)"
+  },
+  bonePile: {
+    id: "bonePile",
+    name: "Bone Pile",
+    maps: [0], // Dungeon
+    blocksMovement: false,
+    blocksProjectiles: false,
+    size: { w: 32, h: 24 },
+    color: "#e2e8f0",
+    spawnChance: 0.05,
+    shadowColor: "rgba(0, 0, 0, 0.2)"
+  }
+};
+
+// -------- Sub-Area Definitions --------
+
+const SUB_AREA_TYPES = {
+  // Ruins
+  collapsedTemple: {
+    id: "collapsedTemple",
+    name: "Collapsed Temple",
+    type: "ruin",
+    maps: [0, 1, 2, 3], // Maps 1-4
+    size: { w: 720, h: 720 },
+    shape: "circular",
+    wallThickness: 16,
+    color: "#5a5a6a",
+    hasColumns: true,
+    reward: { type: "blue", guaranteed: true }
+  },
+  ruinedOutpost: {
+    id: "ruinedOutpost",
+    name: "Ruined Outpost",
+    type: "ruin",
+    maps: [0, 1, 2, 3],
+    size: { w: 840, h: 600 },
+    shape: "rectangular",
+    wallThickness: 16,
+    color: "#6a6a7a",
+    gaps: 3,
+    reward: { type: "blue", guaranteed: true }
+  },
+  shatteredTower: {
+    id: "shatteredTower",
+    name: "Shattered Tower",
+    type: "ruin",
+    maps: [0, 1, 2, 3],
+    size: { w: 360, h: 960 },
+    shape: "narrow",
+    wallThickness: 16,
+    color: "#4a4a5a",
+    singleEntrance: true,
+    reward: { type: "blue", guaranteed: true }
+  },
+  // Rooms
+  guardRoom: {
+    id: "guardRoom",
+    name: "Guard Room",
+    type: "room",
+    maps: [2, 3], // Maps 3-4
+    size: { w: 600, h: 600 },
+    difficulty: "standard",
+    enemyCount: { min: 3, max: 5 },
+    enemyType: "standard",
+    reward: { type: "blue", guaranteed: true }
+  },
+  eliteChamber: {
+    id: "eliteChamber",
+    name: "Elite Chamber",
+    type: "room",
+    maps: [2, 3],
+    size: { w: 840, h: 840 },
+    difficulty: "elite",
+    enemyCount: { min: 1, max: 2 },
+    enemyType: "elite",
+    reward: { type: "yellow", guaranteed: true }
+  },
+  miniBossVault: {
+    id: "miniBossVault",
+    name: "Mini-Boss Vault",
+    type: "room",
+    maps: [2, 3],
+    size: { w: 1080, h: 1080 },
+    difficulty: "miniBoss",
+    enemyCount: { min: 1, max: 1 },
+    enemyType: "miniBoss",
+    reward: { type: "yellow", guaranteed: true, cubeChance: 0.2 }
+  },
+  puzzleRoom: {
+    id: "puzzleRoom",
+    name: "Puzzle Room",
+    type: "room",
+    maps: [2, 3],
+    size: { w: 720, h: 720 },
+    difficulty: "puzzle",
+    enemyCount: { min: 0, max: 0 },
+    enemyType: null,
+    reward: { type: "shrine", guaranteed: true }
+  },
+  // Mazes
+  dungeonLabyrinth: {
+    id: "dungeonLabyrinth",
+    name: "Dungeon Labyrinth",
+    type: "maze",
+    maps: [0], // Map 1
+    wallColor: "#3d3a4a",
+    hasEnemies: true,
+    deadEndLootChance: 0.3,
+    reward: { type: "blue", guaranteed: true }
+  },
+  forestHedgeMaze: {
+    id: "forestHedgeMaze",
+    name: "Forest Hedge Maze",
+    type: "maze",
+    maps: [1], // Map 2
+    wallColor: "#2d4a2e",
+    hasEnemies: false,
+    deadEndLootChance: 0.3,
+    rareItemAtExit: true
+  },
+  castleCatacombs: {
+    id: "castleCatacombs",
+    name: "Castle Catacombs",
+    type: "maze",
+    maps: [3], // Map 4
+    wallColor: "#4a4a5a",
+    hasEnemies: true,
+    deadEndLootChance: 0.3,
+    eliteAtExit: true
+  },
+  crystalCavernMaze: {
+    id: "crystalCavernMaze",
+    name: "Crystal Cavern Maze",
+    type: "maze",
+    maps: [2], // Map 3
+    wallColor: "#b0e0e6",
+    hasEnemies: true,
+    deadEndLootChance: 0.3,
+    reducedVisibility: true,
+    miniBossAtCenter: true,
+    legendaryCubeChance: 0.2
+  }
+};
+
+const SHRINE_DEFS = [
+  {
+    id: "purification",
+    name: "Shrine of Purification",
+    description: "Removes one chosen standard penalty and one random standard upgrade from your build.",
+    icon: "✨",
+    color: "#ffffff",
+    auraColor: "#e0e7ff"
+  },
+  {
+    id: "chaos",
+    name: "Shrine of Chaos",
+    description: "Adds two random standard upgrades, then removes one random upgrade from your build.",
+    icon: "🌀",
+    color: "#f59e0b",
+    auraColor: "#fef3c7"
+  },
+  {
+    id: "frenzy",
+    name: "Shrine of Frenzy",
+    description: "Remove one chosen upgrade to gain 40% movement speed, 30% attack speed, and 20% XP gained for 30 seconds.",
+    icon: "⚡",
+    color: "#ef4444",
+    auraColor: "#fee2e2"
+  },
+  {
+    id: "ascension",
+    name: "Shrine of Ascension",
+    description: "Transforms one random standard upgrade into a random unique upgrade.",
+    icon: "⭐",
+    color: "#fbbf24",
+    auraColor: "#fef3c7"
+  },
+  {
+    id: "restoration",
+    name: "Shrine of Restoration",
+    description: "Remove one chosen upgrade to restore your health to full maximum.",
+    icon: "💚",
+    color: "#22c55e",
+    auraColor: "#dcfce7"
+  },
+  {
+    id: "trial",
+    name: "Shrine of Trial",
+    description: "Remove one chosen upgrade to summon two mini-bosses. Defeat both within 30 seconds to earn 1 Legacy Point.",
+    icon: "💀",
+    color: "#7f1d1d",
+    auraColor: "#fee2e2"
+  }
+];
+
 const EVENT_DEFS = [
   {
     id: "stranger",
@@ -255,15 +578,6 @@ const EVENT_DEFS = [
     choices: [
       { id: "help", label: "Help them" },
       { id: "refuse", label: "Refuse" }
-    ]
-  },
-  {
-    id: "spring",
-    name: "The Spring",
-    desc: "A crystalline spring glows with otherworldly light. The waters seem to pulse with latent power.",
-    choices: [
-      { id: "drink", label: "Drink from the spring" },
-      { id: "ignore", label: "Ignore it" }
     ]
   },
   {
@@ -782,13 +1096,38 @@ function getPenaltyDisplayDescription(p) {
     slowShot: () => `${v}% reduced projectile speed.`,
     damageReduction: () => `${v}% reduced attack damage.`,
     speedPenalty: () => `${v}% reduced attack speed.`,
-    fewerProjectiles: () => "1 fewer simultaneous projectile (minimum 1).",
+    fewerProjectiles: () => `${v} fewer simultaneous projectile(s) (minimum 1).`,
     reducedRange: () => `${v}% reduced projectile max range.`,
     widerSpread: () => `${v}% wider projectile spread.`,
     fragileShot: () => "Projectiles disappear after hitting 1 enemy.",
-    cooldown: () => `${v}s added to attack cooldown.`
+    cooldown: () => `${v}s added to attack cooldown.`,
+    reducedProjectiles: () => `${v} fewer max simultaneous projectiles (minimum 1).`
   };
   return ids[p.id] ? ids[p.id]() : (p.description || "");
+}
+
+/** Effect text for an aggregated upgrade (same id taken multiple times, values summed). */
+function getAggregatedUpgradeEffect(agg) {
+  const { id, name, description, value, count } = agg;
+  if (value !== undefined && value !== null && id !== "extraProjectile") {
+    return getUpgradeDisplayDescription({ id, name, description, value, percent: agg.percent });
+  }
+  const ids = {
+    extraProjectile: () => `Adds ${count} to simultaneous projectiles fired.`
+  };
+  if (ids[id]) return ids[id]();
+  const suffix = count > 1 ? ` (×${count})` : "";
+  return (description || "") + suffix;
+}
+
+/** Effect text for an aggregated penalty (same id taken multiple times, values summed). */
+function getAggregatedPenaltyEffect(agg) {
+  const { id, name, description, value } = agg;
+  if (value !== undefined && value !== null) {
+    return getPenaltyDisplayDescription({ id, name, description, value, percent: agg.percent });
+  }
+  const suffix = agg.count > 1 ? ` (×${agg.count})` : "";
+  return (description || "") + suffix;
 }
 
 function rollUpgradeValue(def) {
@@ -808,7 +1147,7 @@ function pickRandomConditions(count) {
 // -------- Map definitions --------
 
 const MAP_WIDTH = 3600;
-const MAP_HEIGHT = 900;
+const MAP_HEIGHT = 1350; // 900 * 1.5
 const WALL_THICKNESS = 32;
 
 const MAP_DEFS = [
@@ -957,6 +1296,719 @@ class World {
       for (const exit of this.theme.exits) {
         ctx.fillRect(ox + exit.x, oy + exit.y, exit.w, exit.h);
       }
+    }
+  }
+}
+
+// -------- Obstacles --------
+
+class Obstacle {
+  constructor(x, y, typeDef) {
+    this.id = `obstacle_${Date.now()}_${Math.random()}`;
+    this.position = new Vec2(x, y);
+    this.typeDef = typeDef;
+    this.type = typeDef.id;
+    this.size = typeDef.size;
+    this.blocksMovement = typeDef.blocksMovement;
+    this.blocksProjectiles = typeDef.blocksProjectiles;
+    this.meltTimer = typeDef.meltTime || null;
+    this.destroyed = false;
+    this.lastBurnTick = 0;
+    this.triggered = false; // For bone pile
+  }
+
+  get center() {
+    return new Vec2(
+      this.position.x + this.size.w / 2,
+      this.position.y + this.size.h / 2
+    );
+  }
+
+  intersects(other) {
+    const a = { x: this.position.x, y: this.position.y, w: this.size.w, h: this.size.h };
+    const b = { x: other.position.x, y: other.position.y, w: other.size || other.size?.w || 48, h: other.size || other.size?.h || 48 };
+    return (
+      a.x < b.x + b.w &&
+      a.x + a.w > b.x &&
+      a.y < b.y + b.h &&
+      a.y + a.h > b.y
+    );
+  }
+
+  update(dt, game) {
+    if (this.destroyed) return;
+    
+    // Ice block melting
+    if (this.type === "iceBlock" && this.meltTimer !== null) {
+      this.meltTimer -= dt;
+      if (this.meltTimer <= 0) {
+        this.destroyed = true;
+      }
+    }
+
+    // Lava rock burn damage
+    if (this.type === "lavaRock") {
+      const burnInterval = this.typeDef.burnInterval || 0.5;
+      this.lastBurnTick += dt;
+      if (this.lastBurnTick >= burnInterval) {
+        // Check for player contact
+        if (this.intersects(game.player)) {
+          game.onPlayerDamaged(this.typeDef.burnDamage, false);
+        }
+        // Check for enemy contact
+        for (const enemy of game.enemySystem.enemies) {
+          if (!enemy.isDead && this.intersects(enemy)) {
+            game.dealDamageToEnemy(enemy, this.typeDef.burnDamage);
+          }
+        }
+        if (game.enemySystem.boss && !game.enemySystem.boss.isDead && this.intersects(game.enemySystem.boss)) {
+          game.dealDamageToEnemy(game.enemySystem.boss, this.typeDef.burnDamage);
+        }
+        this.lastBurnTick = 0;
+      }
+    }
+
+    // Bone pile spawn check
+    if (this.type === "bonePile" && !this.triggered) {
+      if (this.intersects(game.player)) {
+        this.triggered = true;
+        if (Math.random() < this.typeDef.spawnChance) {
+          const enemy = game.enemySystem.spawnOne("minion", null, {
+            x: this.position.x + this.size.w / 2,
+            y: this.position.y + this.size.h / 2
+          });
+          if (enemy) {
+            game.enemySystem.enemies.push(enemy);
+          }
+        }
+      }
+    }
+  }
+
+  draw(ctx, camera) {
+    if (this.destroyed) return;
+    
+    const sx = Math.floor(this.position.x - camera.position.x);
+    const sy = Math.floor(this.position.y - camera.position.y);
+
+    // Draw shadow
+    ctx.fillStyle = this.typeDef.shadowColor || "rgba(0, 0, 0, 0.3)";
+    ctx.fillRect(sx + 2, sy + this.size.h - 4, this.size.w, 6);
+
+    // Draw obstacle based on type
+    if (this.type === "giantRock") {
+      ctx.fillStyle = this.typeDef.color;
+      ctx.fillRect(sx, sy, this.size.w, this.size.h);
+      ctx.strokeStyle = "#2d3748";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx, sy, this.size.w, this.size.h);
+      // Add some texture
+      ctx.fillStyle = "#374151";
+      ctx.fillRect(sx + 8, sy + 8, 12, 12);
+      ctx.fillRect(sx + 44, sy + 20, 10, 10);
+    } else if (this.type === "ancientTree") {
+      // Trunk
+      ctx.fillStyle = "#4a5a2a";
+      ctx.fillRect(sx + this.size.w / 2 - 8, sy + this.size.h - 24, 16, 24);
+      // Canopy
+      ctx.fillStyle = this.typeDef.canopyColor || "#1a3d0a";
+      ctx.beginPath();
+      ctx.arc(sx + this.size.w / 2, sy + 20, 28, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#2d5016";
+      ctx.beginPath();
+      ctx.arc(sx + this.size.w / 2 - 8, sy + 15, 20, 0, Math.PI * 2);
+      ctx.arc(sx + this.size.w / 2 + 8, sy + 15, 20, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (this.type === "ruinedPillar") {
+      ctx.fillStyle = this.typeDef.color;
+      ctx.fillRect(sx, sy, this.size.w, this.size.h);
+      ctx.strokeStyle = "#4a4a5a";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx, sy, this.size.w, this.size.h);
+      // Add cracks
+      ctx.strokeStyle = "#3a3a4a";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx + 8, sy);
+      ctx.lineTo(sx + 12, sy + 40);
+      ctx.moveTo(sx + 20, sy + 20);
+      ctx.lineTo(sx + 24, sy + 60);
+      ctx.stroke();
+    } else if (this.type === "lavaRock") {
+      ctx.fillStyle = this.typeDef.color;
+      ctx.fillRect(sx, sy, this.size.w, this.size.h);
+      // Glow effect
+      const glow = 0.3 + Math.sin(Date.now() / 500) * 0.2;
+      ctx.fillStyle = this.typeDef.glowColor;
+      ctx.globalAlpha = glow;
+      ctx.fillRect(sx + 4, sy + 4, this.size.w - 8, this.size.h - 8);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "#6b3410";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx, sy, this.size.w, this.size.h);
+    } else if (this.type === "iceBlock") {
+      ctx.fillStyle = this.typeDef.color;
+      ctx.globalAlpha = 0.7;
+      ctx.fillRect(sx, sy, this.size.w, this.size.h);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "#87ceeb";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx, sy, this.size.w, this.size.h);
+      // Ice sparkle
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(sx + 12, sy + 8, 4, 4);
+      ctx.fillRect(sx + 32, sy + 24, 3, 3);
+    } else if (this.type === "barrel") {
+      ctx.fillStyle = this.typeDef.color;
+      ctx.fillRect(sx, sy, this.size.w, this.size.h);
+      ctx.strokeStyle = "#654321";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx, sy, this.size.w, this.size.h);
+      // Barrel bands
+      ctx.strokeStyle = "#5a3a1a";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy + 12);
+      ctx.lineTo(sx + this.size.w, sy + 12);
+      ctx.moveTo(sx, sy + 28);
+      ctx.lineTo(sx + this.size.w, sy + 28);
+      ctx.stroke();
+    } else if (this.type === "bonePile") {
+      ctx.fillStyle = this.typeDef.color;
+      // Draw bone shapes
+      ctx.fillRect(sx + 4, sy + 8, 8, 12);
+      ctx.fillRect(sx + 20, sy + 4, 8, 16);
+      ctx.beginPath();
+      ctx.arc(sx + 8, sy + 6, 4, 0, Math.PI * 2);
+      ctx.arc(sx + 24, sy + 8, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+// -------- Sub-Areas --------
+
+class SubArea {
+  constructor(x, y, typeDef, mapId) {
+    this.id = `subarea_${Date.now()}_${Math.random()}`;
+    this.position = new Vec2(x, y);
+    this.typeDef = typeDef;
+    this.type = typeDef.type;
+    this.variant = typeDef.id;
+    this.mapId = mapId;
+    // Set default size for mazes if not specified
+    if (typeDef.type === "maze" && !typeDef.size) {
+      this.size = { w: 1200, h: 1200 };
+    } else {
+      this.size = typeDef.size || { w: 300, h: 300 };
+    }
+    this.walls = [];
+    this.doors = [];
+    this.enemies = [];
+    this.locked = false;
+    this.cleared = false;
+    this.entered = false;
+    this.chest = null;
+    this.switch = null; // For puzzle rooms
+    this.fakeSwitches = []; // For ruins - spawn enemies when activated
+    this.lootCaches = [];
+    
+    this.generateStructure();
+  }
+
+  generateStructure() {
+    if (this.type === "ruin") {
+      this.generateRuin();
+    } else if (this.type === "room") {
+      this.generateRoom();
+    } else if (this.type === "maze") {
+      this.generateMaze();
+    }
+  }
+
+  generateRuin() {
+    const { w, h } = this.size;
+    const wallThickness = this.typeDef.wallThickness || 16;
+    
+    if (this.variant === "collapsedTemple") {
+      // Circular ruin with broken columns
+      const centerX = w / 2;
+      const centerY = h / 2;
+      const radius = Math.min(w, h) / 2 - 20;
+      const segments = 16;
+      const gapCount = 4;
+      const gapSize = 3; // Skip 3 segments per gap for wider entrances
+      
+      for (let i = 0; i < segments; i++) {
+        const angle1 = (i / segments) * Math.PI * 2;
+        const angle2 = ((i + 1) / segments) * Math.PI * 2;
+        
+        // Create wider gaps by skipping multiple segments
+        const gapStart = Math.floor(i / (segments / gapCount)) * (segments / gapCount);
+        if (i >= gapStart && i < gapStart + gapSize) continue;
+        
+        const x1 = centerX + Math.cos(angle1) * radius;
+        const y1 = centerY + Math.sin(angle1) * radius;
+        const x2 = centerX + Math.cos(angle2) * radius;
+        const y2 = centerY + Math.sin(angle2) * radius;
+        
+        const wallLength = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+        const wallAngle = Math.atan2(y2 - y1, x2 - x1);
+        
+        this.walls.push({
+          x: this.position.x + x1,
+          y: this.position.y + y1,
+          w: wallLength,
+          h: wallThickness,
+          angle: wallAngle
+        });
+      }
+      
+      // Add broken columns
+      for (let i = 0; i < 6; i++) {
+        const colAngle = (i / 6) * Math.PI * 2;
+        const colRadius = radius * 0.7;
+        const colX = centerX + Math.cos(colAngle) * colRadius;
+        const colY = centerY + Math.sin(colAngle) * colRadius;
+        
+        this.walls.push({
+          x: this.position.x + colX - 8,
+          y: this.position.y + colY - 8,
+          w: 16,
+          h: 16,
+          angle: 0,
+          isColumn: true
+        });
+      }
+      
+    } else if (this.variant === "ruinedOutpost") {
+      // Rectangular structure with multiple gaps
+      const gaps = this.typeDef.gaps || 3;
+      const gapPositions = [];
+      for (let i = 0; i < gaps; i++) {
+        gapPositions.push(Math.random() * (w + h) * 2);
+      }
+      gapPositions.sort((a, b) => a - b);
+      
+      let gapIndex = 0;
+      
+      const gapSize = 80; // Wider gap size for entrances
+      
+      // Top wall
+      const topGap = gapPositions[gapIndex] < w ? gapPositions[gapIndex] : null;
+      if (topGap !== null) gapIndex++;
+      if (topGap === null || topGap > gapSize / 2) {
+        this.walls.push({ x: this.position.x, y: this.position.y, w: topGap ? topGap - gapSize / 2 : w, h: wallThickness });
+      }
+      if (topGap !== null && topGap < w - gapSize / 2) {
+        this.walls.push({ x: this.position.x + topGap + gapSize / 2, y: this.position.y, w: w - topGap - gapSize / 2, h: wallThickness });
+      }
+      
+      // Right wall
+      const rightGap = gapPositions[gapIndex] >= w && gapPositions[gapIndex] < w + h ? gapPositions[gapIndex] - w : null;
+      if (rightGap !== null) gapIndex++;
+      if (rightGap === null || rightGap > gapSize / 2) {
+        this.walls.push({ x: this.position.x + w - wallThickness, y: this.position.y, w: wallThickness, h: rightGap ? rightGap - gapSize / 2 : h });
+      }
+      if (rightGap !== null && rightGap < h - gapSize / 2) {
+        this.walls.push({ x: this.position.x + w - wallThickness, y: this.position.y + rightGap + gapSize / 2, w: wallThickness, h: h - rightGap - gapSize / 2 });
+      }
+      
+      // Bottom wall
+      const bottomGap = gapPositions[gapIndex] >= w + h && gapPositions[gapIndex] < w * 2 + h ? gapPositions[gapIndex] - w - h : null;
+      if (bottomGap !== null) gapIndex++;
+      if (bottomGap === null || bottomGap > gapSize / 2) {
+        this.walls.push({ x: this.position.x, y: this.position.y + h - wallThickness, w: bottomGap ? bottomGap - gapSize / 2 : w, h: wallThickness });
+      }
+      if (bottomGap !== null && bottomGap < w - gapSize / 2) {
+        this.walls.push({ x: this.position.x + bottomGap + gapSize / 2, y: this.position.y + h - wallThickness, w: w - bottomGap - gapSize / 2, h: wallThickness });
+      }
+      
+      // Left wall
+      const leftGap = gapPositions[gapIndex] >= w * 2 + h ? gapPositions[gapIndex] - w * 2 - h : null;
+      if (leftGap === null || leftGap > gapSize / 2) {
+        this.walls.push({ x: this.position.x, y: this.position.y, w: wallThickness, h: leftGap ? leftGap - gapSize / 2 : h });
+      }
+      if (leftGap !== null && leftGap < h - gapSize / 2) {
+        this.walls.push({ x: this.position.x, y: this.position.y + leftGap + gapSize / 2, w: wallThickness, h: h - leftGap - gapSize / 2 });
+      }
+      
+    } else if (this.variant === "shatteredTower") {
+      // Narrow ruin with single entrance bottleneck
+      const entranceSide = Math.random() < 0.5 ? "top" : "bottom";
+      const entranceX = w / 2;
+      const entranceWidth = 100; // Wider entrance for player to pass through
+      
+      // Left wall
+      this.walls.push({ x: this.position.x, y: this.position.y, w: wallThickness, h: h });
+      // Right wall
+      this.walls.push({ x: this.position.x + w - wallThickness, y: this.position.y, w: wallThickness, h: h });
+      // Top wall (with entrance if needed)
+      if (entranceSide === "top") {
+        this.walls.push({ x: this.position.x, y: this.position.y, w: entranceX - entranceWidth / 2, h: wallThickness });
+        this.walls.push({ x: this.position.x + entranceX + entranceWidth / 2, y: this.position.y, w: w - entranceX - entranceWidth / 2, h: wallThickness });
+      } else {
+        this.walls.push({ x: this.position.x, y: this.position.y, w: w, h: wallThickness });
+      }
+      // Bottom wall (with entrance if needed)
+      if (entranceSide === "bottom") {
+        this.walls.push({ x: this.position.x, y: this.position.y + h - wallThickness, w: entranceX - entranceWidth / 2, h: wallThickness });
+        this.walls.push({ x: this.position.x + entranceX + entranceWidth / 2, y: this.position.y + h - wallThickness, w: w - entranceX - entranceWidth / 2, h: wallThickness });
+      } else {
+        this.walls.push({ x: this.position.x, y: this.position.y + h - wallThickness, w: w, h: wallThickness });
+      }
+    }
+    
+    // Add locked chest in center
+    this.chest = {
+      x: this.position.x + w / 2 - 20,
+      y: this.position.y + h / 2 - 20,
+      w: 40,
+      h: 40,
+      locked: true,
+      opened: false
+    };
+    
+    // Add switch inside the ruin (offset from center to avoid chest)
+    const switchOffsetX = (Math.random() - 0.5) * (w * 0.3);
+    const switchOffsetY = (Math.random() - 0.5) * (h * 0.3);
+    this.switch = {
+      x: this.position.x + w / 2 + switchOffsetX - 10,
+      y: this.position.y + h / 2 + switchOffsetY - 10,
+      w: 20,
+      h: 20,
+      activated: false
+    };
+    
+    // Add 2 fake switches that spawn elite enemies when activated
+    this.fakeSwitches = [];
+    for (let i = 0; i < 2; i++) {
+      let fakeX, fakeY;
+      let attempts = 0;
+      // Try to place fake switch away from real switch and chest
+      do {
+        const angle = (i / 2) * Math.PI * 2 + Math.random() * 0.5;
+        const dist = Math.min(w, h) * 0.25 + Math.random() * (Math.min(w, h) * 0.15);
+        fakeX = this.position.x + w / 2 + Math.cos(angle) * dist - 10;
+        fakeY = this.position.y + h / 2 + Math.sin(angle) * dist - 10;
+        
+        // Ensure it's within bounds
+        fakeX = Math.max(this.position.x + 20, Math.min(fakeX, this.position.x + w - 40));
+        fakeY = Math.max(this.position.y + 20, Math.min(fakeY, this.position.y + h - 40));
+        
+        // Check distance from real switch and chest
+        const distToRealSwitch = Math.sqrt((fakeX - (this.switch.x + this.switch.w / 2)) ** 2 + 
+                                          (fakeY - (this.switch.y + this.switch.h / 2)) ** 2);
+        const distToChest = Math.sqrt((fakeX - (this.chest.x + this.chest.w / 2)) ** 2 + 
+                                     (fakeY - (this.chest.y + this.chest.h / 2)) ** 2);
+        
+        if (distToRealSwitch > 60 && distToChest > 60) break;
+        attempts++;
+      } while (attempts < 20);
+      
+      this.fakeSwitches.push({
+        x: fakeX,
+        y: fakeY,
+        w: 20,
+        h: 20,
+        activated: false
+      });
+    }
+  }
+
+  generateRoom() {
+    const { w, h } = this.size;
+    const wallThickness = 16;
+    
+    // Fully enclosed walls
+    this.walls.push({ x: this.position.x, y: this.position.y, w: w, h: wallThickness }); // Top
+    this.walls.push({ x: this.position.x, y: this.position.y + h - wallThickness, w: w, h: wallThickness }); // Bottom
+    this.walls.push({ x: this.position.x, y: this.position.y, w: wallThickness, h: h }); // Left
+    this.walls.push({ x: this.position.x + w - wallThickness, y: this.position.y, w: wallThickness, h: h }); // Right
+    
+    // Door on one side
+    const doorSide = Math.floor(Math.random() * 4);
+    const doorWidth = 120; // Larger door for smoother entry
+    const doorX = w / 2 - doorWidth / 2;
+    const doorY = h / 2 - doorWidth / 2;
+    
+    if (doorSide === 0) { // Top
+      this.doors.push({
+        x: this.position.x + doorX,
+        y: this.position.y,
+        w: doorWidth,
+        h: wallThickness,
+        side: "top",
+        locked: false
+      });
+      this.walls[0] = { x: this.position.x, y: this.position.y, w: doorX, h: wallThickness };
+      this.walls.push({ x: this.position.x + doorX + doorWidth, y: this.position.y, w: w - doorX - doorWidth, h: wallThickness });
+    } else if (doorSide === 1) { // Right
+      this.doors.push({
+        x: this.position.x + w - wallThickness,
+        y: this.position.y + doorY,
+        w: wallThickness,
+        h: doorWidth,
+        side: "right",
+        locked: false
+      });
+      this.walls[3] = { x: this.position.x + w - wallThickness, y: this.position.y, w: wallThickness, h: doorY };
+      this.walls.push({ x: this.position.x + w - wallThickness, y: this.position.y + doorY + doorWidth, w: wallThickness, h: h - doorY - doorWidth });
+    } else if (doorSide === 2) { // Bottom
+      this.doors.push({
+        x: this.position.x + doorX,
+        y: this.position.y + h - wallThickness,
+        w: doorWidth,
+        h: wallThickness,
+        side: "bottom",
+        locked: false
+      });
+      this.walls[1] = { x: this.position.x, y: this.position.y + h - wallThickness, w: doorX, h: wallThickness };
+      this.walls.push({ x: this.position.x + doorX + doorWidth, y: this.position.y + h - wallThickness, w: w - doorX - doorWidth, h: wallThickness });
+    } else { // Left
+      this.doors.push({
+        x: this.position.x,
+        y: this.position.y + doorY,
+        w: wallThickness,
+        h: doorWidth,
+        side: "left",
+        locked: false
+      });
+      this.walls[2] = { x: this.position.x, y: this.position.y, w: wallThickness, h: doorY };
+      this.walls.push({ x: this.position.x, y: this.position.y + doorY + doorWidth, w: wallThickness, h: h - doorY - doorWidth });
+    }
+    
+    // Add reward chest
+    if (this.variant === "puzzleRoom") {
+      this.chest = {
+        x: this.position.x + w / 2 - 20,
+        y: this.position.y + h / 2 - 20,
+        w: 40,
+        h: 40,
+        locked: true
+      };
+      this.switch = {
+        x: this.position.x + 40 + Math.random() * (w - 80),
+        y: this.position.y + 40 + Math.random() * (h - 80),
+        w: 20,
+        h: 20,
+        activated: false
+      };
+    } else {
+      this.chest = {
+        x: this.position.x + w / 2 - 20,
+        y: this.position.y + h / 2 - 20,
+        w: 40,
+        h: 40,
+        locked: false
+      };
+    }
+  }
+
+  generateMaze() {
+    const cellSize = 40;
+    const mazeWidth = Math.floor(this.size.w / cellSize);
+    const mazeHeight = Math.floor(this.size.h / cellSize);
+    
+    const grid = [];
+    for (let y = 0; y < mazeHeight; y++) {
+      grid[y] = [];
+      for (let x = 0; x < mazeWidth; x++) {
+        grid[y][x] = { walls: { top: true, right: true, bottom: true, left: true }, visited: false };
+      }
+    }
+    
+    const stack = [];
+    let current = { x: 0, y: 0 };
+    grid[current.y][current.x].visited = true;
+    stack.push(current);
+    
+    while (stack.length > 0) {
+      const neighbors = [];
+      const { x, y } = current;
+      
+      if (y > 0 && !grid[y - 1][x].visited) neighbors.push({ x, y: y - 1, dir: "top" });
+      if (x < mazeWidth - 1 && !grid[y][x + 1].visited) neighbors.push({ x: x + 1, y, dir: "right" });
+      if (y < mazeHeight - 1 && !grid[y + 1][x].visited) neighbors.push({ x, y: y + 1, dir: "bottom" });
+      if (x > 0 && !grid[y][x - 1].visited) neighbors.push({ x: x - 1, y, dir: "left" });
+      
+      if (neighbors.length > 0) {
+        const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+        const { dir } = next;
+        
+        if (dir === "top") {
+          grid[y][x].walls.top = false;
+          grid[next.y][next.x].walls.bottom = false;
+        } else if (dir === "right") {
+          grid[y][x].walls.right = false;
+          grid[next.y][next.x].walls.left = false;
+        } else if (dir === "bottom") {
+          grid[y][x].walls.bottom = false;
+          grid[next.y][next.x].walls.top = false;
+        } else if (dir === "left") {
+          grid[y][x].walls.left = false;
+          grid[next.y][next.x].walls.right = false;
+        }
+        
+        grid[next.y][next.x].visited = true;
+        stack.push(next);
+        current = next;
+      } else {
+        current = stack.pop();
+      }
+    }
+    
+    const wallThickness = 8;
+    for (let y = 0; y < mazeHeight; y++) {
+      for (let x = 0; x < mazeWidth; x++) {
+        const cell = grid[y][x];
+        const cellX = this.position.x + x * cellSize;
+        const cellY = this.position.y + y * cellSize;
+        
+        if (cell.walls.top) {
+          this.walls.push({ x: cellX, y: cellY, w: cellSize, h: wallThickness });
+        }
+        if (cell.walls.right) {
+          this.walls.push({ x: cellX + cellSize - wallThickness, y: cellY, w: wallThickness, h: cellSize });
+        }
+        if (cell.walls.bottom) {
+          this.walls.push({ x: cellX, y: cellY + cellSize - wallThickness, w: cellSize, h: wallThickness });
+        }
+        if (cell.walls.left) {
+          this.walls.push({ x: cellX, y: cellY, w: wallThickness, h: cellSize });
+        }
+        
+        const wallCount = (cell.walls.top ? 1 : 0) + (cell.walls.right ? 1 : 0) + 
+                         (cell.walls.bottom ? 1 : 0) + (cell.walls.left ? 1 : 0);
+        if (wallCount === 3 && Math.random() < (this.typeDef.deadEndLootChance || 0.3)) {
+          this.lootCaches.push({
+            x: cellX + cellSize / 2,
+            y: cellY + cellSize / 2,
+            w: 16,
+            h: 16
+          });
+        }
+      }
+    }
+    
+    this.entrance = { x: this.position.x, y: this.position.y };
+    this.exit = { x: this.position.x + (mazeWidth - 1) * cellSize, y: this.position.y + (mazeHeight - 1) * cellSize };
+    
+    // Add chest at center for Dungeon Labyrinth
+    if (this.variant === "dungeonLabyrinth") {
+      const centerX = this.position.x + this.size.w / 2;
+      const centerY = this.position.y + this.size.h / 2;
+      this.chest = {
+        x: centerX - 20,
+        y: centerY - 20,
+        w: 40,
+        h: 40,
+        locked: false,
+        opened: false
+      };
+    }
+  }
+
+  intersects(other) {
+    const a = { x: this.position.x, y: this.position.y, w: this.size.w, h: this.size.h };
+    const b = { x: other.position.x, y: other.position.y, w: other.size || other.size?.w || 48, h: other.size || other.size?.h || 48 };
+    return (
+      a.x < b.x + b.w &&
+      a.x + a.w > b.x &&
+      a.y < b.y + b.h &&
+      a.y + a.h > b.y
+    );
+  }
+
+  draw(ctx, camera) {
+    ctx.fillStyle = this.typeDef.wallColor || this.typeDef.color || "#5a5a6a";
+    for (const wall of this.walls) {
+      const wsx = Math.floor(wall.x - camera.position.x);
+      const wsy = Math.floor(wall.y - camera.position.y);
+      
+      if (wall.angle) {
+        ctx.save();
+        ctx.translate(wsx + wall.w / 2, wsy + wall.h / 2);
+        ctx.rotate(wall.angle);
+        ctx.fillRect(-wall.w / 2, -wall.h / 2, wall.w, wall.h);
+        ctx.restore();
+      } else {
+        ctx.fillRect(wsx, wsy, wall.w, wall.h);
+      }
+      
+      ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+      ctx.fillRect(wsx + 2, wsy + (wall.h || wall.w) - 2, wall.w || wall.h, 4);
+      ctx.fillStyle = this.typeDef.wallColor || this.typeDef.color || "#5a5a6a";
+    }
+    
+    for (const door of this.doors) {
+      const dsx = Math.floor(door.x - camera.position.x);
+      const dsy = Math.floor(door.y - camera.position.y);
+      
+      if (door.locked) {
+        ctx.fillStyle = "#8b4513";
+        ctx.fillRect(dsx, dsy, door.w, door.h);
+        ctx.strokeStyle = "#654321";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(dsx, dsy, door.w, door.h);
+      } else {
+        ctx.strokeStyle = "#8b4513";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(dsx, dsy, door.w, door.h);
+      }
+    }
+    
+    if (this.chest) {
+      const csx = Math.floor(this.chest.x - camera.position.x);
+      const csy = Math.floor(this.chest.y - camera.position.y);
+      
+      if (this.chest.locked) {
+        ctx.fillStyle = "#8b4513";
+        ctx.fillRect(csx, csy, this.chest.w, this.chest.h);
+        ctx.strokeStyle = "#ffd700";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(csx, csy, this.chest.w, this.chest.h);
+        ctx.fillStyle = "#ffd700";
+        ctx.fillRect(csx + this.chest.w / 2 - 4, csy + this.chest.h / 2 - 4, 8, 8);
+      } else {
+        ctx.fillStyle = "#8b4513";
+        ctx.fillRect(csx, csy, this.chest.w, this.chest.h);
+        ctx.strokeStyle = "#654321";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(csx, csy, this.chest.w, this.chest.h);
+      }
+    }
+    
+    if (this.switch) {
+      const ssx = Math.floor(this.switch.x - camera.position.x);
+      const ssy = Math.floor(this.switch.y - camera.position.y);
+      
+      ctx.fillStyle = this.switch.activated ? "#22c55e" : "#64748b";
+      ctx.fillRect(ssx, ssy, this.switch.w, this.switch.h);
+      ctx.strokeStyle = "#374151";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(ssx, ssy, this.switch.w, this.switch.h);
+    }
+    
+    // Draw fake switches (identical to real switch)
+    for (const fakeSwitch of this.fakeSwitches || []) {
+      const fsx = Math.floor(fakeSwitch.x - camera.position.x);
+      const fsy = Math.floor(fakeSwitch.y - camera.position.y);
+      
+      ctx.fillStyle = fakeSwitch.activated ? "#22c55e" : "#64748b";
+      ctx.fillRect(fsx, fsy, fakeSwitch.w, fakeSwitch.h);
+      ctx.strokeStyle = "#374151";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(fsx, fsy, fakeSwitch.w, fakeSwitch.h);
+    }
+    
+    for (const cache of this.lootCaches) {
+      const cxsx = Math.floor(cache.x - camera.position.x);
+      const cxsy = Math.floor(cache.y - camera.position.y);
+      
+      ctx.fillStyle = "#fbbf24";
+      ctx.fillRect(cxsx - cache.w / 2, cxsy - cache.h / 2, cache.w, cache.h);
     }
   }
 }
@@ -1317,7 +2369,7 @@ class Enemy {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
-  update(dt, player, gameTime = 0, globalSlowMult = 1, detectionRange = 200, game = null) {
+  update(dt, player, gameTime = 0, globalSlowMult = 1, detectionRange = 400, game = null) {
     if (this._undyingRespawnTime != null && gameTime < this._undyingRespawnTime) {
       if (this.attackTimer > 0) this.attackTimer -= dt;
       if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
@@ -1409,8 +2461,131 @@ class Enemy {
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
       if (!this.activated && dist <= detectionRange) this.activated = true;
       if (this.activated) {
-        this.position.x += (dx / dist) * this.speed * speedMult * dt;
-        this.position.y += (dy / dist) * this.speed * speedMult * dt;
+        let moveX = (dx / dist) * this.speed * speedMult * dt;
+        let moveY = (dy / dist) * this.speed * speedMult * dt;
+        
+        // Simple obstacle avoidance: try to move around obstacles and sub-area walls
+        if (game) {
+          const testX = this.position.x + moveX;
+          const testY = this.position.y + moveY;
+          const testRect = { x: testX, y: testY, w: this.size, h: this.size };
+          
+          // Check obstacles
+          if (game.obstacles) {
+            for (const obstacle of game.obstacles) {
+              if (obstacle.destroyed || !obstacle.blocksMovement) continue;
+              const obsRect = { 
+                x: obstacle.position.x, 
+                y: obstacle.position.y, 
+                w: obstacle.size.w, 
+                h: obstacle.size.h 
+              };
+              
+              if (testRect.x < obsRect.x + obsRect.w && testRect.x + testRect.w > obsRect.x &&
+                  testRect.y < obsRect.y + obsRect.h && testRect.y + testRect.h > obsRect.y) {
+                // Collision detected, try to move around
+                const obsCenterX = obsRect.x + obsRect.w / 2;
+                const obsCenterY = obsRect.y + obsRect.h / 2;
+                const enemyCenterX = this.position.x + this.size / 2;
+                const enemyCenterY = this.position.y + this.size / 2;
+                
+                const avoidDx = enemyCenterX - obsCenterX;
+                const avoidDy = enemyCenterY - obsCenterY;
+                const avoidDist = Math.sqrt(avoidDx * avoidDx + avoidDy * avoidDy) || 1;
+                
+                const perpX = -avoidDy / avoidDist;
+                const perpY = avoidDx / avoidDist;
+                
+                const dot = (dx / dist) * perpX + (dy / dist) * perpY;
+                const usePerpX = dot > 0 ? perpX : -perpX;
+                const usePerpY = dot > 0 ? perpY : -perpY;
+                
+                moveX = usePerpX * this.speed * speedMult * dt;
+                moveY = usePerpY * this.speed * speedMult * dt;
+                break;
+              }
+            }
+          }
+          
+          // Check sub-area walls - block movement through walls
+          if (game.subAreas) {
+            const testXOnly = { x: this.position.x + moveX, y: this.position.y, w: this.size, h: this.size };
+            const testYOnly = { x: this.position.x, y: this.position.y + moveY, w: this.size, h: this.size };
+            
+            let canMoveX = true;
+            let canMoveY = true;
+            
+            for (const subArea of game.subAreas) {
+              if (game.currentSubArea !== subArea && game.currentSubArea !== null) continue;
+              
+              for (const wall of subArea.walls) {
+                const wallRect = { x: wall.x, y: wall.y, w: wall.w || wall.h, h: wall.h || wall.w };
+                
+                // Check if X-only movement would collide
+                if (testXOnly.x < wallRect.x + wallRect.w && testXOnly.x + testXOnly.w > wallRect.x &&
+                    testXOnly.y < wallRect.y + wallRect.h && testXOnly.y + testXOnly.h > wallRect.y) {
+                  canMoveX = false;
+                }
+                
+                // Check if Y-only movement would collide
+                if (testYOnly.x < wallRect.x + wallRect.w && testYOnly.x + testYOnly.w > wallRect.x &&
+                    testYOnly.y < wallRect.y + wallRect.h && testYOnly.y + testYOnly.h > wallRect.y) {
+                  canMoveY = false;
+                }
+              }
+            }
+            
+            // Block movement on axes that would collide
+            if (!canMoveX) moveX = 0;
+            if (!canMoveY) moveY = 0;
+            
+            // If both axes blocked, try to move around (perpendicular movement)
+            if (!canMoveX && !canMoveY) {
+              // Find nearest wall to determine avoidance direction
+              let nearestWall = null;
+              let minDist = Infinity;
+              
+              for (const subArea of game.subAreas) {
+                if (game.currentSubArea !== subArea && game.currentSubArea !== null) continue;
+                
+                for (const wall of subArea.walls) {
+                  const wallRect = { x: wall.x, y: wall.y, w: wall.w || wall.h, h: wall.h || wall.w };
+                  const wallCenterX = wallRect.x + wallRect.w / 2;
+                  const wallCenterY = wallRect.y + wallRect.h / 2;
+                  const enemyCenterX = this.position.x + this.size / 2;
+                  const enemyCenterY = this.position.y + this.size / 2;
+                  
+                  const dist = Math.sqrt((enemyCenterX - wallCenterX) ** 2 + (enemyCenterY - wallCenterY) ** 2);
+                  if (dist < minDist) {
+                    minDist = dist;
+                    nearestWall = { wallRect, wallCenterX, wallCenterY };
+                  }
+                }
+              }
+              
+              if (nearestWall) {
+                const enemyCenterX = this.position.x + this.size / 2;
+                const enemyCenterY = this.position.y + this.size / 2;
+                const avoidDx = enemyCenterX - nearestWall.wallCenterX;
+                const avoidDy = enemyCenterY - nearestWall.wallCenterY;
+                const avoidDist = Math.sqrt(avoidDx * avoidDx + avoidDy * avoidDy) || 1;
+                
+                const perpX = -avoidDy / avoidDist;
+                const perpY = avoidDx / avoidDist;
+                
+                const dot = (dx / dist) * perpX + (dy / dist) * perpY;
+                const usePerpX = dot > 0 ? perpX : -perpX;
+                const usePerpY = dot > 0 ? perpY : -perpY;
+                
+                moveX = usePerpX * this.speed * speedMult * dt;
+                moveY = usePerpY * this.speed * speedMult * dt;
+              }
+            }
+          }
+        }
+        
+        this.position.x += moveX;
+        this.position.y += moveY;
       }
     }
 
@@ -1745,8 +2920,10 @@ class PlayerProjectile {
     if (useHoming) {
       const px = this.position.x + this.size / 2;
       const py = this.position.y + this.size / 2;
-      const target = game.getNearestEnemy(px, py, 400, this.hitEnemyIds);
-      if (target) {
+      // Ensure hitEnemyIds is a Set for proper exclusion
+      const excludeSet = this.hitEnemyIds instanceof Set ? this.hitEnemyIds : new Set();
+      const target = game.getNearestEnemy(px, py, 200, excludeSet);
+      if (target && !excludeSet.has(target.id)) {
         const tx = target.position.x + target.size / 2;
         const ty = target.position.y + target.size / 2;
         const dx = tx - px;
@@ -2070,7 +3247,7 @@ class EnemySystem {
     return new Vec2(x, y);
   }
 
-  spawnOne(forceTier = null, forceAffixIds = null, nearPosition = null) {
+  spawnOne(forceTier = null, forceAffixIds = null, nearPosition = null, game = null) {
     let base = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
     if (this.hasCond("eliteSpawn")) {
       const idx = ENEMY_TYPES.findIndex((e) => e.name === base.name);
@@ -2089,19 +3266,41 @@ class EnemySystem {
     if (this.hasCond("enemySpeed")) spd = Math.round(spd * 1.2);
     const typeDef = { ...base, maxHealth: hp, attack: atk, speed: spd, size };
     let pos;
-    if (nearPosition) {
-      const dist = 80 + Math.random() * 70;
-      const angle = Math.random() * Math.PI * 2;
-      pos = new Vec2(
-        nearPosition.x + Math.cos(angle) * dist - size / 2,
-        nearPosition.y + Math.sin(angle) * dist - size / 2
-      );
-      const margin = this.world.wallThickness + size;
-      pos.x = Math.max(margin, Math.min(pos.x, this.world.width - margin - size));
-      pos.y = Math.max(margin, Math.min(pos.y, this.world.height - margin - size));
-    } else {
-      pos = this.randomPosition(size);
-    }
+    let attempts = 0;
+    const maxAttempts = 50;
+    
+    do {
+      if (nearPosition) {
+        const dist = 80 + Math.random() * 70;
+        const angle = Math.random() * Math.PI * 2;
+        pos = new Vec2(
+          nearPosition.x + Math.cos(angle) * dist - size / 2,
+          nearPosition.y + Math.sin(angle) * dist - size / 2
+        );
+        const margin = this.world.wallThickness + size;
+        pos.x = Math.max(margin, Math.min(pos.x, this.world.width - margin - size));
+        pos.y = Math.max(margin, Math.min(pos.y, this.world.height - margin - size));
+      } else {
+        pos = this.randomPosition(size);
+      }
+      
+      // Check if position is inside a room sub-area
+      let insideRoom = false;
+      if (game && game.subAreas) {
+        for (const subArea of game.subAreas) {
+          if (subArea.type === "room") {
+            if (pos.x >= subArea.position.x && pos.x + size <= subArea.position.x + subArea.size.w &&
+                pos.y >= subArea.position.y && pos.y + size <= subArea.position.y + subArea.size.h) {
+              insideRoom = true;
+              break;
+            }
+          }
+        }
+      }
+      
+      if (!insideRoom) break;
+      attempts++;
+    } while (attempts < maxAttempts);
     const enemy = new Enemy(pos.x, pos.y, typeDef);
     enemy.worldBounds = { width: this.world.width, height: this.world.height };
     enemy.enemyTier = tier;
@@ -2130,13 +3329,38 @@ class EnemySystem {
     this.enemies.push(enemy);
   }
 
-  spawnBoss() {
+  spawnBoss(game = null) {
     const margin = this.world.wallThickness + BOSS_SIZE + 40;
     const rightThirdStart = this.world.width * 0.6;
     const rightThirdEnd = this.world.width - margin;
-    const x = rightThirdStart + Math.random() * (rightThirdEnd - rightThirdStart);
-    const y = margin + Math.random() * (this.world.height - margin * 2);
-    const pos = new Vec2(x, y);
+    
+    // Try to find a valid position (not inside rooms)
+    let pos;
+    let attempts = 0;
+    const maxAttempts = 50;
+    do {
+      const x = rightThirdStart + Math.random() * (rightThirdEnd - rightThirdStart);
+      const y = margin + Math.random() * (this.world.height - margin * 2);
+      pos = new Vec2(x, y);
+      
+      // Check if position is inside a room sub-area
+      let insideRoom = false;
+      if (game && game.subAreas) {
+        for (const subArea of game.subAreas) {
+          if (subArea.type === "room") {
+            if (pos.x >= subArea.position.x && pos.x + BOSS_SIZE <= subArea.position.x + subArea.size.w &&
+                pos.y >= subArea.position.y && pos.y + BOSS_SIZE <= subArea.position.y + subArea.size.h) {
+              insideRoom = true;
+              break;
+            }
+          }
+        }
+      }
+      
+      if (!insideRoom) break;
+      attempts++;
+    } while (attempts < maxAttempts);
+    
     const boss = new Boss(pos.x, pos.y);
     boss.maxHealth = Math.round(boss.maxHealth * this.diffMult);
     boss.health = boss.maxHealth;
@@ -2148,7 +3372,7 @@ class EnemySystem {
     this.boss = boss;
   }
 
-  spawnMinion() {
+  spawnMinion(game = null) {
     const base = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
     const s = { hp: 0.8, attack: 0.9, speed: 1.1 };
     let hp = Math.round(base.maxHealth * this.diffMult * s.hp);
@@ -2158,20 +3382,45 @@ class EnemySystem {
     if (this.hasCond("enemyDmg")) atk = Math.round(atk * 1.15);
     if (this.hasCond("enemySpeed")) spd = Math.round(spd * 1.2);
     const typeDef = { ...base, maxHealth: hp, attack: atk, speed: spd };
-    const pos = this.randomPosition(typeDef.size);
+    
+    // Try to find a valid position (not inside rooms)
+    let pos;
+    let attempts = 0;
+    const maxAttempts = 50;
+    do {
+      pos = this.randomPosition(typeDef.size);
+      
+      // Check if position is inside a room sub-area
+      let insideRoom = false;
+      if (game && game.subAreas) {
+        for (const subArea of game.subAreas) {
+          if (subArea.type === "room") {
+            if (pos.x >= subArea.position.x && pos.x + typeDef.size <= subArea.position.x + subArea.size.w &&
+                pos.y >= subArea.position.y && pos.y + typeDef.size <= subArea.position.y + subArea.size.h) {
+              insideRoom = true;
+              break;
+            }
+          }
+        }
+      }
+      
+      if (!insideRoom) break;
+      attempts++;
+    } while (attempts < maxAttempts);
+    
     const enemy = new Enemy(pos.x, pos.y, typeDef);
     if (this.hasCond("enemyRegen")) enemy.regenRate = 2;
     this.enemies.push(enemy);
   }
 
-  spawnInitial() {
+  spawnInitial(game = null) {
     if (this.mapDef.id === 4) {
-      this.spawnBoss();
+      this.spawnBoss(game);
     } else {
       const count = 20 + Math.floor(Math.random() * 11);
-      this.spawnOne("miniBoss");
+      this.spawnOne("miniBoss", null, null, game);
       for (let i = 0; i < count - 1; i++) {
-        this.spawnOne();
+        this.spawnOne(null, null, null, game);
       }
     }
   }
@@ -2387,6 +3636,18 @@ function generateEquipmentItem(type, lootQuality, qualityBonus = 0, forceRarity 
   if (WEIGHT_OPTIONS[type]) {
     const opts = WEIGHT_OPTIONS[type];
     weight = opts[Math.floor(Math.random() * opts.length)];
+  }
+
+  // Apply weight-based stat multipliers
+  // Light: 0.85x (lower stats, no penalties)
+  // Medium: 1.0x (normal stats, -10% speed)
+  // Heavy: 1.2x (higher stats, -15% speed + 20% dash CD)
+  const WEIGHT_STAT_MULTIPLIERS = { light: 0.85, medium: 1.0, heavy: 1.2 };
+  if (weight && WEIGHT_STAT_MULTIPLIERS[weight]) {
+    const multiplier = WEIGHT_STAT_MULTIPLIERS[weight];
+    for (const key of Object.keys(baseStat)) {
+      baseStat[key] = Math.round(baseStat[key] * multiplier);
+    }
   }
 
   const difficulty = options.difficulty != null ? options.difficulty : null;
@@ -2839,6 +4100,16 @@ class Game {
     this.levelUpChoices = null;
     this.runAttackUpgrades = [];
     this.runAttackPenalties = [];
+    this.clearedMaps = new Set();
+    this.visitedMaps = new Set();
+    this.mapEnemyStates = {}; // Store enemy state for each map
+    this.shrineSpawnInterval = 2 + Math.floor(Math.random() * 3); // Random 2-4
+    this.shrineSpawnCounter = 0;
+    this.shrineInteractions = [];
+    this.frenzyBuffUntil = 0;
+    this.trialBosses = [];
+    this.trialTimer = 0;
+    this.trialCompleted = false;
     this.equipmentAttackSpeedMult = 1;
     this.equipmentCooldownRecovery = 1;
     this.equipmentXpGainedMult = 1;
@@ -2873,8 +4144,18 @@ class Game {
     this.lootSystem.setMapLootQuality(lootQual);
     this.lootSystem.setDifficulty(this.difficulty);
 
+    // Initialize mapInteractables before spawnObstacles (which checks for overlaps)
+    this.mapInteractables = [];
+    
+    // Spawn obstacles on initial map
+    this.spawnObstacles(this.currentMapId);
+    
+    // Spawn sub-areas on initial map (before enemies, so enemies don't spawn inside rooms)
+    this.spawnSubAreas(this.currentMapId);
+    
+    // Spawn enemies after sub-areas so we can check for room overlaps
     this.enemySystem = new EnemySystem(this.world, this.currentMap, this.conditions, this.difficulty);
-    this.enemySystem.spawnInitial();
+    this.enemySystem.spawnInitial(this);
 
     if (hasTalent("socketFinder") && Math.random() < 0.2) {
       const m = this.world.wallThickness + 80;
@@ -2905,6 +4186,7 @@ class Game {
 
     this.mapNameEl = document.getElementById("map-name");
     this.enemyCountEl = document.getElementById("enemy-count");
+    this.escortQuestIndicatorEl = document.getElementById("escort-quest-indicator");
     this.xpBarFillEl = document.getElementById("xp-bar-fill");
     this.xpLabelEl = document.getElementById("xp-label");
     this.playerLevelEl = document.getElementById("player-level");
@@ -2921,8 +4203,13 @@ class Game {
     this.exitTransitionCooldown = 0;
     this.victoryPortal = null;
     this.victoryPortalTimer = 0;
-    this.mapInteractables = [];
+    // mapInteractables initialized earlier (before spawnObstacles)
     this.nearInteractable = null;
+    this.nearChest = null;
+    this.nearFakeSwitch = null;
+    this.obstacles = [];
+    this.subAreas = [];
+    this.currentSubArea = null;
     this.activeBlessings = [];
 
     this.dashDuration = 0.3;
@@ -3132,6 +4419,13 @@ class Game {
     if (devRandomItemEl) {
       devRandomItemEl.addEventListener("click", () => this.handleDevRandomItem());
     }
+    const devLevelUpEl = document.getElementById("dev-level-up");
+    if (devLevelUpEl) {
+      devLevelUpEl.addEventListener("click", () => {
+        this.xp = getXpForLevel(this.level + 1);
+        this.checkLevelUp();
+      });
+    }
     if (this.devMaxStatsEl) {
       this.devMaxStatsEl.addEventListener("click", () => this.handleDevMaxStats());
     }
@@ -3216,24 +4510,57 @@ class Game {
       buildLogClose.addEventListener("click", () => buildLogPanel.classList.add("hidden"));
     }
     this.buildLogRefresh = () => {
-      const listEl = document.getElementById("build-log-list");
-      if (!listEl) return;
-      listEl.innerHTML = "";
-      const ups = this.runAttackUpgrades || [];
-      const pens = this.runAttackPenalties || [];
-      for (let i = 0; i < Math.max(ups.length, pens.length); i++) {
-        if (ups[i]) {
+      const upgradesEl = document.getElementById("build-log-upgrades");
+      const penaltiesEl = document.getElementById("build-log-penalties");
+      if (!upgradesEl || !penaltiesEl) return;
+      upgradesEl.innerHTML = "";
+      penaltiesEl.innerHTML = "";
+      
+      // Add shrine interactions to upgrades list
+      if (this.shrineInteractions && this.shrineInteractions.length > 0) {
+        this.shrineInteractions.forEach(interaction => {
           const li = document.createElement("li");
           li.className = "build-log-upgrade";
-          li.textContent = `↑ ${ups[i].name}`;
-          listEl.appendChild(li);
+          li.innerHTML = `<span class="build-log-name">🏛 ${interaction.shrineName}</span><span class="build-log-effect">${interaction.message}</span>`;
+          upgradesEl.appendChild(li);
+        });
+      }
+      
+      const ups = this.runAttackUpgrades || [];
+      const pens = this.runAttackPenalties || [];
+      const aggUp = new Map();
+      for (const u of ups) {
+        if (!aggUp.has(u.id)) {
+          aggUp.set(u.id, { id: u.id, name: u.name, description: u.description, value: 0, percent: u.percent, count: 0 });
         }
-        if (pens[i]) {
-          const li = document.createElement("li");
-          li.className = "build-log-penalty";
-          li.textContent = `↓ ${pens[i].name}`;
-          listEl.appendChild(li);
+        const a = aggUp.get(u.id);
+        a.count++;
+        if (u.value !== undefined && u.value !== null) a.value += u.value;
+      }
+      for (const a of aggUp.values()) {
+        if (a.value === 0 && a.id !== "extraProjectile") a.value = undefined;
+        const li = document.createElement("li");
+        li.className = "build-log-upgrade";
+        const effect = getAggregatedUpgradeEffect(a);
+        li.innerHTML = `<span class="build-log-name">↑ ${a.name} *${a.count}</span><span class="build-log-effect">${effect}</span>`;
+        upgradesEl.appendChild(li);
+      }
+      const aggPen = new Map();
+      for (const p of pens) {
+        if (!aggPen.has(p.id)) {
+          aggPen.set(p.id, { id: p.id, name: p.name, description: p.description, value: 0, percent: p.percent, count: 0 });
         }
+        const a = aggPen.get(p.id);
+        a.count++;
+        if (p.value !== undefined && p.value !== null) a.value += p.value;
+      }
+      for (const a of aggPen.values()) {
+        if (a.value === 0) a.value = undefined;
+        const li = document.createElement("li");
+        li.className = "build-log-penalty";
+        const effect = getAggregatedPenaltyEffect(a);
+        li.innerHTML = `<span class="build-log-name">↓ ${a.name} *${a.count}</span><span class="build-log-effect">${effect}</span>`;
+        penaltiesEl.appendChild(li);
       }
     };
 
@@ -3261,13 +4588,74 @@ class Game {
       devApplyForce.addEventListener("click", () => {
         const uId = devForceUpgrade.value;
         const pId = devForcePenalty.value;
-        if (!uId || !pId) return;
-        const uDef = allUpgrades.find((x) => x.id === uId);
-        const pDef = allPenalties.find((x) => x.id === pId);
-        if (!uDef || !pDef) return;
-        this.runAttackUpgrades.push({ id: uDef.id, name: uDef.name, description: uDef.description, value: rollUpgradeValue(uDef), percent: !!uDef.valueRange?.percent });
-        this.runAttackPenalties.push({ id: pDef.id, name: pDef.name, description: pDef.description, value: rollUpgradeValue(pDef), percent: !!pDef.valueRange?.percent });
+        if (!uId && !pId) return;
+        
+        if (!this.runAttackUpgrades) this.runAttackUpgrades = [];
+        if (!this.runAttackPenalties) this.runAttackPenalties = [];
+        
+        if (uId) {
+          const uDef = allUpgrades.find((x) => x.id === uId);
+          if (uDef) {
+            this.runAttackUpgrades.push({ id: uDef.id, name: uDef.name, description: uDef.description, value: rollUpgradeValue(uDef), percent: !!uDef.valueRange?.percent });
+          }
+        }
+        
+        if (pId) {
+          const pDef = allPenalties.find((x) => x.id === pId);
+          if (pDef) {
+            this.runAttackPenalties.push({ id: pDef.id, name: pDef.name, description: pDef.description, value: rollUpgradeValue(pDef), percent: !!pDef.valueRange?.percent });
+          }
+        }
+        
         if (this.buildLogRefresh) this.buildLogRefresh();
+      });
+    }
+
+    // Shrine spawner
+    const devShrineSelect = document.getElementById("dev-shrine-select");
+    const devSpawnShrine = document.getElementById("dev-spawn-shrine");
+    if (devShrineSelect && devSpawnShrine) {
+      devShrineSelect.innerHTML = '<option value="">-- Select shrine --</option>';
+      for (const shrine of SHRINE_DEFS) {
+        const opt = document.createElement("option");
+        opt.value = shrine.id;
+        opt.textContent = shrine.name;
+        devShrineSelect.appendChild(opt);
+      }
+      devSpawnShrine.addEventListener("click", () => {
+        const shrineId = devShrineSelect.value;
+        if (!shrineId) return;
+        const shrineDef = SHRINE_DEFS.find(s => s.id === shrineId);
+        if (!shrineDef) return;
+        
+        // Spawn shrine near player (offset by 100 pixels)
+        const px = this.player.position.x + this.player.size / 2;
+        const py = this.player.position.y + this.player.size / 2;
+        const offsetX = 100 + Math.random() * 50;
+        const offsetY = 100 + Math.random() * 50;
+        const sx = Math.max(
+          this.world.wallThickness + 32,
+          Math.min(px + offsetX, this.world.width - this.world.wallThickness - 96)
+        );
+        const sy = Math.max(
+          this.world.wallThickness + 32,
+          Math.min(py + offsetY, this.world.height - this.world.wallThickness - 96)
+        );
+        
+        this.mapInteractables.push({
+          type: "shrine",
+          shrineId: shrineDef.id,
+          shrineName: shrineDef.name,
+          shrineDescription: shrineDef.description,
+          shrineIcon: shrineDef.icon,
+          shrineColor: shrineDef.color,
+          shrineAuraColor: shrineDef.auraColor,
+          x: sx - 32,
+          y: sy - 32,
+          w: 64,
+          h: 64,
+          used: false
+        });
       });
     }
   }
@@ -3285,6 +4673,25 @@ class Game {
 
   restartGame() {
     window.location.reload();
+  }
+
+  returnToMainMenu() {
+    // Hide game elements
+    document.getElementById("main-menu").classList.remove("hidden");
+    document.querySelector(".game-root").classList.add("hidden");
+    document.getElementById("pause-toggle").classList.add("hidden");
+    document.getElementById("dev-toggle")?.classList.add("hidden");
+    document.getElementById("inventory-button")?.classList.add("hidden");
+    
+    // Unpause if paused
+    this.paused = false;
+    if (this.pauseToggleEl) {
+      this.pauseToggleEl.textContent = "⏸ Pause";
+      this.pauseToggleEl.classList.remove("paused");
+    }
+    
+    // Refresh main menu
+    refreshMainMenuLP();
   }
 
   togglePause() {
@@ -3872,7 +5279,15 @@ class Game {
           : 1;
       effectiveSpeed *= 1 + (1 - ratio) * 0.5;
     }
-    const inHazard = this.hazardSystem?.playerInPatch(this.player);
+    // Check if player is in a sub-area (hazards don't affect inside sub-areas)
+    let inSubArea = false;
+    if (this.currentSubArea) {
+      const px = this.player.position.x + this.player.size / 2;
+      const py = this.player.position.y + this.player.size / 2;
+      inSubArea = px >= this.currentSubArea.position.x && px <= this.currentSubArea.position.x + this.currentSubArea.size.w &&
+                  py >= this.currentSubArea.position.y && py <= this.currentSubArea.position.y + this.currentSubArea.size.h;
+    }
+    const inHazard = !inSubArea && this.hazardSystem?.playerInPatch(this.player);
     this.playerInWeakeningPatch = inHazard?.type === "weakeningGround";
     if (inHazard) {
       if (inHazard.type === "frozenGround") effectiveSpeed *= 0.7;
@@ -3905,6 +5320,10 @@ class Game {
     if (hasTalent("cardSurge") && this.cardSurgeUntil > this.time) effectiveSpeed *= 1.15;
     if (this.playerSlowUntil > this.time) effectiveSpeed *= (this.playerSlowMult ?? 0.7);
     if (this.playerHasteUntil > this.time) effectiveSpeed *= (this.playerHasteMult ?? 1);
+    // Frenzy buff: 40% movement speed
+    if (this.frenzyBuffUntil > this.time) {
+      effectiveSpeed *= 1.4;
+    }
     this.player.speed = effectiveSpeed;
 
     if (this.playerBurnUntil > this.time) {
@@ -3934,6 +5353,70 @@ class Game {
       let ny = this.player.position.y + this.dashDirection.y * moveDist;
       nx = Math.max(margin, Math.min(nx, this.world.width - margin - this.player.size));
       ny = Math.max(margin, Math.min(ny, this.world.height - margin - this.player.size));
+      
+      // Check collision with obstacles and sub-area walls
+      const testX = { x: nx, y: this.player.position.y, w: this.player.size, h: this.player.size };
+      const testY = { x: this.player.position.x, y: ny, w: this.player.size, h: this.player.size };
+      
+      let canMoveX = true;
+      let canMoveY = true;
+      
+      // Check obstacles
+      for (const obstacle of this.obstacles || []) {
+        if (obstacle.destroyed || !obstacle.blocksMovement) continue;
+        const obsRect = { 
+          x: obstacle.position.x, 
+          y: obstacle.position.y, 
+          w: obstacle.size.w, 
+          h: obstacle.size.h 
+        };
+        
+        if (testX.x < obsRect.x + obsRect.w && testX.x + testX.w > obsRect.x &&
+            testX.y < obsRect.y + obsRect.h && testX.y + testX.h > obsRect.y) {
+          canMoveX = false;
+        }
+        
+        if (testY.x < obsRect.x + obsRect.w && testY.x + testY.w > obsRect.x &&
+            testY.y < obsRect.y + obsRect.h && testY.y + testY.h > obsRect.y) {
+          canMoveY = false;
+        }
+      }
+      
+      // Check sub-area walls
+      const subAreaWalls = [];
+      if (this.subAreas) {
+        for (const subArea of this.subAreas) {
+          if (this.currentSubArea === subArea || !this.currentSubArea) {
+            subAreaWalls.push(...subArea.walls);
+          }
+        }
+      }
+      
+      for (const wall of subAreaWalls) {
+        const wallRect = { x: wall.x, y: wall.y, w: wall.w || wall.h, h: wall.h || wall.w };
+        
+        if (testX.x < wallRect.x + wallRect.w && testX.x + testX.w > wallRect.x &&
+            testX.y < wallRect.y + wallRect.h && testX.y + testX.h > wallRect.y) {
+          canMoveX = false;
+        }
+        
+        if (testY.x < wallRect.x + wallRect.w && testY.x + testY.w > wallRect.x &&
+            testY.y < wallRect.y + wallRect.h && testY.y + testY.h > wallRect.y) {
+          canMoveY = false;
+        }
+      }
+      
+      // Block movement on axes that would collide
+      if (!canMoveX) nx = this.player.position.x;
+      if (!canMoveY) ny = this.player.position.y;
+      
+      // If both blocked, stop the dash
+      if (!canMoveX && !canMoveY) {
+        this.dashActive = false;
+        this.dashCooldown = this.dashCooldownTime;
+        this.dashTrail = [];
+      }
+      
       this.player.position.set(nx, ny);
 
       this.dashTrail.push({
@@ -3956,6 +5439,69 @@ class Game {
       let ny = this.player.position.y + this.bladeDashDirection.y * moveDist;
       nx = Math.max(margin, Math.min(nx, this.world.width - margin - this.player.size));
       ny = Math.max(margin, Math.min(ny, this.world.height - margin - this.player.size));
+      
+      // Check collision with obstacles and sub-area walls
+      const testX = { x: nx, y: this.player.position.y, w: this.player.size, h: this.player.size };
+      const testY = { x: this.player.position.x, y: ny, w: this.player.size, h: this.player.size };
+      
+      let canMoveX = true;
+      let canMoveY = true;
+      
+      // Check obstacles
+      for (const obstacle of this.obstacles || []) {
+        if (obstacle.destroyed || !obstacle.blocksMovement) continue;
+        const obsRect = { 
+          x: obstacle.position.x, 
+          y: obstacle.position.y, 
+          w: obstacle.size.w, 
+          h: obstacle.size.h 
+        };
+        
+        if (testX.x < obsRect.x + obsRect.w && testX.x + testX.w > obsRect.x &&
+            testX.y < obsRect.y + obsRect.h && testX.y + testX.h > obsRect.y) {
+          canMoveX = false;
+        }
+        
+        if (testY.x < obsRect.x + obsRect.w && testY.x + testY.w > obsRect.x &&
+            testY.y < obsRect.y + obsRect.h && testY.y + testY.h > obsRect.y) {
+          canMoveY = false;
+        }
+      }
+      
+      // Check sub-area walls
+      const subAreaWalls = [];
+      if (this.subAreas) {
+        for (const subArea of this.subAreas) {
+          if (this.currentSubArea === subArea || !this.currentSubArea) {
+            subAreaWalls.push(...subArea.walls);
+          }
+        }
+      }
+      
+      for (const wall of subAreaWalls) {
+        const wallRect = { x: wall.x, y: wall.y, w: wall.w || wall.h, h: wall.h || wall.w };
+        
+        if (testX.x < wallRect.x + wallRect.w && testX.x + testX.w > wallRect.x &&
+            testX.y < wallRect.y + wallRect.h && testX.y + testX.h > wallRect.y) {
+          canMoveX = false;
+        }
+        
+        if (testY.x < wallRect.x + wallRect.w && testY.x + testY.w > wallRect.x &&
+            testY.y < wallRect.y + wallRect.h && testY.y + testY.h > wallRect.y) {
+          canMoveY = false;
+        }
+      }
+      
+      // Block movement on axes that would collide
+      if (!canMoveX) nx = this.player.position.x;
+      if (!canMoveY) ny = this.player.position.y;
+      
+      // If both blocked, stop the blade dash
+      if (!canMoveX && !canMoveY) {
+        this.bladeDashActive = false;
+        this.bladeDashHitIds.clear();
+      }
+      
       this.player.position.set(nx, ny);
       const cx = this.player.position.x + this.player.size / 2;
       const cy = this.player.position.y + this.player.size / 2;
@@ -3977,7 +5523,16 @@ class Game {
     } else if (this.backfireDashState) {
       // Player position is driven by updateBackfireDash
     } else if (this.stunTimer <= 0) {
-      this.player.update(dt, this.input, this.world);
+      // Collect all sub-area walls for collision
+      const subAreaWalls = [];
+      if (this.subAreas) {
+        for (const subArea of this.subAreas) {
+          if (this.currentSubArea === subArea || !this.currentSubArea) {
+            subAreaWalls.push(...subArea.walls);
+          }
+        }
+      }
+      this.player.update(dt, this.input, this.world, this.obstacles || [], subAreaWalls);
     }
     if (this.playerHasteUntil > this.time) {
       this.adrenalineTrail = this.adrenalineTrail || [];
@@ -4002,7 +5557,43 @@ class Game {
     this.lootSystem.update(dt, this.player, (item) => this.handleLootPickup(item));
     this.updateUpgradeCardEffects(dt);
     if (this.hazardSystem) this.hazardSystem.update(dt, this);
+    // Update obstacles
+    if (this.obstacles) {
+      for (const obstacle of this.obstacles) {
+        obstacle.update(dt, this);
+      }
+      this.obstacles = this.obstacles.filter(obs => !obs.destroyed);
+    }
     this.updateCombat(dt);
+    
+    // Mark map as cleared if all enemies are defeated
+    if (!this.clearedMaps.has(this.currentMapId)) {
+      const es = this.enemySystem;
+      const allEnemiesDead = es.enemies.length === 0 && (!es.boss || es.boss.isDead);
+      if (allEnemiesDead) {
+        this.clearedMaps.add(this.currentMapId);
+      }
+    }
+    
+    // Handle trial timer
+    if (this.trialTimer > 0 && !this.trialCompleted) {
+      this.trialTimer -= dt;
+      const remainingBosses = this.trialBosses.filter(id => {
+        const enemy = this.enemySystem.enemies.find(e => e.id === id);
+        return enemy && !enemy.isDead;
+      });
+      if (remainingBosses.length === 0 && this.trialBosses.length > 0) {
+        // All trial bosses defeated within time
+        addLegacyPoints(1);
+        this.lpEarnedThisRun += 1;
+        this.trialCompleted = true;
+        this.trialTimer = 0;
+      } else if (this.trialTimer <= 0) {
+        // Time expired
+        this.trialTimer = 0;
+      }
+    }
+    
     this.resolveCollisions();
     this.updateAuras(dt);
 
@@ -4010,6 +5601,9 @@ class Game {
     if (!this.victoryPortal) this.checkExits();
     this.checkVictoryPortal(dt);
     this.nearInteractable = null;
+    this.nearChest = null;
+    this.nearFakeSwitch = null;
+    this.nearSubAreaDoor = null;
     const px = this.player.position.x + this.player.size / 2;
     const py = this.player.position.y + this.player.size / 2;
     for (const obj of this.mapInteractables) {
@@ -4020,11 +5614,32 @@ class Game {
         break;
       }
     }
+    
+    // Check for nearby sub-area doors (for tooltips)
+    if (!this.currentSubArea) {
+      for (const subArea of this.subAreas || []) {
+        if (subArea.type === "room") {
+          for (const door of subArea.doors) {
+            const dx = px - (door.x + door.w / 2);
+            const dy = py - (door.y + door.h / 2);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 60) {
+              this.nearSubAreaDoor = { door, subArea };
+              break;
+            }
+          }
+          if (this.nearSubAreaDoor) break;
+        }
+      }
+    }
     if (this.nearInteractable && this.input.keys.has("e")) {
       this.interactWithMapObject(this.nearInteractable);
       this.mapInteractables = this.mapInteractables.filter((o) => o !== this.nearInteractable);
       this.nearInteractable = null;
     }
+    
+    // Check sub-area entry/exit
+    this.checkSubAreaInteraction(dt);
     this.updateBlessings(dt);
 
     this.updateBossHealthBar();
@@ -4061,6 +5676,169 @@ class Game {
     );
   }
 
+  saveMapEnemyState(mapId) {
+    // Save current enemy state for this map
+    const es = this.enemySystem;
+    this.mapEnemyStates[mapId] = {
+      enemies: es.enemies.map(e => ({
+        id: e.id,
+        position: { x: e.position.x, y: e.position.y },
+        size: e.size,
+        name: e.name,
+        color: e.color,
+        maxHealth: e.maxHealth,
+        health: e.health,
+        attack: e.attack,
+        speed: e.speed,
+        defense: e.defense,
+        attackCooldown: e.attackCooldown,
+        attackTimer: e.attackTimer,
+        activated: e.activated,
+        enemyTier: e.enemyTier,
+        isElite: e.isElite,
+        tierXpMult: e.tierXpMult,
+        affixes: e.affixes ? [...e.affixes] : [],
+        burnUntil: e.burnUntil,
+        burnDps: e.burnDps,
+        burnAccum: e.burnAccum || 0,
+        toxicStacks: e.toxicStacks,
+        toxicUntil: e.toxicUntil,
+        toxicAccum: e.toxicAccum || 0,
+        voidDefenseUntil: e.voidDefenseUntil,
+        voidDefenseMult: e.voidDefenseMult,
+        regenRate: e.regenRate,
+        worldBounds: e.worldBounds
+      })),
+      boss: es.boss ? {
+        id: es.boss.id,
+        position: { x: es.boss.position.x, y: es.boss.position.y },
+        size: es.boss.size,
+        name: es.boss.name,
+        color: es.boss.color,
+        maxHealth: es.boss.maxHealth,
+        health: es.boss.health,
+        attack: es.boss.attack,
+        speed: es.boss.speed,
+        defense: es.boss.defense,
+        attackCooldown: es.boss.attackCooldown,
+        attackTimer: es.boss.attackTimer,
+        phase2: es.boss.phase2,
+        chargeCooldown: es.boss.chargeCooldown,
+        chargeTimer: es.boss.chargeTimer,
+        chargeActive: es.boss.chargeActive,
+        chargeDir: es.boss.chargeDir ? { x: es.boss.chargeDir.x, y: es.boss.chargeDir.y } : null,
+        projectileCooldown: es.boss.projectileCooldown,
+        projectileTimer: es.boss.projectileTimer,
+        minionCooldown: es.boss.minionCooldown,
+        minionTimer: es.boss.minionTimer,
+        burnUntil: es.boss.burnUntil,
+        burnDps: es.boss.burnDps,
+        burnAccum: es.boss.burnAccum || 0,
+        slowUntil: es.boss.slowUntil,
+        slowMult: es.boss.slowMult,
+        stunUntil: es.boss.stunUntil,
+        toxicStacks: es.boss.toxicStacks,
+        toxicUntil: es.boss.toxicUntil,
+        toxicAccum: es.boss.toxicAccum || 0,
+        voidDefenseUntil: es.boss.voidDefenseUntil,
+        voidDefenseMult: es.boss.voidDefenseMult
+      } : null,
+      projectiles: es.projectiles.map(p => ({
+        position: { x: p.position.x, y: p.position.y },
+        velocity: { x: p.velocity.x, y: p.velocity.y },
+        damage: p.damage,
+        size: p.size,
+        lifetime: p.lifetime,
+        maxLifetime: p.maxLifetime
+      })),
+      respawnQueue: [...es.respawnQueue]
+    };
+  }
+
+  restoreMapEnemyState(mapId) {
+    const savedState = this.mapEnemyStates[mapId];
+    if (!savedState) {
+      // No saved state, spawn initial enemies
+      this.enemySystem.enemies = [];
+      this.enemySystem.boss = null;
+      this.enemySystem.projectiles = [];
+      this.enemySystem.respawnQueue = [];
+      this.enemySystem.spawnInitial();
+      return;
+    }
+
+    const es = this.enemySystem;
+    
+    // Restore enemies
+    es.enemies = savedState.enemies.map(data => {
+      const base = ENEMY_TYPES.find(t => t.name === data.name) || ENEMY_TYPES[0];
+      const typeDef = { ...base, maxHealth: data.maxHealth, attack: data.attack, speed: data.speed, size: data.size };
+      const enemy = new Enemy(data.position.x, data.position.y, typeDef);
+      // Override the auto-generated ID with the saved one
+      ENEMY_ID_COUNTER = Math.max(ENEMY_ID_COUNTER, data.id);
+      enemy.id = data.id;
+      enemy.health = data.health;
+      enemy.defense = data.defense;
+      enemy.attackCooldown = data.attackCooldown;
+      enemy.attackTimer = data.attackTimer;
+      enemy.activated = data.activated;
+      enemy.enemyTier = data.enemyTier;
+      enemy.isElite = data.isElite;
+      enemy.tierXpMult = data.tierXpMult;
+      enemy.affixes = data.affixes ? [...data.affixes] : [];
+      enemy.burnUntil = data.burnUntil;
+      enemy.burnDps = data.burnDps;
+      enemy.burnAccum = data.burnAccum || 0;
+      enemy.toxicStacks = data.toxicStacks;
+      enemy.toxicUntil = data.toxicUntil;
+      enemy.toxicAccum = data.toxicAccum || 0;
+      enemy.voidDefenseUntil = data.voidDefenseUntil;
+      enemy.voidDefenseMult = data.voidDefenseMult;
+      enemy.regenRate = data.regenRate;
+      enemy.worldBounds = data.worldBounds;
+      return enemy;
+    });
+
+    // Restore boss
+    if (savedState.boss) {
+      const bossData = savedState.boss;
+      const boss = new Boss(bossData.position.x, bossData.position.y);
+      boss.health = bossData.health;
+      boss.defense = bossData.defense;
+      boss.attackCooldown = bossData.attackCooldown;
+      boss.attackTimer = bossData.attackTimer;
+      boss.phase2 = bossData.phase2;
+      boss.chargeCooldown = bossData.chargeCooldown;
+      boss.chargeTimer = bossData.chargeTimer;
+      boss.chargeActive = bossData.chargeActive;
+      if (bossData.chargeDir) {
+        boss.chargeDir.set(bossData.chargeDir.x, bossData.chargeDir.y);
+      }
+      boss.projectileCooldown = bossData.projectileCooldown;
+      boss.projectileTimer = bossData.projectileTimer;
+      boss.minionCooldown = bossData.minionCooldown;
+      boss.minionTimer = bossData.minionTimer;
+      boss.burnUntil = bossData.burnUntil;
+      boss.burnDps = bossData.burnDps;
+      boss.burnAccum = bossData.burnAccum || 0;
+      boss.slowUntil = bossData.slowUntil;
+      boss.slowMult = bossData.slowMult;
+      boss.stunUntil = bossData.stunUntil;
+      boss.toxicStacks = bossData.toxicStacks;
+      boss.toxicUntil = bossData.toxicUntil;
+      boss.toxicAccum = bossData.toxicAccum || 0;
+      boss.voidDefenseUntil = bossData.voidDefenseUntil;
+      boss.voidDefenseMult = bossData.voidDefenseMult;
+      es.boss = boss;
+    } else {
+      es.boss = null;
+    }
+
+    // Restore projectiles (simplified - just clear them)
+    es.projectiles = [];
+    es.respawnQueue = savedState.respawnQueue || [];
+  }
+
   checkExits() {
     if (this.exitTransitionCooldown > 0 || !this.currentMap.exits) return;
     if (this.cursedChestBlocked) return;
@@ -4073,9 +5851,684 @@ class Game {
     }
   }
 
+  spawnObstacles(mapId) {
+    this.obstacles = [];
+    const mapDef = MAP_DEFS.find(m => m.id === mapId);
+    if (!mapDef) return;
+
+    // Get available obstacle types for this map
+    const availableTypes = Object.values(OBSTACLE_TYPES).filter(obs => 
+      obs.maps.includes(mapId)
+    );
+    if (availableTypes.length === 0) return;
+
+    // Determine spawn count (8-15)
+    const count = 8 + Math.floor(Math.random() * 8);
+    const margin = this.world.wallThickness + 80;
+    const maxAttempts = count * 50; // Try many times to find valid positions
+    let attempts = 0;
+    let spawned = 0;
+
+    // Get exit zones to avoid blocking paths
+    const exitZones = (mapDef.exits || []).map(exit => ({
+      x: exit.x - 100,
+      y: exit.y - 100,
+      w: exit.w + 200,
+      h: exit.h + 200
+    }));
+
+    // Get player spawn position
+    const playerSpawnX = this.player.position.x;
+    const playerSpawnY = this.player.position.y;
+    const playerSpawnZone = {
+      x: playerSpawnX - 100,
+      y: playerSpawnY - 100,
+      w: 200,
+      h: 200
+    };
+
+    while (spawned < count && attempts < maxAttempts) {
+      attempts++;
+      const typeDef = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+      const size = typeDef.size;
+      
+      // Random position
+      const x = margin + Math.random() * (this.world.width - 2 * margin - size.w);
+      const y = margin + Math.random() * (this.world.height - 2 * margin - size.h);
+
+      // Check if position is valid
+      let valid = true;
+
+      // Check exit zones
+      for (const zone of exitZones) {
+        if (x < zone.x + zone.w && x + size.w > zone.x &&
+            y < zone.y + zone.h && y + size.h > zone.y) {
+          valid = false;
+          break;
+        }
+      }
+
+      // Check player spawn zone
+      if (x < playerSpawnZone.x + playerSpawnZone.w && x + size.w > playerSpawnZone.x &&
+          y < playerSpawnZone.y + playerSpawnZone.h && y + size.h > playerSpawnZone.y) {
+        valid = false;
+      }
+
+      // Check overlap with existing obstacles
+      if (valid) {
+        for (const existing of this.obstacles) {
+          if (x < existing.position.x + existing.size.w && x + size.w > existing.position.x &&
+              y < existing.position.y + existing.size.h && y + size.h > existing.position.y) {
+            valid = false;
+            break;
+          }
+        }
+      }
+
+      // Check overlap with loot
+      if (valid) {
+        for (const loot of this.lootSystem.items) {
+          const lootPos = loot.displayPosition;
+          if (x < lootPos.x + loot.size && x + size.w > lootPos.x &&
+              y < lootPos.y + loot.size && y + size.h > lootPos.y) {
+            valid = false;
+            break;
+          }
+        }
+      }
+
+      // Check overlap with enemies (only if enemySystem is initialized)
+      if (valid && this.enemySystem) {
+        const allEnemies = [...this.enemySystem.enemies];
+        if (this.enemySystem.boss) allEnemies.push(this.enemySystem.boss);
+        for (const enemy of allEnemies) {
+          if (enemy.isDead) continue;
+          if (x < enemy.position.x + enemy.size && x + size.w > enemy.position.x &&
+              y < enemy.position.y + enemy.size && y + size.h > enemy.position.y) {
+            valid = false;
+            break;
+          }
+        }
+      }
+
+      // Check overlap with interactables
+      if (valid) {
+        for (const obj of this.mapInteractables) {
+          if (x < obj.x + obj.w && x + size.w > obj.x &&
+              y < obj.y + obj.h && y + size.h > obj.y) {
+            valid = false;
+            break;
+          }
+        }
+      }
+
+      if (valid) {
+        const obstacle = new Obstacle(x, y, typeDef);
+        this.obstacles.push(obstacle);
+        spawned++;
+      }
+    }
+  }
+
+  spawnSubAreas(mapId) {
+    this.subAreas = [];
+    const mapDef = MAP_DEFS.find(m => m.id === mapId);
+    if (!mapDef) return;
+
+    // Spawn rules
+    let count = 0;
+    let availableTypes = [];
+    
+    if (mapId === 0 || mapId === 1) {
+      // Maps 1-2: 0-1 ruins only
+      count = Math.random() < 0.5 ? 0 : 1;
+      availableTypes = Object.values(SUB_AREA_TYPES).filter(sa => 
+        sa.type === "ruin" && sa.maps.includes(mapId)
+      );
+    } else if (mapId === 2 || mapId === 3) {
+      // Maps 3-4: 1-2 sub-areas of any type, mazes spawn at most once
+      count = 1 + Math.floor(Math.random() * 2);
+      availableTypes = Object.values(SUB_AREA_TYPES).filter(sa => 
+        sa.maps.includes(mapId)
+      );
+    } else {
+      // Map 5: no sub-areas
+      return;
+    }
+
+    if (availableTypes.length === 0) return;
+
+    const margin = this.world.wallThickness + 150;
+    const maxAttempts = count * 100;
+    let attempts = 0;
+    let spawned = 0;
+    let mazeSpawned = false;
+
+    // Get exit zones to avoid blocking paths
+    const exitZones = (mapDef.exits || []).map(exit => ({
+      x: exit.x - 150,
+      y: exit.y - 150,
+      w: exit.w + 300,
+      h: exit.h + 300
+    }));
+
+    while (spawned < count && attempts < maxAttempts) {
+      attempts++;
+      
+      // Filter available types (maze can only spawn once)
+      let types = availableTypes;
+      if (mazeSpawned) {
+        types = types.filter(t => t.type !== "maze");
+      }
+      if (types.length === 0) break;
+      
+      const typeDef = types[Math.floor(Math.random() * types.length)];
+      // Use default size for mazes if not specified
+      const size = typeDef.size || (typeDef.type === "maze" ? { w: 1200, h: 1200 } : { w: 300, h: 300 });
+      
+      // Random position
+      const x = margin + Math.random() * (this.world.width - 2 * margin - size.w);
+      const y = margin + Math.random() * (this.world.height - 2 * margin - size.h);
+
+      // Check if position is valid
+      let valid = true;
+
+      // Check exit zones
+      for (const zone of exitZones) {
+        if (x < zone.x + zone.w && x + size.w > zone.x &&
+            y < zone.y + zone.h && y + size.h > zone.y) {
+          valid = false;
+          break;
+        }
+      }
+
+      // Check overlap with existing sub-areas (minimum 3x player size spacing)
+      if (valid) {
+        const minSpacing = this.player.size * 3; // 144 pixels (3 * 48)
+        for (const existing of this.subAreas) {
+          // Expand both rectangles by half the minimum spacing on all sides
+          // Then check if they overlap - if they do, spacing is insufficient
+          const expandedX = x - minSpacing / 2;
+          const expandedY = y - minSpacing / 2;
+          const expandedW = size.w + minSpacing;
+          const expandedH = size.h + minSpacing;
+          
+          const existingExpandedX = existing.position.x - minSpacing / 2;
+          const existingExpandedY = existing.position.y - minSpacing / 2;
+          const existingExpandedW = existing.size.w + minSpacing;
+          const existingExpandedH = existing.size.h + minSpacing;
+          
+          // Check if expanded rectangles overlap
+          if (expandedX < existingExpandedX + existingExpandedW && 
+              expandedX + expandedW > existingExpandedX &&
+              expandedY < existingExpandedY + existingExpandedH && 
+              expandedY + expandedH > existingExpandedY) {
+            valid = false;
+            break;
+          }
+        }
+      }
+
+      // Check overlap with obstacles
+      if (valid) {
+        for (const obstacle of this.obstacles) {
+          if (obstacle.destroyed) continue;
+          const obsRect = { 
+            x: obstacle.position.x, 
+            y: obstacle.position.y, 
+            w: obstacle.size.w, 
+            h: obstacle.size.h 
+          };
+          // Check if sub-area would overlap with large obstacles (64px+)
+          if (obsRect.w >= 64 || obsRect.h >= 64) {
+            if (x < obsRect.x + obsRect.w + 50 && x + size.w > obsRect.x - 50 &&
+                y < obsRect.y + obsRect.h + 50 && y + size.h > obsRect.y - 50) {
+              valid = false;
+              break;
+            }
+          }
+        }
+      }
+
+      // Check overlap with shrines/interactables
+      if (valid) {
+        for (const obj of this.mapInteractables) {
+          if (x < obj.x + obj.w + 50 && x + size.w > obj.x - 50 &&
+              y < obj.y + obj.h + 50 && y + size.h > obj.y - 50) {
+            valid = false;
+            break;
+          }
+        }
+      }
+
+      // Check overlap with loot
+      if (valid) {
+        for (const loot of this.lootSystem.items) {
+          const lootPos = loot.displayPosition;
+          if (x < lootPos.x + loot.size + 50 && x + size.w > lootPos.x - 50 &&
+              y < lootPos.y + loot.size + 50 && y + size.h > lootPos.y - 50) {
+            valid = false;
+            break;
+          }
+        }
+      }
+
+      if (valid) {
+        const subArea = new SubArea(x, y, typeDef, mapId);
+        this.subAreas.push(subArea);
+        spawned++;
+        if (typeDef.type === "maze") {
+          mazeSpawned = true;
+        }
+      }
+    }
+  }
+
+  checkSubAreaInteraction(dt) {
+    const px = this.player.position.x + this.player.size / 2;
+    const py = this.player.position.y + this.player.size / 2;
+    
+    // Check if player is inside any sub-area
+    let insideSubArea = null;
+    for (const subArea of this.subAreas || []) {
+      if (px >= subArea.position.x && px <= subArea.position.x + subArea.size.w &&
+          py >= subArea.position.y && py <= subArea.position.y + subArea.size.h) {
+        insideSubArea = subArea;
+        break;
+      }
+    }
+    
+    // Handle entry into sub-area
+    if (insideSubArea && !this.currentSubArea) {
+      this.enterSubArea(insideSubArea);
+    }
+    
+    // Handle exit from sub-area
+    if (this.currentSubArea && !insideSubArea) {
+      this.exitSubArea();
+    }
+    
+    // Update current sub-area state
+    if (this.currentSubArea) {
+      this.updateSubArea(dt);
+    }
+    
+    // Check chest interaction for all sub-areas (not just current one)
+    // This allows interaction with ruin and maze chests even when not "inside" the sub-area
+    for (const subArea of this.subAreas || []) {
+      if (!subArea.chest) continue;
+      
+      // Ensure chest has opened property
+      if (subArea.chest.opened === undefined) {
+        subArea.chest.opened = false;
+      }
+      
+      // Ruin chests are now unlocked via switch interaction (handled below and in updateSubArea)
+      
+      // Check ruin switch interaction (global check for all ruins)
+      if (subArea.type === "ruin" && subArea.switch && !subArea.switch.activated) {
+        const switchCenterX = subArea.switch.x + subArea.switch.w / 2;
+        const switchCenterY = subArea.switch.y + subArea.switch.h / 2;
+        const dist = Math.sqrt((px - switchCenterX) ** 2 + (py - switchCenterY) ** 2);
+        
+        if (dist < 40) {
+          // Show interaction prompt
+          this.nearFakeSwitch = null; // Clear fake switch prompt if near real switch
+          if (this.input.keys.has("e")) {
+            subArea.switch.activated = true;
+            if (subArea.chest) {
+              subArea.chest.locked = false;
+              // Automatically open the chest when switch is activated
+              subArea.chest.opened = true;
+              this.spawnSubAreaReward(subArea);
+            }
+          }
+        }
+      }
+      
+      // Check fake switch interaction (global check for all ruins)
+      if (subArea.type === "ruin" && subArea.fakeSwitches && subArea.fakeSwitches.length > 0) {
+        for (const fakeSwitch of subArea.fakeSwitches) {
+          if (fakeSwitch.activated) continue;
+          
+          const fakeSwitchCenterX = fakeSwitch.x + fakeSwitch.w / 2;
+          const fakeSwitchCenterY = fakeSwitch.y + fakeSwitch.h / 2;
+          const dist = Math.sqrt((px - fakeSwitchCenterX) ** 2 + (py - fakeSwitchCenterY) ** 2);
+          
+          if (dist < 40) {
+            // Show interaction prompt
+            this.nearFakeSwitch = { switch: fakeSwitch, subArea: subArea };
+            
+            if (this.input.keys.has("e")) {
+              fakeSwitch.activated = true;
+              this.nearFakeSwitch = null;
+              
+              // Spawn elite enemy inside the ruin at the fake switch location
+              // Ensure the enemy spawns within the ruin bounds
+              const enemySize = 32; // Approximate enemy size
+              const margin = 40;
+              const spawnX = Math.max(
+                subArea.position.x + margin,
+                Math.min(fakeSwitchCenterX, subArea.position.x + subArea.size.w - margin - enemySize)
+              );
+              const spawnY = Math.max(
+                subArea.position.y + margin,
+                Math.min(fakeSwitchCenterY, subArea.position.y + subArea.size.h - margin - enemySize)
+              );
+              
+              // Create enemy directly at the calculated position
+              const base = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+              const s = this.enemySystem.mapDef.enemyScale || { hp: 1, attack: 1, speed: 1 };
+              const tierMult = { minion: { hp: 0.5, atk: 1, xp: 0.7, size: 0.7 }, elite: { hp: 1, atk: 1.2, xp: 1.4, size: 1 }, miniBoss: { hp: 5, atk: 2, xp: 5, size: 1.4 } };
+              const tm = tierMult.elite;
+              let hp = Math.round(base.maxHealth * this.enemySystem.diffMult * s.hp * tm.hp);
+              let atk = Math.round(base.attack * this.enemySystem.diffMult * s.attack * tm.atk);
+              let spd = Math.round(base.speed * s.speed);
+              const size = Math.max(16, Math.round(base.size * tm.size));
+              if (this.enemySystem.hasCond("enemyHp")) hp = Math.round(hp * 1.15);
+              if (this.enemySystem.hasCond("enemyDmg")) atk = Math.round(atk * 1.15);
+              if (this.enemySystem.hasCond("enemySpeed")) spd = Math.round(spd * 1.2);
+              const typeDef = { ...base, maxHealth: hp, attack: atk, speed: spd, size };
+              
+              const enemy = new Enemy(spawnX - size / 2, spawnY - size / 2, typeDef);
+              enemy.worldBounds = { width: this.enemySystem.world.width, height: this.enemySystem.world.height };
+              enemy.enemyTier = "elite";
+              enemy.tierXpMult = tm.xp;
+              enemy.isElite = true;
+              enemy.affixes = [];
+              enemy.subAreaId = subArea.id;
+              
+              this.enemySystem.enemies.push(enemy);
+              subArea.enemies.push(enemy.id);
+            }
+            break;
+          }
+        }
+        
+        // Clear prompt if not near any fake switch
+        if (this.nearFakeSwitch) {
+          const stillNear = subArea.fakeSwitches.some(fs => {
+            if (fs.activated) return false;
+            const fsCenterX = fs.x + fs.w / 2;
+            const fsCenterY = fs.y + fs.h / 2;
+            const dist = Math.sqrt((px - fsCenterX) ** 2 + (py - fsCenterY) ** 2);
+            return dist < 40;
+          });
+          if (!stillNear) {
+            this.nearFakeSwitch = null;
+          }
+        }
+      }
+      
+      // Check interaction with unlocked, unopened chests
+      if (!subArea.chest.locked && !subArea.chest.opened) {
+        const px = this.player.position.x + this.player.size / 2;
+        const py = this.player.position.y + this.player.size / 2;
+        const chestCenterX = subArea.chest.x + subArea.chest.w / 2;
+        const chestCenterY = subArea.chest.y + subArea.chest.h / 2;
+        const dist = Math.sqrt((px - chestCenterX) ** 2 + (py - chestCenterY) ** 2);
+        
+        if (dist < 100) {
+          // Show interaction prompt
+          this.nearChest = subArea.chest;
+          
+          // Check for key press
+          if (this.input.keys.has("e")) {
+            subArea.chest.opened = true;
+            this.nearChest = null;
+            this.spawnSubAreaReward(subArea);
+          }
+        } else {
+          if (this.nearChest === subArea.chest) {
+            this.nearChest = null;
+          }
+        }
+      }
+    }
+  }
+
+  enterSubArea(subArea) {
+    this.currentSubArea = subArea;
+    const isFirstEntry = !subArea.entered;
+    subArea.entered = true;
+    
+    if (subArea.type === "room") {
+      // Lock the door
+      for (const door of subArea.doors) {
+        door.locked = true;
+      }
+      
+      // Spawn enemies only on first entry
+      if (isFirstEntry) {
+        this.spawnSubAreaEnemies(subArea);
+      }
+    } else if (subArea.type === "maze") {
+      // Spawn maze enemies only on first entry
+      if (isFirstEntry && subArea.typeDef.hasEnemies) {
+        this.spawnMazeEnemies(subArea);
+      }
+    }
+  }
+
+  exitSubArea() {
+    if (this.currentSubArea) {
+      this.currentSubArea = null;
+    }
+  }
+
+  spawnSubAreaEnemies(subArea) {
+    const { enemyCount, enemyType } = subArea.typeDef;
+    const count = enemyCount.min + Math.floor(Math.random() * (enemyCount.max - enemyCount.min + 1));
+    
+    for (let i = 0; i < count; i++) {
+      const x = subArea.position.x + 60 + Math.random() * (subArea.size.w - 120);
+      const y = subArea.position.y + 60 + Math.random() * (subArea.size.h - 120);
+      
+      let enemy = null;
+      if (enemyType === "standard") {
+        enemy = this.enemySystem.spawnOne("minion", null, { x, y });
+      } else if (enemyType === "elite") {
+        enemy = this.enemySystem.spawnOne("elite", null, { x, y });
+      } else if (enemyType === "miniBoss") {
+        enemy = this.enemySystem.spawnOne("miniBoss", null, { x, y });
+      }
+      
+      if (enemy) {
+        enemy.subAreaId = subArea.id;
+        subArea.enemies.push(enemy.id);
+        this.enemySystem.enemies.push(enemy);
+      }
+    }
+  }
+
+  spawnMazeEnemies(subArea) {
+    // Spawn enemies in maze corridors
+    const cellSize = 40;
+    const mazeWidth = Math.floor(subArea.size.w / cellSize);
+    const mazeHeight = Math.floor(subArea.size.h / cellSize);
+    
+    // Spawn enemies at random corridor intersections
+    for (let i = 0; i < Math.floor((mazeWidth * mazeHeight) / 8); i++) {
+      const x = subArea.position.x + (Math.floor(Math.random() * mazeWidth) + 0.5) * cellSize;
+      const y = subArea.position.y + (Math.floor(Math.random() * mazeHeight) + 0.5) * cellSize;
+      
+      const enemy = this.enemySystem.spawnOne("minion", null, { x, y });
+      if (enemy) {
+        enemy.subAreaId = subArea.id;
+        subArea.enemies.push(enemy.id);
+        this.enemySystem.enemies.push(enemy);
+      }
+    }
+    
+    // Spawn special enemies based on maze type
+    if (subArea.variant === "castleCatacombs" && subArea.exit) {
+      // Elite at exit
+      const enemy = this.enemySystem.spawnOne("elite", null, { x: subArea.exit.x, y: subArea.exit.y });
+      if (enemy) {
+        enemy.subAreaId = subArea.id;
+        subArea.enemies.push(enemy.id);
+        this.enemySystem.enemies.push(enemy);
+      }
+    } else if (subArea.variant === "crystalCavernMaze") {
+      // Mini-boss at center
+      const centerX = subArea.position.x + subArea.size.w / 2;
+      const centerY = subArea.position.y + subArea.size.h / 2;
+      const enemy = this.enemySystem.spawnOne("miniBoss", null, { x: centerX, y: centerY });
+      if (enemy) {
+        enemy.subAreaId = subArea.id;
+        subArea.enemies.push(enemy.id);
+        this.enemySystem.enemies.push(enemy);
+      }
+    }
+  }
+
+  updateSubArea(dt) {
+    const subArea = this.currentSubArea;
+    if (!subArea) return;
+    
+    // Check if all enemies are defeated (for rooms)
+    if (subArea.type === "room") {
+      const aliveEnemies = subArea.enemies.filter(id => {
+        const enemy = this.enemySystem.enemies.find(e => e.id === id);
+        return enemy && !enemy.isDead;
+      });
+      
+      // For rooms: unlock door when all enemies defeated
+      if (subArea.type === "room" && aliveEnemies.length === 0 && subArea.enemies.length > 0) {
+        subArea.cleared = true;
+        
+        // Unlock door
+        for (const door of subArea.doors) {
+          door.locked = false;
+        }
+        
+        // Unlock chest if it exists
+        if (subArea.chest) {
+          subArea.chest.locked = false;
+        }
+        
+        // Spawn reward
+        this.spawnSubAreaReward(subArea);
+      }
+    }
+    
+    // Check puzzle room switch
+    if (subArea.type === "room" && subArea.variant === "puzzleRoom" && subArea.switch) {
+      const px = this.player.position.x + this.player.size / 2;
+      const py = this.player.position.y + this.player.size / 2;
+      const dist = Math.sqrt((px - subArea.switch.x) ** 2 + (py - subArea.switch.y) ** 2);
+      
+      if (dist < 30 && this.input.keys.has("e") && !subArea.switch.activated) {
+        subArea.switch.activated = true;
+        if (subArea.chest) {
+          subArea.chest.locked = false;
+        }
+        this.spawnSubAreaReward(subArea);
+      }
+    }
+    
+    // Check ruin switch
+    if (subArea.type === "ruin" && subArea.switch && !subArea.switch.activated) {
+      const px = this.player.position.x + this.player.size / 2;
+      const py = this.player.position.y + this.player.size / 2;
+      const dist = Math.sqrt((px - (subArea.switch.x + subArea.switch.w / 2)) ** 2 + 
+                            (py - (subArea.switch.y + subArea.switch.h / 2)) ** 2);
+      
+      if (dist < 40 && this.input.keys.has("e")) {
+        subArea.switch.activated = true;
+        if (subArea.chest) {
+          subArea.chest.locked = false;
+          // Automatically open the chest when switch is activated
+          subArea.chest.opened = true;
+          this.spawnSubAreaReward(subArea);
+        }
+      }
+    }
+    
+    // Chest interaction is now handled globally in checkSubAreaInteraction
+    // to allow interaction even when not "inside" the sub-area bounds
+  }
+
+  spawnSubAreaReward(subArea) {
+    const reward = subArea.typeDef.reward;
+    if (!reward || !reward.guaranteed) return;
+    
+    const centerX = subArea.position.x + subArea.size.w / 2;
+    const centerY = subArea.position.y + subArea.size.h / 2;
+    
+    if (reward.type === "blue") {
+      const def = this.lootSystem.getLootDefinition(0);
+      def.rarity = "magic";
+      const item = new LootItem(this.lootSystem.nextId++, centerX - 10, centerY - 10, def, centerX, centerY);
+      this.lootSystem.items.push(item);
+    } else if (reward.type === "yellow") {
+      const def = this.lootSystem.getLootDefinition(0.3);
+      def.rarity = "rare";
+      const item = new LootItem(this.lootSystem.nextId++, centerX - 10, centerY - 10, def, centerX, centerY);
+      this.lootSystem.items.push(item);
+      
+      // Cube chance
+      if (reward.cubeChance && Math.random() < reward.cubeChance) {
+        const cubeTypes = ["wisdomCube", "powerCube", "focusCube"];
+        const cubeType = cubeTypes[Math.floor(Math.random() * cubeTypes.length)];
+        const cubeItem = new LootItem(this.lootSystem.nextId++, centerX + 20, centerY - 10, {
+          type: "Cube",
+          name: cubeType,
+          cubeKey: cubeType,
+          rarity: null
+        }, centerX, centerY);
+        this.lootSystem.items.push(cubeItem);
+      }
+    } else if (reward.type === "shrine") {
+      // Puzzle room has a shrine - spawn it
+      const shrineDef = SHRINE_DEFS[Math.floor(Math.random() * SHRINE_DEFS.length)];
+      this.mapInteractables.push({
+        type: "shrine",
+        shrineId: shrineDef.id,
+        shrineName: shrineDef.name,
+        shrineDescription: shrineDef.description,
+        shrineIcon: shrineDef.icon,
+        shrineColor: shrineDef.color,
+        shrineAuraColor: shrineDef.auraColor,
+        x: centerX - 32,
+        y: centerY - 32,
+        w: 64,
+        h: 64,
+        used: false
+      });
+    }
+    
+    // Maze rewards
+    if (subArea.type === "maze") {
+      if (subArea.variant === "forestHedgeMaze" && subArea.exit) {
+        // Rare item at exit
+        const def = this.lootSystem.getLootDefinition(0.5);
+        def.rarity = "rare";
+        const item = new LootItem(this.lootSystem.nextId++, subArea.exit.x - 10, subArea.exit.y - 10, def, subArea.exit.x, subArea.exit.y);
+        this.lootSystem.items.push(item);
+      } else if (subArea.variant === "crystalCavernMaze" && Math.random() < (subArea.typeDef.legendaryCubeChance || 0.2)) {
+        // Legendary cube
+        const cubeTypes = ["wisdomCube", "powerCube", "focusCube"];
+        const cubeType = cubeTypes[Math.floor(Math.random() * cubeTypes.length)];
+        const cubeItem = new LootItem(this.lootSystem.nextId++, centerX - 10, centerY - 10, {
+          type: "Cube",
+          name: cubeType,
+          cubeKey: cubeType,
+          rarity: null
+        }, centerX, centerY);
+        this.lootSystem.items.push(cubeItem);
+      }
+    }
+  }
+
   transitionToMap(targetMapId, spawnSide) {
     const targetMap = MAP_DEFS.find((m) => m.id === targetMapId);
     if (!targetMap) return;
+
+    // Save current map's enemy state before leaving (if we were on a map)
+    if (this.currentMapId !== undefined && this.currentMapId !== null) {
+      this.saveMapEnemyState(this.currentMapId);
+    }
 
     this.currentMapId = targetMapId;
     this.currentMap = targetMap;
@@ -4101,23 +6554,89 @@ class Game {
     }
 
     this.empowerStacks = [0, 0, 0, 0];
-    this.enemySystem.enemies = [];
-    this.enemySystem.boss = null;
-    this.enemySystem.projectiles = [];
-    this.enemySystem.respawnQueue = [];
     this.enemySystem.setMap(targetMap);
-    this.enemySystem.spawnInitial();
-
-    if (this.escortQuest?.active && targetMapId === 0) {
-      this.resolveStrangerQuest();
-    }
-
+    
+    // Initialize mapInteractables before spawning obstacles and sub-areas
     this.mapInteractables = [];
     if (hasTalent("socketFinder") && Math.random() < 0.2) {
       const margin = this.world.wallThickness + 80;
       const ix = margin + Math.random() * (this.world.width - 2 * margin - 64);
       const iy = margin + Math.random() * (this.world.height - 2 * margin - 64);
       this.mapInteractables.push({ type: "socketWorkshop", x: ix, y: iy, w: 64, h: 64 });
+    }
+    
+    // Spawn obstacles and sub-areas before enemies (so enemies don't spawn inside rooms)
+    this.spawnObstacles(targetMapId);
+    this.spawnSubAreas(targetMapId);
+    
+    // Check if we've visited this map before
+    const isFirstVisit = !this.visitedMaps.has(targetMapId);
+    
+    if (isFirstVisit) {
+      // First visit: spawn initial enemies (after sub-areas are spawned)
+      this.enemySystem.enemies = [];
+      this.enemySystem.boss = null;
+      this.enemySystem.projectiles = [];
+      this.enemySystem.respawnQueue = [];
+      this.enemySystem.spawnInitial(this);
+      this.visitedMaps.add(targetMapId);
+    } else {
+      // Returning to a visited map: restore enemy state
+      this.restoreMapEnemyState(targetMapId);
+    }
+
+    if (this.escortQuest?.active && targetMapId === 0) {
+      this.resolveStrangerQuest();
+    }
+    
+    // Spawn shrine based on interval
+    this.shrineSpawnCounter++;
+    if (this.shrineSpawnCounter >= this.shrineSpawnInterval) {
+      const shrineDef = SHRINE_DEFS[Math.floor(Math.random() * SHRINE_DEFS.length)];
+      const margin = this.world.wallThickness + 80;
+      
+      // Try to find valid position (not inside sub-areas)
+      let valid = false;
+      let sx, sy;
+      let attempts = 0;
+      while (!valid && attempts < 50) {
+        sx = margin + Math.random() * (this.world.width - 2 * margin - 64);
+        sy = margin + Math.random() * (this.world.height - 2 * margin - 64);
+        valid = true;
+        
+        // Check if inside any sub-area
+        for (const subArea of this.subAreas || []) {
+          if (sx >= subArea.position.x && sx + 64 <= subArea.position.x + subArea.size.w &&
+              sy >= subArea.position.y && sy + 64 <= subArea.position.y + subArea.size.h) {
+            valid = false;
+            break;
+          }
+        }
+        attempts++;
+      }
+      
+      if (valid) {
+        this.mapInteractables.push({
+          type: "shrine",
+          shrineId: shrineDef.id,
+          shrineName: shrineDef.name,
+          shrineDescription: shrineDef.description,
+          shrineIcon: shrineDef.icon,
+          shrineColor: shrineDef.color,
+          shrineAuraColor: shrineDef.auraColor,
+          x: sx,
+          y: sy,
+          w: 64,
+          h: 64,
+          used: false
+        });
+        this.shrineSpawnCounter = 0;
+        this.shrineSpawnInterval = 2 + Math.floor(Math.random() * 3); // New interval 2-4
+      } else {
+        this.shrineSpawnCounter++;
+      }
+    } else {
+      this.shrineSpawnCounter++;
     }
 
     const margin = this.world.wallThickness + 60;
@@ -4136,6 +6655,8 @@ class Game {
   }
 
   tryTriggerEvent() {
+    // Require at least 3 maps visited before events can trigger
+    if (this.visitedMaps.size < 3) return;
     if (this.eventsOccurredThisRun.size >= EVENT_DEFS.length) return;
     if (Math.random() >= 0.25) return;
     const available = EVENT_DEFS.filter((e) => !this.eventsOccurredThisRun.has(e.id));
@@ -4220,13 +6741,7 @@ class Game {
     if (eventId === "stranger") {
       if (choiceId === "help") {
         this.escortQuest = { active: true, targetMapId: 0 };
-      }
-      this.closeEventOverlay();
-      return;
-    }
-    if (eventId === "spring") {
-      if (choiceId === "drink") {
-        // No reward (upgrade cards removed)
+        this.updateEscortQuestUI();
       }
       this.closeEventOverlay();
       return;
@@ -4344,21 +6859,57 @@ class Game {
 
   resolveStrangerQuest() {
     this.escortQuest = null;
+    this.updateEscortQuestUI();
     const cx = this.world.width / 2 - 20;
     const cy = this.world.height / 2 - 20;
-    if (Math.random() < 0.5) {
+    const rewardType = Math.random() < 0.5 ? "high" : "low";
+    if (rewardType === "high") {
       this.lootSystem.spawnBurstAt(cx, cy, 4, 0.9);
       this.grantXP(80);
+      this.showNotification("Quest Complete!", "You successfully escorted the stranger home! They reward you with valuable treasures and 80 XP.");
     } else {
       this.lootSystem.spawnBurstAt(cx, cy, 3, 0.5);
       this.grantXP(40);
+      this.showNotification("Quest Complete!", "You successfully escorted the stranger home! They reward you with treasures and 40 XP.");
     }
+  }
+
+  showNotification(title, message) {
+    const overlay = document.getElementById("notification-overlay");
+    const titleEl = document.getElementById("notification-title");
+    const messageEl = document.getElementById("notification-message");
+    const closeBtn = document.getElementById("notification-close");
+    
+    if (!overlay || !titleEl || !messageEl || !closeBtn) return;
+    
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    overlay.classList.remove("hidden");
+    this.paused = true;
+    
+    const handleClose = () => {
+      overlay.classList.add("hidden");
+      this.paused = false;
+      closeBtn.removeEventListener("click", handleClose);
+    };
+    
+    closeBtn.addEventListener("click", handleClose);
   }
 
   updateMapUI() {
     if (!this.mapNameEl) return;
     this.mapNameEl.textContent = `${this.currentMap.name} (Map ${this.currentMap.number})`;
     this.updateEnemyCountUI();
+    this.updateEscortQuestUI();
+  }
+
+  updateEscortQuestUI() {
+    if (!this.escortQuestIndicatorEl) return;
+    if (this.escortQuest?.active) {
+      this.escortQuestIndicatorEl.classList.remove("hidden");
+    } else {
+      this.escortQuestIndicatorEl.classList.add("hidden");
+    }
   }
 
   updateEnemyCountUI() {
@@ -4382,7 +6933,11 @@ class Game {
   }
 
   grantXP(amount) {
-    const mult = this.equipmentXpGainedMult ?? 1;
+    let mult = this.equipmentXpGainedMult ?? 1;
+    // Frenzy buff: 20% XP gained
+    if (this.frenzyBuffUntil > this.time) {
+      mult *= 1.2;
+    }
     const rounded = Math.round(amount * mult);
     this.xp += rounded;
     this.updateXpUI();
@@ -4453,14 +7008,14 @@ class Game {
     for (let i = 0; i < 2; i++) {
       const upgrades = [];
       for (let j = 0; j < 2; j++) {
-        const poolUp = (defs.standardUpgrades || []).filter((u) => !takenUpgrades.has(u.id) && !usedInOfferUp.has(u.id));
+        const poolUp = (defs.standardUpgrades || []).filter((u) => !usedInOfferUp.has(u.id));
         if (poolUp.length === 0) break;
         const defUp = poolUp[Math.floor(Math.random() * poolUp.length)];
         const upgrade = { id: defUp.id, name: defUp.name, description: defUp.description, value: rollUpgradeValue(defUp), percent: !!defUp.valueRange?.percent };
         upgrades.push(upgrade);
         usedInOfferUp.add(upgrade.id);
       }
-      const poolPen = (defs.standardPenalties || []).filter((p) => !takenPenalties.has(p.id) && !usedInOfferPen.has(p.id));
+      const poolPen = (defs.standardPenalties || []).filter((p) => !usedInOfferPen.has(p.id));
       if (upgrades.length < 2 || poolPen.length === 0) break;
       const defPen = poolPen[Math.floor(Math.random() * poolPen.length)];
       const penalty = { id: defPen.id, name: defPen.name, description: defPen.description, value: rollUpgradeValue(defPen), percent: !!defPen.valueRange?.percent };
@@ -4487,6 +7042,12 @@ class Game {
         cards.push({ upgrades: uUpgrades, penalty: uPen, isUnique: true });
       }
     }
+    const poolUpOnly = (defs.standardUpgrades || []).filter((u) => !usedInOfferUp.has(u.id));
+    if (poolUpOnly.length > 0) {
+      const defUp = poolUpOnly[Math.floor(Math.random() * poolUpOnly.length)];
+      const upgrade = { id: defUp.id, name: defUp.name, description: defUp.description, value: rollUpgradeValue(defUp), percent: !!defUp.valueRange?.percent };
+      cards.push({ upgrades: [upgrade], penalty: null, isUnique: false });
+    }
 
     return cards;
   }
@@ -4510,8 +7071,10 @@ class Game {
       const upgradeBlocks = (card.upgrades || []).map(
         (u, idx) => `<div class="level-up-card-upgrade">${idx === 0 ? star : ""}<strong>${u.name}</strong><br><span class="level-up-card-desc">${getUpgradeDisplayDescription(u)}</span></div>`
       ).join("");
-      const penaltyBlock = `<div class="level-up-card-penalty"><strong>${card.penalty.name}</strong><br><span class="level-up-card-desc">${getPenaltyDisplayDescription(card.penalty)}</span></div>`;
-      btn.innerHTML = `<div class="level-up-card-inner">${upgradeBlocks}<div class="level-up-card-divider"></div>${penaltyBlock}</div>`;
+      const penaltyBlock = card.penalty
+        ? `<div class="level-up-card-divider"></div><div class="level-up-card-penalty"><strong>${card.penalty.name}</strong><br><span class="level-up-card-desc">${getPenaltyDisplayDescription(card.penalty)}</span></div>`
+        : `<div class="level-up-card-no-penalty">No penalty</div>`;
+      btn.innerHTML = `<div class="level-up-card-inner">${upgradeBlocks}${penaltyBlock}</div>`;
       btn.addEventListener("click", () => this.applyLevelUpChoice(card, btn));
       choicesEl.appendChild(btn);
     }
@@ -4525,6 +7088,11 @@ class Game {
       } : null;
     }
     overlay.classList.remove("hidden");
+    const buildLogPanel = document.getElementById("build-log-panel");
+    if (buildLogPanel) {
+      buildLogPanel.classList.remove("hidden");
+      if (this.buildLogRefresh) this.buildLogRefresh();
+    }
     this.paused = true;
     if (this.pauseToggleEl) {
       this.pauseToggleEl.textContent = "▶ Resume";
@@ -4534,7 +7102,7 @@ class Game {
 
   applyLevelUpChoice(card, cardEl) {
     for (const u of (card.upgrades || [])) this.runAttackUpgrades.push(u);
-    this.runAttackPenalties.push(card.penalty);
+    if (card.penalty) this.runAttackPenalties.push(card.penalty);
     this.levelUpChoices = null;
 
     if (cardEl) {
@@ -4624,7 +7192,33 @@ class Game {
   }
 
   onCanvasMouseDown(e) {
-    if (e.button !== 0 || this.gameOver || this.paused || this.levelUpChoices) return;
+    if (e.button !== 0 || this.gameOver || this.levelUpChoices) return;
+    
+    // Handle pause menu button clicks
+    if (this.paused) {
+      const rect = this.canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      if (this.pauseResumeButton) {
+        if (x >= this.pauseResumeButton.x && x <= this.pauseResumeButton.x + this.pauseResumeButton.w &&
+            y >= this.pauseResumeButton.y && y <= this.pauseResumeButton.y + this.pauseResumeButton.h) {
+          this.togglePause();
+          return;
+        }
+      }
+      
+      if (this.pauseMainMenuButton) {
+        if (x >= this.pauseMainMenuButton.x && x <= this.pauseMainMenuButton.x + this.pauseMainMenuButton.w &&
+            y >= this.pauseMainMenuButton.y && y <= this.pauseMainMenuButton.y + this.pauseMainMenuButton.h) {
+          this.returnToMainMenu();
+          return;
+        }
+      }
+      
+      return;
+    }
+    
     this.mouseHeld = true;
     this.lastMouseWorld = this.getWorldPositionFromClick(e);
     this.tryBasicAttack(this.lastMouseWorld.x, this.lastMouseWorld.y);
@@ -4664,6 +7258,10 @@ class Game {
 
   tryBasicAttack(targetX, targetY) {
     let atkSpdMult = (this.equipmentAttackSpeedMult || 1) * (this.talentAttackSpeedMult || 1);
+    // Frenzy buff: 30% attack speed
+    if (this.frenzyBuffUntil > this.time) {
+      atkSpdMult *= 1.3;
+    }
     atkSpdMult *= 1 + this.getAttackUpgradeValue("attackSpeed");
     atkSpdMult *= 1 - this.getAttackPenaltyValue("speedPenalty");
     if (this.playerWeakenUntil > this.time) atkSpdMult *= 0.9;
@@ -4877,10 +7475,86 @@ class Game {
           const ey = enemy.position.y + enemy.size / 2;
           const hitArea = this.enemiesInRadius(ex, ey, 45);
           for (const e of hitArea) {
-            if (e !== enemy) this.dealDamageToEnemy(e, Math.round(proj.damage * 0.6));
+            if (e !== enemy) {
+              this.dealDamageToEnemy(e, Math.round(useDmg * 0.6));
+            }
           }
         }
       };
+
+      // Check obstacle collision
+      let hitObstacle = false;
+      for (const obstacle of this.obstacles || []) {
+        if (obstacle.destroyed || !obstacle.blocksProjectiles) continue;
+        if (proj.intersects(obstacle)) {
+          hitObstacle = true;
+          // Barrel explosion
+          if (obstacle.type === "barrel") {
+            obstacle.destroyed = true;
+            const ex = obstacle.position.x + obstacle.size.w / 2;
+            const ey = obstacle.position.y + obstacle.size.h / 2;
+            const hitArea = this.enemiesInRadius(ex, ey, obstacle.typeDef.explosionRadius);
+            for (const e of hitArea) {
+              this.dealDamageToEnemy(e, obstacle.typeDef.explosionDamage);
+            }
+            // Damage player if in range
+            const px = this.player.position.x + this.player.size / 2;
+            const py = this.player.position.y + this.player.size / 2;
+            const dist = Math.sqrt((px - ex) ** 2 + (py - ey) ** 2);
+            if (dist < obstacle.typeDef.explosionRadius) {
+              this.onPlayerDamaged(obstacle.typeDef.explosionDamage, false);
+            }
+            this.skillEffects.push({ 
+              type: "barrelExplosion", 
+              x: ex, 
+              y: ey, 
+              radius: obstacle.typeDef.explosionRadius, 
+              t: 0, 
+              duration: 0.3 
+            });
+          } else {
+            // Impact particle effect for solid obstacles
+            this.skillEffects.push({
+              type: "obstacleImpact",
+              x: proj.position.x,
+              y: proj.position.y,
+              t: 0,
+              duration: 0.2
+            });
+          }
+          break;
+        }
+      }
+      
+      // Check sub-area wall collision
+      if (!hitObstacle && this.subAreas) {
+        for (const subArea of this.subAreas) {
+          if (this.currentSubArea !== subArea && this.currentSubArea !== null) continue;
+          
+          for (const wall of subArea.walls) {
+            const wallRect = { x: wall.x, y: wall.y, w: wall.w || wall.h, h: wall.h || wall.w };
+            const projRect = { x: proj.position.x, y: proj.position.y, w: proj.size, h: proj.size };
+            
+            if (projRect.x < wallRect.x + wallRect.w && projRect.x + projRect.w > wallRect.x &&
+                projRect.y < wallRect.y + wallRect.h && projRect.y + projRect.h > wallRect.y) {
+              hitObstacle = true;
+              this.skillEffects.push({
+                type: "obstacleImpact",
+                x: proj.position.x,
+                y: proj.position.y,
+                t: 0,
+                duration: 0.2
+              });
+              break;
+            }
+          }
+          if (hitObstacle) break;
+        }
+      }
+      
+      if (hitObstacle) {
+        continue; // Projectile destroyed by obstacle/wall
+      }
 
       const allEnemies = es.boss ? [...es.enemies, es.boss] : es.enemies;
       for (const enemy of allEnemies) {
@@ -4912,10 +7586,82 @@ class Game {
     if (s.phase === "surge") {
       const speed = 600;
       const move = Math.min(speed * dt, s.dist - s.traveled);
-      this.player.position.x += s.dirX * move;
-      this.player.position.y += s.dirY * move;
-      this.player.position.x = Math.max(margin, Math.min(this.player.position.x, this.world.width - margin - this.player.size));
-      this.player.position.y = Math.max(margin, Math.min(this.player.position.y, this.world.height - margin - this.player.size));
+      let nx = this.player.position.x + s.dirX * move;
+      let ny = this.player.position.y + s.dirY * move;
+      nx = Math.max(margin, Math.min(nx, this.world.width - margin - this.player.size));
+      ny = Math.max(margin, Math.min(ny, this.world.height - margin - this.player.size));
+      
+      // Check collision with obstacles and sub-area walls
+      const testX = { x: nx, y: this.player.position.y, w: this.player.size, h: this.player.size };
+      const testY = { x: this.player.position.x, y: ny, w: this.player.size, h: this.player.size };
+      
+      let canMoveX = true;
+      let canMoveY = true;
+      
+      // Check obstacles
+      for (const obstacle of this.obstacles || []) {
+        if (obstacle.destroyed || !obstacle.blocksMovement) continue;
+        const obsRect = { 
+          x: obstacle.position.x, 
+          y: obstacle.position.y, 
+          w: obstacle.size.w, 
+          h: obstacle.size.h 
+        };
+        
+        if (testX.x < obsRect.x + obsRect.w && testX.x + testX.w > obsRect.x &&
+            testX.y < obsRect.y + obsRect.h && testX.y + testX.h > obsRect.y) {
+          canMoveX = false;
+        }
+        
+        if (testY.x < obsRect.x + obsRect.w && testY.x + testY.w > obsRect.x &&
+            testY.y < obsRect.y + obsRect.h && testY.y + testY.h > obsRect.y) {
+          canMoveY = false;
+        }
+      }
+      
+      // Check sub-area walls
+      const subAreaWalls = [];
+      if (this.subAreas) {
+        for (const subArea of this.subAreas) {
+          if (this.currentSubArea === subArea || !this.currentSubArea) {
+            subAreaWalls.push(...subArea.walls);
+          }
+        }
+      }
+      
+      for (const wall of subAreaWalls) {
+        const wallRect = { x: wall.x, y: wall.y, w: wall.w || wall.h, h: wall.h || wall.w };
+        
+        if (testX.x < wallRect.x + wallRect.w && testX.x + testX.w > wallRect.x &&
+            testX.y < wallRect.y + wallRect.h && testX.y + testX.h > wallRect.y) {
+          canMoveX = false;
+        }
+        
+        if (testY.x < wallRect.x + wallRect.w && testY.x + testY.w > wallRect.x &&
+            testY.y < wallRect.y + wallRect.h && testY.y + testY.h > wallRect.y) {
+          canMoveY = false;
+        }
+      }
+      
+      // Block movement on axes that would collide
+      if (!canMoveX) nx = this.player.position.x;
+      if (!canMoveY) ny = this.player.position.y;
+      
+      // If both blocked, stop the dash strike
+      if (!canMoveX && !canMoveY) {
+        s.phase = "fan";
+        const px = this.player.position.x + this.player.size / 2;
+        const py = this.player.position.y + this.player.size / 2;
+        const DASH_STRIKE_FAN_RANGE = 150;
+        const hit = this.enemiesInCone(px, py, s.dirX, s.dirY, DASH_STRIKE_FAN_RANGE, 45);
+        const dmg = this.computePlayerDamage(null);
+        for (const e of hit) this.dealDamageToEnemy(e, dmg);
+        this.skillEffects.push({ type: "dashStrikeFan", x: px, y: py, dirX: s.dirX, dirY: s.dirY, range: DASH_STRIKE_FAN_RANGE, t: 0, duration: 0.12 });
+        this.dashStrikeState = null;
+        return;
+      }
+      
+      this.player.position.set(nx, ny);
       s.traveled += move;
       if (s.traveled >= s.dist) {
         s.phase = "fan";
@@ -4936,11 +7682,75 @@ class Game {
     const s = this.backfireDashState;
     const speed = 500;
     const move = Math.min(speed * dt, s.dist - s.traveled);
-    this.player.position.x -= s.dirX * move;
-    this.player.position.y -= s.dirY * move;
+    let nx = this.player.position.x - s.dirX * move;
+    let ny = this.player.position.y - s.dirY * move;
     const margin = this.world.wallThickness;
-    this.player.position.x = Math.max(margin, Math.min(this.player.position.x, this.world.width - margin - this.player.size));
-    this.player.position.y = Math.max(margin, Math.min(this.player.position.y, this.world.height - margin - this.player.size));
+    nx = Math.max(margin, Math.min(nx, this.world.width - margin - this.player.size));
+    ny = Math.max(margin, Math.min(ny, this.world.height - margin - this.player.size));
+    
+    // Check collision with obstacles and sub-area walls
+    const testX = { x: nx, y: this.player.position.y, w: this.player.size, h: this.player.size };
+    const testY = { x: this.player.position.x, y: ny, w: this.player.size, h: this.player.size };
+    
+    let canMoveX = true;
+    let canMoveY = true;
+    
+    // Check obstacles
+    for (const obstacle of this.obstacles || []) {
+      if (obstacle.destroyed || !obstacle.blocksMovement) continue;
+      const obsRect = { 
+        x: obstacle.position.x, 
+        y: obstacle.position.y, 
+        w: obstacle.size.w, 
+        h: obstacle.size.h 
+      };
+      
+      if (testX.x < obsRect.x + obsRect.w && testX.x + testX.w > obsRect.x &&
+          testX.y < obsRect.y + obsRect.h && testX.y + testX.h > obsRect.y) {
+        canMoveX = false;
+      }
+      
+      if (testY.x < obsRect.x + obsRect.w && testY.x + testY.w > obsRect.x &&
+          testY.y < obsRect.y + obsRect.h && testY.y + testY.h > obsRect.y) {
+        canMoveY = false;
+      }
+    }
+    
+    // Check sub-area walls
+    const subAreaWalls = [];
+    if (this.subAreas) {
+      for (const subArea of this.subAreas) {
+        if (this.currentSubArea === subArea || !this.currentSubArea) {
+          subAreaWalls.push(...subArea.walls);
+        }
+      }
+    }
+    
+    for (const wall of subAreaWalls) {
+      const wallRect = { x: wall.x, y: wall.y, w: wall.w || wall.h, h: wall.h || wall.w };
+      
+      if (testX.x < wallRect.x + wallRect.w && testX.x + testX.w > wallRect.x &&
+          testX.y < wallRect.y + wallRect.h && testX.y + testX.h > wallRect.y) {
+        canMoveX = false;
+      }
+      
+      if (testY.x < wallRect.x + wallRect.w && testY.x + testY.w > wallRect.x &&
+          testY.y < wallRect.y + wallRect.h && testY.y + testY.h > wallRect.y) {
+        canMoveY = false;
+      }
+    }
+    
+    // Block movement on axes that would collide
+    if (!canMoveX) nx = this.player.position.x;
+    if (!canMoveY) ny = this.player.position.y;
+    
+    // If both blocked, stop the backfire dash
+    if (!canMoveX && !canMoveY) {
+      this.backfireDashState = null;
+      return;
+    }
+    
+    this.player.position.set(nx, ny);
     s.traveled += move;
     if (s.traveled >= s.dist) this.backfireDashState = null;
   }
@@ -5076,7 +7886,7 @@ class Game {
       const globalSlow = this.timeWarpUntil > this.time ? 0.5 : 1;
       for (const e of es.enemies) e._auraBuffed = false;
       for (const enemy of es.enemies) {
-        enemy.update(dt, player, this.time, globalSlow, this.viewWidth / 4, this);
+        enemy.update(dt, player, this.time, globalSlow, 400, this);
         this.updateEnemyAffixes(dt, enemy);
         this.processEnemyDebuffs(dt, enemy);
         if (enemy.intersects(player)) {
@@ -5200,6 +8010,18 @@ class Game {
           e.burnUntil = this.time + 3;
           e.burnDps = Math.max(e.burnDps || 0, dmg * 0.15);
           e.burnAccum = 0;
+        }
+        // Destroy nearby ice blocks
+        if (this.obstacles) {
+          for (const obstacle of this.obstacles) {
+            if (obstacle.destroyed || obstacle.type !== "iceBlock") continue;
+            const ox = obstacle.position.x + obstacle.size.w / 2;
+            const oy = obstacle.position.y + obstacle.size.h / 2;
+            const dist = Math.sqrt((px - ox) ** 2 + (py - oy) ** 2);
+            if (dist < auraRadius) {
+              obstacle.destroyed = true;
+            }
+          }
         }
       }
     }
@@ -5752,6 +8574,19 @@ class Game {
           eff.y += eff.vy * dt;
           const moveLen = Math.sqrt(eff.vx * eff.vx + eff.vy * eff.vy) * dt;
           eff.distanceTraveled += moveLen;
+          
+          // Check ice block collision
+          if (this.obstacles) {
+            for (const obstacle of this.obstacles) {
+              if (obstacle.destroyed || obstacle.type !== "iceBlock") continue;
+              const dist = Math.sqrt((eff.x - (obstacle.position.x + obstacle.size.w / 2)) ** 2 + 
+                                     (eff.y - (obstacle.position.y + obstacle.size.h / 2)) ** 2);
+              if (dist < 30) {
+                obstacle.destroyed = true;
+                break;
+              }
+            }
+          }
 
           if (eff.mods.includes("homing") && eff.distanceTraveled >= 0.2 * eff.maxRange) {
             const excludeHit = (eff.hitIds && eff.hitIds.size > 0) ? eff.hitIds : null;
@@ -6218,21 +9053,112 @@ class Game {
     const pushY = overlapY * 0.5;
     const acx = ax1 + asz / 2, acy = ay1 + asz / 2;
     const bcx = bx1 + bsz / 2, bcy = by1 + bsz / 2;
+    
+    // Store original positions
+    const aOrigX = a.position.x;
+    const aOrigY = a.position.y;
+    const bOrigX = b.position.x;
+    const bOrigY = b.position.y;
+    
+    // Helper function to check if position would collide with obstacles/walls
+    const wouldCollide = (x, y, size) => {
+      const testRect = { x, y, w: size, h: size };
+      
+      // Check obstacles
+      for (const obstacle of this.obstacles || []) {
+        if (obstacle.destroyed || !obstacle.blocksMovement) continue;
+        const obsRect = { 
+          x: obstacle.position.x, 
+          y: obstacle.position.y, 
+          w: obstacle.size.w, 
+          h: obstacle.size.h 
+        };
+        if (testRect.x < obsRect.x + obsRect.w && testRect.x + testRect.w > obsRect.x &&
+            testRect.y < obsRect.y + obsRect.h && testRect.y + testRect.h > obsRect.y) {
+          return true;
+        }
+      }
+      
+      // Check sub-area walls
+      const subAreaWalls = [];
+      if (this.subAreas) {
+        for (const subArea of this.subAreas) {
+          if (this.currentSubArea === subArea || !this.currentSubArea) {
+            subAreaWalls.push(...subArea.walls);
+          }
+        }
+      }
+      
+      for (const wall of subAreaWalls) {
+        const wallRect = { x: wall.x, y: wall.y, w: wall.w || wall.h, h: wall.h || wall.w };
+        if (testRect.x < wallRect.x + wallRect.w && testRect.x + testRect.w > wallRect.x &&
+            testRect.y < wallRect.y + wallRect.h && testRect.y + testRect.h > wallRect.y) {
+          return true;
+        }
+      }
+      
+      return false;
+    };
+    
     if (overlapX < overlapY) {
       if (acx < bcx) {
-        if (pushA > 0) a.position.x -= pushX * (pushA * 2);
-        if (pushB > 0) b.position.x += pushX * (pushB * 2);
+        // Push A left, B right
+        if (pushA > 0) {
+          const newAX = aOrigX - pushX * (pushA * 2);
+          if (!wouldCollide(newAX, aOrigY, asz)) {
+            a.position.x = newAX;
+          }
+        }
+        if (pushB > 0) {
+          const newBX = bOrigX + pushX * (pushB * 2);
+          if (!wouldCollide(newBX, bOrigY, bsz)) {
+            b.position.x = newBX;
+          }
+        }
       } else {
-        if (pushA > 0) a.position.x += pushX * (pushA * 2);
-        if (pushB > 0) b.position.x -= pushX * (pushB * 2);
+        // Push A right, B left
+        if (pushA > 0) {
+          const newAX = aOrigX + pushX * (pushA * 2);
+          if (!wouldCollide(newAX, aOrigY, asz)) {
+            a.position.x = newAX;
+          }
+        }
+        if (pushB > 0) {
+          const newBX = bOrigX - pushX * (pushB * 2);
+          if (!wouldCollide(newBX, bOrigY, bsz)) {
+            b.position.x = newBX;
+          }
+        }
       }
     } else {
       if (acy < bcy) {
-        if (pushA > 0) a.position.y -= pushY * (pushA * 2);
-        if (pushB > 0) b.position.y += pushY * (pushB * 2);
+        // Push A up, B down
+        if (pushA > 0) {
+          const newAY = aOrigY - pushY * (pushA * 2);
+          if (!wouldCollide(aOrigX, newAY, asz)) {
+            a.position.y = newAY;
+          }
+        }
+        if (pushB > 0) {
+          const newBY = bOrigY + pushY * (pushB * 2);
+          if (!wouldCollide(bOrigX, newBY, bsz)) {
+            b.position.y = newBY;
+          }
+        }
       } else {
-        if (pushA > 0) a.position.y += pushY * (pushA * 2);
-        if (pushB > 0) b.position.y -= pushY * (pushB * 2);
+        // Push A down, B up
+        if (pushA > 0) {
+          const newAY = aOrigY + pushY * (pushA * 2);
+          if (!wouldCollide(aOrigX, newAY, asz)) {
+            a.position.y = newAY;
+          }
+        }
+        if (pushB > 0) {
+          const newBY = bOrigY - pushY * (pushB * 2);
+          if (!wouldCollide(bOrigX, newBY, bsz)) {
+            b.position.y = newBY;
+          }
+        }
       }
     }
   }
@@ -6470,6 +9396,32 @@ class Game {
         ctx.beginPath();
         ctx.arc(sx, sy, expand, 0, Math.PI * 2);
         ctx.stroke();
+      } else if (eff.type === "barrelExplosion") {
+        const sx = eff.x + ox; const sy = eff.y + oy;
+        const alpha = 1 - eff.t / eff.duration;
+        const radius = eff.radius || 60;
+        const expand = radius * (1 - alpha);
+        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, expand);
+        g.addColorStop(0, `rgba(251, 146, 60, ${0.9 * alpha})`);
+        g.addColorStop(0.5, `rgba(239, 68, 68, ${0.6 * alpha})`);
+        g.addColorStop(1, `rgba(220, 38, 38, 0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(sx, sy, expand, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (eff.type === "obstacleImpact") {
+        const sx = eff.x + ox; const sy = eff.y + oy;
+        const alpha = 1 - eff.t / eff.duration;
+        ctx.fillStyle = `rgba(200, 200, 200, ${0.8 * alpha})`;
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2;
+          const dist = 8 * alpha;
+          const px = sx + Math.cos(angle) * dist;
+          const py = sy + Math.sin(angle) * dist;
+          ctx.beginPath();
+          ctx.arc(px, py, 3 * alpha, 0, Math.PI * 2);
+          ctx.fill();
+        }
       } else if (eff.type === "bladeStorm" && eff.blades) {
         for (const b of eff.blades) {
           const sx = b.x + ox; const sy = b.y + oy;
@@ -6871,6 +9823,297 @@ class Game {
           break;
         }
       }
+    } else if (obj.type === "shrine" && !obj.used) {
+      this.openShrineInteraction(obj);
+    }
+  }
+
+  // Helper function to remove the most recent upgrade/penalty of a given ID
+  removeUpgradeById(upgradeId) {
+    if (!this.runAttackUpgrades) return null;
+    // Find the last occurrence (most recent)
+    let lastIndex = -1;
+    for (let i = this.runAttackUpgrades.length - 1; i >= 0; i--) {
+      if (this.runAttackUpgrades[i].id === upgradeId) {
+        lastIndex = i;
+        break;
+      }
+    }
+    if (lastIndex === -1) return null;
+    const removed = this.runAttackUpgrades[lastIndex];
+    this.runAttackUpgrades.splice(lastIndex, 1);
+    if (this.buildLogRefresh) this.buildLogRefresh();
+    return removed;
+  }
+
+  removePenaltyById(penaltyId) {
+    if (!this.runAttackPenalties) return null;
+    // Find the last occurrence (most recent)
+    let lastIndex = -1;
+    for (let i = this.runAttackPenalties.length - 1; i >= 0; i--) {
+      if (this.runAttackPenalties[i].id === penaltyId) {
+        lastIndex = i;
+        break;
+      }
+    }
+    if (lastIndex === -1) return null;
+    const removed = this.runAttackPenalties[lastIndex];
+    this.runAttackPenalties.splice(lastIndex, 1);
+    if (this.buildLogRefresh) this.buildLogRefresh();
+    return removed;
+  }
+
+  // Get standard upgrades/penalties only
+  getStandardUpgrades() {
+    const defs = ATTACK_UPGRADE_DEFS[this.attackType];
+    if (!defs) return [];
+    return (this.runAttackUpgrades || []).filter(u => {
+      const def = (defs.standardUpgrades || []).find(su => su.id === u.id);
+      return def !== undefined;
+    });
+  }
+
+  getStandardPenalties() {
+    const defs = ATTACK_UPGRADE_DEFS[this.attackType];
+    if (!defs) return [];
+    return (this.runAttackPenalties || []).filter(p => {
+      const def = (defs.standardPenalties || []).find(sp => sp.id === p.id);
+      return def !== undefined;
+    });
+  }
+
+  // Add shrine interaction to build log
+  addShrineInteraction(shrineName, message) {
+    if (!this.shrineInteractions) this.shrineInteractions = [];
+    this.shrineInteractions.push({ shrineName, message, time: this.time });
+    if (this.buildLogRefresh) this.buildLogRefresh();
+  }
+
+  openShrineInteraction(shrineObj) {
+    this.currentShrine = shrineObj;
+    const overlay = document.getElementById("shrine-overlay");
+    const titleEl = document.getElementById("shrine-title");
+    const descEl = document.getElementById("shrine-desc");
+    const upgradeSelect = document.getElementById("shrine-upgrade-select");
+    const penaltySelect = document.getElementById("shrine-penalty-select");
+    const upgradeList = document.getElementById("shrine-upgrade-list");
+    const penaltyList = document.getElementById("shrine-penalty-list");
+    const confirmBtn = document.getElementById("shrine-confirm");
+    const cancelBtn = document.getElementById("shrine-cancel");
+
+    if (!overlay || !titleEl || !descEl) return;
+
+    titleEl.textContent = shrineObj.shrineName;
+    descEl.textContent = shrineObj.shrineDescription;
+    overlay.classList.remove("hidden");
+    upgradeSelect.classList.add("hidden");
+    penaltySelect.classList.add("hidden");
+    upgradeList.innerHTML = "";
+    penaltyList.innerHTML = "";
+    this.selectedUpgradeId = null;
+    this.selectedPenaltyId = null;
+
+    // Setup confirm/cancel buttons
+    const handleConfirm = () => {
+      // Check if selection is required and made
+      if (shrineObj.shrineId === "purification" && !this.selectedPenaltyId) return;
+      if (["frenzy", "restoration", "trial"].includes(shrineObj.shrineId) && !this.selectedUpgradeId) return;
+      
+      if (this.currentShrine && !this.currentShrine.used) {
+        this.executeShrineEffect(this.currentShrine);
+        this.currentShrine.used = true;
+      }
+      overlay.classList.add("hidden");
+      this.currentShrine = null;
+      this.selectedUpgradeId = null;
+      this.selectedPenaltyId = null;
+      confirmBtn.removeEventListener("click", handleConfirm);
+      cancelBtn.removeEventListener("click", handleCancel);
+    };
+
+    const handleCancel = () => {
+      overlay.classList.add("hidden");
+      this.currentShrine = null;
+      this.selectedUpgradeId = null;
+      this.selectedPenaltyId = null;
+      confirmBtn.removeEventListener("click", handleConfirm);
+      cancelBtn.removeEventListener("click", handleCancel);
+    };
+
+    confirmBtn.disabled = true;
+    if (!["purification", "frenzy", "restoration", "trial"].includes(shrineObj.shrineId)) {
+      confirmBtn.disabled = false; // No selection needed for chaos/ascension
+    }
+    
+    confirmBtn.addEventListener("click", handleConfirm);
+    cancelBtn.addEventListener("click", handleCancel);
+
+    // Show selection UI based on shrine type
+    if (shrineObj.shrineId === "purification") {
+      // Show penalty selection
+      const standardPenalties = this.getStandardPenalties();
+      if (standardPenalties.length === 0) {
+        handleCancel();
+        return;
+      }
+      penaltySelect.classList.remove("hidden");
+      const uniquePenalties = new Set();
+      standardPenalties.forEach(p => {
+        if (!uniquePenalties.has(p.id)) {
+          uniquePenalties.add(p.id);
+          const li = document.createElement("li");
+          li.textContent = `↓ ${p.name}`;
+          li.dataset.penaltyId = p.id;
+          li.addEventListener("click", () => {
+            penaltyList.querySelectorAll("li").forEach(l => l.classList.remove("selected"));
+            li.classList.add("selected");
+            this.selectedPenaltyId = p.id;
+            confirmBtn.disabled = false;
+          });
+          penaltyList.appendChild(li);
+        }
+      });
+    } else if (["frenzy", "restoration", "trial"].includes(shrineObj.shrineId)) {
+      // Show upgrade selection
+      const upgrades = this.runAttackUpgrades || [];
+      if (upgrades.length === 0) {
+        handleCancel();
+        return;
+      }
+      upgradeSelect.classList.remove("hidden");
+      const uniqueUpgrades = new Set();
+      upgrades.forEach(u => {
+        if (!uniqueUpgrades.has(u.id)) {
+          uniqueUpgrades.add(u.id);
+          const li = document.createElement("li");
+          const defs = ATTACK_UPGRADE_DEFS[this.attackType];
+          const def = defs ? [...(defs.standardUpgrades || []), ...(defs.uniqueUpgrades || [])].find(d => d.id === u.id) : null;
+          li.textContent = `↑ ${u.name}`;
+          li.dataset.upgradeId = u.id;
+          li.addEventListener("click", () => {
+            upgradeList.querySelectorAll("li").forEach(l => l.classList.remove("selected"));
+            li.classList.add("selected");
+            this.selectedUpgradeId = u.id;
+            confirmBtn.disabled = false;
+          });
+          upgradeList.appendChild(li);
+        }
+      });
+    }
+  }
+
+  executeShrineEffect(shrineObj) {
+    const shrineId = shrineObj.shrineId;
+    
+    if (shrineId === "purification") {
+      // Remove chosen standard penalty and random standard upgrade
+      if (!this.selectedPenaltyId) return;
+      const removedPenalty = this.removePenaltyById(this.selectedPenaltyId);
+      const standardUpgrades = this.getStandardUpgrades();
+      if (standardUpgrades.length > 0) {
+        const randomUpgrade = standardUpgrades[Math.floor(Math.random() * standardUpgrades.length)];
+        const removedUpgrade = this.removeUpgradeById(randomUpgrade.id);
+        const penaltyName = removedPenalty ? removedPenalty.name : "Unknown";
+        const upgradeName = removedUpgrade ? removedUpgrade.name : "Unknown";
+        this.addShrineInteraction(shrineObj.shrineName, `Removed penalty: ${penaltyName}. Removed upgrade: ${upgradeName}.`);
+      } else {
+        const penaltyName = removedPenalty ? removedPenalty.name : "Unknown";
+        this.addShrineInteraction(shrineObj.shrineName, `Removed penalty: ${penaltyName}. No standard upgrades to remove.`);
+      }
+    } else if (shrineId === "chaos") {
+      // Add two random standard upgrades, remove one random upgrade
+      const defs = ATTACK_UPGRADE_DEFS[this.attackType];
+      if (!defs) return;
+      const standardPool = (defs.standardUpgrades || []).filter(u => {
+        const taken = (this.runAttackUpgrades || []).map(up => up.id);
+        return !taken.includes(u.id);
+      });
+      const added = [];
+      for (let i = 0; i < 2 && standardPool.length > 0; i++) {
+        const def = standardPool[Math.floor(Math.random() * standardPool.length)];
+        const value = rollUpgradeValue(def);
+        this.runAttackUpgrades.push({
+          id: def.id,
+          name: def.name,
+          description: def.description,
+          value: value,
+          percent: !!def.valueRange?.percent
+        });
+        added.push(def.name);
+        standardPool.splice(standardPool.indexOf(def), 1);
+      }
+      const allUpgrades = this.runAttackUpgrades || [];
+      if (allUpgrades.length > 0) {
+        const randomUpgrade = allUpgrades[Math.floor(Math.random() * allUpgrades.length)];
+        const removed = this.removeUpgradeById(randomUpgrade.id);
+        const removedName = removed ? removed.name : "Unknown";
+        this.addShrineInteraction(shrineObj.shrineName, `Added upgrades: ${added.join(", ")}. Removed upgrade: ${removedName}.`);
+      } else {
+        this.addShrineInteraction(shrineObj.shrineName, `Added upgrades: ${added.join(", ")}.`);
+      }
+      if (this.buildLogRefresh) this.buildLogRefresh();
+    } else if (shrineId === "frenzy") {
+      // Remove chosen upgrade, gain buffs for 30s
+      if (!this.selectedUpgradeId) return;
+      const removed = this.removeUpgradeById(this.selectedUpgradeId);
+      if (removed) {
+        this.frenzyBuffUntil = this.time + 30;
+        this.addShrineInteraction(shrineObj.shrineName, `Removed upgrade: ${removed.name}. Gained 40% movement speed, 30% attack speed, and 20% XP for 30 seconds.`);
+      }
+    } else if (shrineId === "ascension") {
+      // Transform random standard upgrade to unique upgrade
+      const standardUpgrades = this.getStandardUpgrades();
+      if (standardUpgrades.length === 0) {
+        this.addShrineInteraction(shrineObj.shrineName, "No standard upgrades to transform.");
+        return;
+      }
+      const randomUpgrade = standardUpgrades[Math.floor(Math.random() * standardUpgrades.length)];
+      const defs = ATTACK_UPGRADE_DEFS[this.attackType];
+      if (!defs) return;
+      const takenUnique = new Set((this.runAttackUpgrades || []).map(u => u.id));
+      const uniquePool = (defs.uniqueUpgrades || []).filter(u => !takenUnique.has(u.id));
+      if (uniquePool.length === 0) {
+        this.addShrineInteraction(shrineObj.shrineName, `No unique upgrades available.`);
+        return;
+      }
+      const newUnique = uniquePool[Math.floor(Math.random() * uniquePool.length)];
+      this.removeUpgradeById(randomUpgrade.id);
+      this.runAttackUpgrades.push({
+        id: newUnique.id,
+        name: newUnique.name,
+        description: newUnique.description,
+        value: undefined,
+        percent: false
+      });
+      this.addShrineInteraction(shrineObj.shrineName, `Transformed ${randomUpgrade.name} into ${newUnique.name}.`);
+      if (this.buildLogRefresh) this.buildLogRefresh();
+    } else if (shrineId === "restoration") {
+      // Remove chosen upgrade, restore full health
+      if (!this.selectedUpgradeId) return;
+      const removed = this.removeUpgradeById(this.selectedUpgradeId);
+      if (removed) {
+        this.currentHealth = this.currentStats.maxHealth;
+        this.addShrineInteraction(shrineObj.shrineName, `Removed upgrade: ${removed.name}. Health restored to full.`);
+      }
+    } else if (shrineId === "trial") {
+      // Remove chosen upgrade, spawn two mini-bosses
+      if (!this.selectedUpgradeId) return;
+      const removed = this.removeUpgradeById(this.selectedUpgradeId);
+      if (removed) {
+        const px = this.player.position.x + this.player.size / 2;
+        const py = this.player.position.y + this.player.size / 2;
+        this.trialBosses = [];
+        this.trialTimer = 30;
+        this.trialCompleted = false;
+        for (let i = 0; i < 2; i++) {
+          const enemy = this.enemySystem.spawnOne("miniBoss", null, { x: px, y: py });
+          if (enemy) {
+            this.trialBosses.push(enemy.id);
+            this.enemySystem.enemies.push(enemy);
+          }
+        }
+        this.addShrineInteraction(shrineObj.shrineName, `Removed upgrade: ${removed.name}. Two mini-bosses summoned. Defeat both within 30 seconds to earn 1 Legacy Point.`);
+      }
     }
   }
 
@@ -7077,6 +10320,63 @@ class Game {
     const surviving = [];
     for (const p of es.projectiles) {
       p.update(dt);
+      
+      // Check obstacle collision
+      let hitObstacle = false;
+      for (const obstacle of this.obstacles || []) {
+        if (obstacle.destroyed || !obstacle.blocksProjectiles) continue;
+        if (p.intersects(obstacle)) {
+          hitObstacle = true;
+          // Barrel explosion
+          if (obstacle.type === "barrel") {
+            obstacle.destroyed = true;
+            const ex = obstacle.position.x + obstacle.size.w / 2;
+            const ey = obstacle.position.y + obstacle.size.h / 2;
+            const hitArea = this.enemiesInRadius(ex, ey, obstacle.typeDef.explosionRadius);
+            for (const e of hitArea) {
+              this.dealDamageToEnemy(e, obstacle.typeDef.explosionDamage);
+            }
+            // Damage player if in range
+            const px = this.player.position.x + this.player.size / 2;
+            const py = this.player.position.y + this.player.size / 2;
+            const dist = Math.sqrt((px - ex) ** 2 + (py - ey) ** 2);
+            if (dist < obstacle.typeDef.explosionRadius) {
+              this.onPlayerDamaged(obstacle.typeDef.explosionDamage, false);
+            }
+            this.skillEffects.push({ 
+              type: "barrelExplosion", 
+              x: ex, 
+              y: ey, 
+              radius: obstacle.typeDef.explosionRadius, 
+              t: 0, 
+              duration: 0.3 
+            });
+          }
+          break;
+        }
+      }
+      
+      // Check sub-area wall collision
+      if (!hitObstacle && this.subAreas) {
+        for (const subArea of this.subAreas) {
+          if (this.currentSubArea !== subArea && this.currentSubArea !== null) continue;
+          
+          for (const wall of subArea.walls) {
+            const wallRect = { x: wall.x, y: wall.y, w: wall.w || wall.h, h: wall.h || wall.w };
+            const projRect = { x: p.position.x, y: p.position.y, w: p.size, h: p.size };
+            
+            if (projRect.x < wallRect.x + wallRect.w && projRect.x + projRect.w > wallRect.x &&
+                projRect.y < wallRect.y + wallRect.h && projRect.y + projRect.h > wallRect.y) {
+              hitObstacle = true;
+              break;
+            }
+          }
+          if (hitObstacle) break;
+        }
+      }
+      
+      if (hitObstacle) continue;
+      
       if (p.intersects(this.player)) {
         this.onPlayerDamaged(p.damage, true);
       } else {
@@ -7218,6 +10518,18 @@ class Game {
 
     this.world.draw(ctx, this.camera);
     if (this.hazardSystem) this.hazardSystem.draw(ctx, this.camera, this.time);
+    // Draw obstacles
+    if (this.obstacles) {
+      for (const obstacle of this.obstacles) {
+        obstacle.draw(ctx, this.camera);
+      }
+    }
+    // Draw sub-areas
+    if (this.subAreas) {
+      for (const subArea of this.subAreas) {
+        subArea.draw(ctx, this.camera);
+      }
+    }
     this.lootSystem.draw(ctx, this.camera, this.time);
     this.enemySystem.draw(ctx, this.camera, this.time);
 
@@ -7255,23 +10567,63 @@ class Game {
       } else if (obj.type === "perfectionWorkshop") {
         fill = "#fbbf24";
         label = "✨ Perfect";
+      } else if (obj.type === "shrine") {
+        fill = obj.used ? "#4b5563" : obj.shrineColor || "#60a5fa";
+        label = obj.shrineIcon || "🏛";
+        // Draw aura for active shrines
+        if (!obj.used && obj.shrineAuraColor) {
+          const auraPulse = 0.3 + Math.sin(this.time * 3) * 0.2;
+          ctx.globalAlpha = auraPulse;
+          ctx.fillStyle = obj.shrineAuraColor;
+          ctx.beginPath();
+          ctx.arc(sx + obj.w / 2, sy + obj.h / 2, obj.w * 0.8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
       }
       ctx.fillStyle = fill;
-      ctx.globalAlpha = 0.4 + pulse * 0.3;
+      ctx.globalAlpha = obj.used ? 0.3 : (0.4 + pulse * 0.3);
       ctx.fillRect(sx, sy, obj.w, obj.h);
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = "#fff";
+      ctx.strokeStyle = obj.used ? "#64748b" : "#fff";
       ctx.lineWidth = 3;
       ctx.strokeRect(sx, sy, obj.w, obj.h);
       ctx.font = "bold 12px system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = obj.used ? "#94a3b8" : "#fff";
       ctx.fillText(label, sx + obj.w / 2, sy + obj.h / 2);
     }
     ctx.textAlign = "start";
     ctx.textBaseline = "alphabetic";
 
+    // Draw door tooltip for rooms
+    if (this.nearSubAreaDoor && !this.currentSubArea) {
+      const { door, subArea } = this.nearSubAreaDoor;
+      const doorX = door.x + door.w / 2;
+      const doorY = door.y - 30;
+      const sx = Math.floor(doorX - this.camera.position.x);
+      const sy = Math.floor(doorY - this.camera.position.y);
+      
+      const difficultyText = subArea.typeDef.difficulty === "standard" ? "Standard" :
+                            subArea.typeDef.difficulty === "elite" ? "Elite" :
+                            subArea.typeDef.difficulty === "miniBoss" ? "Mini-Boss" :
+                            subArea.typeDef.difficulty === "puzzle" ? "Puzzle" : "Unknown";
+      
+      ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+      ctx.fillRect(sx - 100, sy - 30, 200, 50);
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx - 100, sy - 30, 200, 50);
+      
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "14px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(subArea.typeDef.name, sx, sy - 5);
+      ctx.font = "12px Arial";
+      ctx.fillText(`Difficulty: ${difficultyText}`, sx, sy + 15);
+    }
+    
     if (this.nearInteractable) {
       const sx = this.viewWidth / 2 - 80;
       const sy = this.viewHeight - 50;
@@ -7280,6 +10632,34 @@ class Game {
       ctx.strokeStyle = "#94a3b8";
       ctx.strokeRect(sx, sy, 160, 28);
       ctx.fillStyle = "#e2e8f0";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Press E to interact", this.viewWidth / 2, sy + 16);
+      ctx.textAlign = "start";
+    }
+    
+    if (this.nearChest) {
+      const sx = this.viewWidth / 2 - 100;
+      const sy = this.viewHeight - 50;
+      ctx.fillStyle = "rgba(0,0,0,0.7)";
+      ctx.fillRect(sx, sy, 200, 28);
+      ctx.strokeStyle = "#ffd700";
+      ctx.strokeRect(sx, sy, 200, 28);
+      ctx.fillStyle = "#ffd700";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Press E to open chest", this.viewWidth / 2, sy + 16);
+      ctx.textAlign = "start";
+    }
+    
+    if (this.nearFakeSwitch) {
+      const sx = this.viewWidth / 2 - 120;
+      const sy = this.viewHeight - 50;
+      ctx.fillStyle = "rgba(0,0,0,0.7)";
+      ctx.fillRect(sx, sy, 240, 28);
+      ctx.strokeStyle = "#f97316";
+      ctx.strokeRect(sx, sy, 240, 28);
+      ctx.fillStyle = "#f97316";
       ctx.font = "14px system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.fillText("Press E to interact", this.viewWidth / 2, sy + 16);
@@ -7337,12 +10717,64 @@ class Game {
       ctx.font = "bold 36px system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("PAUSED", this.viewWidth / 2, this.viewHeight / 2);
+      ctx.fillText("PAUSED", this.viewWidth / 2, this.viewHeight / 2 - 60);
       ctx.font = "14px system-ui, sans-serif";
       ctx.fillStyle = "#9ca3af";
-      ctx.fillText("Press  Esc / P  or click Resume", this.viewWidth / 2, this.viewHeight / 2 + 44);
+      ctx.fillText("Press  Esc / P  or click Resume", this.viewWidth / 2, this.viewHeight / 2 - 16);
+      
+      // Store button positions for click detection
+      const centerX = this.viewWidth / 2;
+      const centerY = this.viewHeight / 2;
+      const buttonWidth = 200;
+      const buttonHeight = 40;
+      const buttonY = centerY + 40;
+      const buttonSpacing = 50;
+      
+      // Resume button
+      this.pauseResumeButton = {
+        x: centerX - buttonWidth / 2,
+        y: buttonY,
+        w: buttonWidth,
+        h: buttonHeight
+      };
+      
+      // Return to Main Menu button
+      this.pauseMainMenuButton = {
+        x: centerX - buttonWidth / 2,
+        y: buttonY + buttonSpacing,
+        w: buttonWidth,
+        h: buttonHeight
+      };
+      
+      // Draw Resume button
+      ctx.fillStyle = "rgba(34, 197, 94, 0.2)";
+      ctx.fillRect(this.pauseResumeButton.x, this.pauseResumeButton.y, buttonWidth, buttonHeight);
+      ctx.strokeStyle = "rgba(34, 197, 94, 0.8)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(this.pauseResumeButton.x, this.pauseResumeButton.y, buttonWidth, buttonHeight);
+      ctx.fillStyle = "#86efac";
+      ctx.font = "16px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("Resume", centerX, buttonY + buttonHeight / 2);
+      
+      // Draw Return to Main Menu button
+      ctx.fillStyle = "rgba(239, 68, 68, 0.2)";
+      ctx.fillRect(this.pauseMainMenuButton.x, this.pauseMainMenuButton.y, buttonWidth, buttonHeight);
+      ctx.strokeStyle = "rgba(239, 68, 68, 0.8)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(this.pauseMainMenuButton.x, this.pauseMainMenuButton.y, buttonWidth, buttonHeight);
+      ctx.fillStyle = "#fca5a5";
+      ctx.font = "16px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("Return to Main Menu", centerX, buttonY + buttonSpacing + buttonHeight / 2);
+      
       ctx.textAlign = "start";
       ctx.textBaseline = "alphabetic";
+    } else {
+      this.pauseResumeButton = null;
+      this.pauseMainMenuButton = null;
     }
 
     // Darkness condition — reduced vision radius
@@ -7357,9 +10789,6 @@ class Game {
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, this.viewWidth, this.viewHeight);
     }
-
-    this.drawAuraEffects(ctx);
-    this.drawSkillEffects(ctx);
 
     for (const orb of this.pulseOrbs) {
       const sx = orb.x - this.camera.position.x;
@@ -7419,6 +10848,9 @@ class Game {
       ctx.fillText(entry.text, sx, sy);
       ctx.restore();
     }
+
+    this.drawAuraEffects(ctx);
+    this.drawSkillEffects(ctx);
 
     ctx.restore();
   }
@@ -8209,6 +11641,20 @@ function buildItemTooltipContent(item, game = null) {
   }
   html += `<div class="${baseCls}">${baseLabel}: +${baseVal}</div>`;
 
+  // Display secondary stat if it exists (for Helmets and Body Armours)
+  const sec = EQUIPMENT_SECONDARY_BASE[item.type];
+  if (sec && item.stats && item.stats[sec.statKey]) {
+    const secVal = item.stats[sec.statKey];
+    const secLabel = sec.statKey === "maxHealth" ? "Max Health" : sec.statKey === "defense" ? "Defense" : sec.statKey;
+    const eqSecVal = equipped?.stats?.[sec.statKey] ?? 0;
+    let secCls = "tooltip-stats";
+    if (equipped && equipped !== item) {
+      if (secVal > eqSecVal) secCls += " tooltip-better";
+      else if (secVal < eqSecVal) secCls += " tooltip-worse";
+    }
+    html += `<div class="${secCls}">${secLabel}: +${secVal}</div>`;
+  }
+
   if (item.modifiers && item.modifiers.length > 0) {
     const eqModifiers = equipped?.modifiers || [];
     for (const m of item.modifiers) {
@@ -8224,9 +11670,16 @@ function buildItemTooltipContent(item, game = null) {
       const elapsed = m.addedAt ? Date.now() - m.addedAt : 99999;
       if (elapsed < 10000) classes.push("mod-crafted");
       const style = elapsed < 10000 ? ` style="animation-delay: -${elapsed / 1000}s"` : "";
-      const text = isLegendaryMod
-        ? `${m.label} (${LEGENDARY_MODIFIER_EFFECTS[m.id] || ""})`
-        : `+${Math.round(m.value * 100)}% ${m.label}`;
+      let text;
+      if (isLegendaryMod) {
+        text = `${m.label} (${LEGENDARY_MODIFIER_EFFECTS[m.id] || ""})`;
+      } else if (m.id === "defenseStatScale") {
+        text = `Defense of this item +${Math.round(m.value * 100)}%`;
+      } else if (m.id === "maxHealthStatScale") {
+        text = `Max Health of this item +${Math.round(m.value * 100)}%`;
+      } else {
+        text = `+${Math.round(m.value * 100)}% ${m.label}`;
+      }
       html += `<div class="${classes.join(" ")}"${style}>${text}</div>`;
     }
   }
@@ -8518,6 +11971,20 @@ function openSkillLibrary() {
 
 function closeSkillLibrary() {
   const overlay = document.getElementById("skill-library-overlay");
+  if (overlay) overlay.classList.add("hidden");
+  const mainMenu = document.getElementById("main-menu");
+  if (mainMenu) mainMenu.classList.remove("hidden");
+}
+
+function openInstructions() {
+  const overlay = document.getElementById("instructions-overlay");
+  const mainMenu = document.getElementById("main-menu");
+  if (overlay) overlay.classList.remove("hidden");
+  if (mainMenu) mainMenu.classList.add("hidden");
+}
+
+function closeInstructions() {
+  const overlay = document.getElementById("instructions-overlay");
   if (overlay) overlay.classList.add("hidden");
   const mainMenu = document.getElementById("main-menu");
   if (mainMenu) mainMenu.classList.remove("hidden");
@@ -9355,6 +12822,15 @@ function bootstrap() {
     const skillLibraryCloseBtn = document.getElementById("skill-library-close");
     if (skillLibraryCloseBtn) {
       skillLibraryCloseBtn.addEventListener("click", closeSkillLibrary);
+    }
+
+    const instructionsBtn = document.getElementById("main-menu-instructions");
+    if (instructionsBtn) {
+      instructionsBtn.addEventListener("click", openInstructions);
+    }
+    const instructionsCloseBtn = document.getElementById("instructions-close");
+    if (instructionsCloseBtn) {
+      instructionsCloseBtn.addEventListener("click", closeInstructions);
     }
 
     const legacyDeleteBtn = document.getElementById("legacy-delete-selected");

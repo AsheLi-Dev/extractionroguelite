@@ -13,9 +13,19 @@
         <p class="main-menu-subtitle">Defeat the Wasteland Tyrant and save your character!</p>
         <div class="main-menu-lp">Legacy Points: <span id="main-menu-lp-value">0</span></div>
         <button id="main-menu-new-game" class="main-menu-btn">New Game</button>
+        <button id="main-menu-instructions" class="main-menu-btn main-menu-btn-secondary">Instructions</button>
         <button id="main-menu-dev-mode" class="main-menu-btn main-menu-btn-secondary">Dev Mode</button>
         <button id="main-menu-legacy-vault" class="main-menu-btn main-menu-btn-secondary">Legacy Vault</button>
         <button id="main-menu-talent-tree" class="main-menu-btn main-menu-btn-secondary">Talent Tree</button>
+        <button id="main-menu-skill-library" class="main-menu-btn main-menu-btn-secondary">Skill Library</button>
+        <div id="main-menu-dev-panel" class="main-menu-dev-panel">
+          <span class="main-menu-dev-panel-title">DEV</span>
+          <label class="main-menu-dev-panel-row">
+            <span>Add LP:</span>
+            <input type="number" id="main-menu-dev-lp-amount" class="main-menu-dev-input" value="10" min="1" />
+            <button id="main-menu-dev-add-lp" class="main-menu-dev-btn">Add</button>
+          </label>
+        </div>
         <section class="hall-of-champions-section">
           <h2>Hall of Champions</h2>
           <div id="hall-of-champions" class="hall-of-champions"></div>
@@ -27,10 +37,10 @@
       <div class="canvas-wrapper">
         <canvas id="game-canvas"></canvas>
         <div id="skill-bar" class="skill-bar">
-          <div class="skill-slot" data-slot="0"><span class="skill-key">1</span><div class="skill-icon" id="skill-icon-0">—</div><div class="skill-name" id="skill-name-0">Empty</div><div class="skill-cd-ring" id="skill-cd-0"></div></div>
-          <div class="skill-slot" data-slot="1"><span class="skill-key">2</span><div class="skill-icon" id="skill-icon-1">—</div><div class="skill-name" id="skill-name-1">Empty</div><div class="skill-cd-ring" id="skill-cd-1"></div></div>
-          <div class="skill-slot" data-slot="2"><span class="skill-key">3</span><div class="skill-icon" id="skill-icon-2">—</div><div class="skill-name" id="skill-name-2">Empty</div><div class="skill-cd-ring" id="skill-cd-2"></div></div>
-          <div class="skill-slot" data-slot="3"><span class="skill-key">4</span><div class="skill-icon" id="skill-icon-3">—</div><div class="skill-name" id="skill-name-3">Empty</div><div class="skill-cd-ring" id="skill-cd-3"></div></div>
+          <div class="skill-slot" data-slot="0"><span class="skill-key">1</span><div class="skill-icon" id="skill-icon-0">—</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-0">Empty</div><div class="skill-cd-ring" id="skill-cd-0"></div></div>
+          <div class="skill-slot" data-slot="1"><span class="skill-key">2</span><div class="skill-icon" id="skill-icon-1">—</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-1">Empty</div><div class="skill-cd-ring" id="skill-cd-1"></div></div>
+          <div class="skill-slot" data-slot="2"><span class="skill-key">3</span><div class="skill-icon" id="skill-icon-2">—</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-2">Empty</div><div class="skill-cd-ring" id="skill-cd-2"></div></div>
+          <div class="skill-slot" data-slot="3"><span class="skill-key">4</span><div class="skill-icon" id="skill-icon-3">—</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-3">Empty</div><div class="skill-cd-ring" id="skill-cd-3"></div></div>
         </div>
         <div id="blessings-bar" class="blessings-bar hidden"></div>
       </div>
@@ -38,6 +48,10 @@
         <section class="map-name-section">
           <div id="map-name" class="map-name">Dungeon (Map 1)</div>
           <div id="enemy-count" class="enemy-count">Enemies: 0</div>
+          <div id="escort-quest-indicator" class="escort-quest-indicator hidden">
+            <span class="escort-quest-icon">👤</span>
+            <span class="escort-quest-text">Escort Quest Active</span>
+          </div>
         </section>
         <section class="xp-section">
           <div class="xp-level-row">
@@ -51,10 +65,6 @@
         <section class="equipped-section">
           <h2>Equipped</h2>
           <ul id="equipped-list"></ul>
-        </section>
-        <section class="upgrade-cards-section">
-          <h2>Upgrade Cards</h2>
-          <ul id="upgrade-card-list"></ul>
         </section>
         <section class="dash-section">
           <h2>Dash</h2>
@@ -97,10 +107,6 @@
             <div id="victory-equipped"></div>
           </div>
           <div class="victory-summary-section">
-            <h3>Upgrade Cards</h3>
-            <div id="victory-cards"></div>
-          </div>
-          <div class="victory-summary-section">
             <h3>Stats</h3>
             <div id="victory-stats"></div>
           </div>
@@ -125,7 +131,11 @@
     <div id="skill-select-overlay" class="skill-select-overlay hidden">
       <div class="skill-select-box">
         <h1 class="skill-select-title">Select Skills</h1>
-        <p class="skill-select-subtitle">Assign skills to 1 2 3 4. Locked slots show requirements.</p>
+        <p class="skill-select-subtitle">Choose your basic attack and assign skills to 1 2 3 4. Locked slots show requirements.</p>
+        <div class="skill-select-attack-type-section">
+          <label class="skill-select-attack-label">Basic Attack</label>
+          <div id="skill-select-attack-type" class="skill-select-attack-type"></div>
+        </div>
         <div id="skill-select-slots" class="skill-select-slots"></div>
         <div id="skill-select-pool" class="skill-select-pool"></div>
         <div class="skill-select-actions">
@@ -174,6 +184,93 @@
       </div>
     </div>
 
+    <div id="skill-library-overlay" class="skill-library-overlay hidden">
+      <div class="skill-library-box">
+        <header class="skill-library-header">
+          <h1 class="skill-library-title">Skill Library</h1>
+          <div class="skill-library-flux">Flux: <span id="skill-library-flux-value">0</span></div>
+          <button id="skill-library-close" class="skill-library-btn">Back</button>
+        </header>
+        <div id="skill-library-content" class="skill-library-content">
+          <div id="skill-library-skills-panel" class="skill-library-skills-panel"></div>
+          <div id="skill-library-cards-panel" class="skill-library-cards-panel">
+            <div id="skill-library-cards-title" class="skill-library-cards-title">Modification cards</div>
+            <div id="skill-library-cards-list" class="skill-library-cards-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="instructions-overlay" class="instructions-overlay hidden">
+      <div class="instructions-box">
+        <header class="instructions-header">
+          <h1 class="instructions-title">Game Instructions</h1>
+          <button id="instructions-close" class="instructions-btn">Back</button>
+        </header>
+        <div id="instructions-content" class="instructions-content">
+          <div class="instructions-section">
+            <h2>Objective</h2>
+            <p>Navigate through 5 maps, defeat enemies, collect loot, and defeat the final boss to save your character!</p>
+          </div>
+          
+          <div class="instructions-section">
+            <h2>Controls</h2>
+            <ul>
+              <li><strong>WASD</strong> or <strong>Arrow Keys</strong> - Move your character</li>
+              <li><strong>Mouse Click</strong> - Attack in the direction of your mouse</li>
+              <li><strong>Space</strong> - Dash (has cooldown)</li>
+              <li><strong>E</strong> - Interact with objects (shrines, chests, doors)</li>
+              <li><strong>I</strong> - Open inventory</li>
+              <li><strong>Esc</strong> or <strong>P</strong> - Pause game</li>
+            </ul>
+          </div>
+          
+          <div class="instructions-section">
+            <h2>Gameplay</h2>
+            <ul>
+              <li><strong>Combat:</strong> Click to attack enemies. Different skills have unique effects and cooldowns.</li>
+              <li><strong>Leveling:</strong> Defeat enemies to gain XP. Level up to choose upgrades that enhance your abilities.</li>
+              <li><strong>Loot:</strong> Collect equipment items that drop from enemies. Equip them to boost your stats.</li>
+              <li><strong>Dash:</strong> Use Space to dash and avoid damage. You're briefly invincible during dash.</li>
+              <li><strong>Health:</strong> Watch your health bar. If it reaches zero, the run ends.</li>
+            </ul>
+          </div>
+          
+          <div class="instructions-section">
+            <h2>Maps & Exploration</h2>
+            <ul>
+              <li>Progress through 5 different maps, each with unique themes and enemies.</li>
+              <li>Find <strong>exits</strong> to move to the next map.</li>
+              <li>Explore <strong>sub-areas</strong> like ruins, rooms, and mazes for guaranteed rewards.</li>
+              <li>Discover <strong>shrines</strong> that offer powerful upgrades or remove penalties.</li>
+              <li>Watch out for <strong>environmental obstacles</strong> that block movement and projectiles.</li>
+            </ul>
+          </div>
+          
+          <div class="instructions-section">
+            <h2>Sub-Areas</h2>
+            <ul>
+              <li><strong>Ruins:</strong> Open structures with enemies. Defeat all enemies to unlock the chest.</li>
+              <li><strong>Rooms:</strong> Enclosed areas with locked doors. Clear all enemies to unlock the exit and claim rewards.</li>
+              <li><strong>Mazes:</strong> Winding corridors with enemies and loot. Navigate to the center or exit for rewards.</li>
+            </ul>
+          </div>
+          
+          <div class="instructions-section">
+            <h2>Tips</h2>
+            <ul>
+              <li>Use dash strategically to avoid enemy attacks and reposition.</li>
+              <li>Different skills work better in different situations - experiment!</li>
+              <li>Collect and equip items to increase your power.</li>
+              <li>Level up upgrades can dramatically change your playstyle.</li>
+              <li>Environmental obstacles can provide cover from enemy projectiles.</li>
+              <li>Sub-areas offer guaranteed rewards - explore them when you can!</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="legacy-vault-overlay" class="legacy-vault-overlay hidden">
       <div class="legacy-vault-box">
         <header class="legacy-vault-header">
@@ -181,11 +278,20 @@
           <p class="legacy-vault-subtitle">Items collected by your champions. Pick up to <span id="legacy-vault-max-count">3</span> to start your new run.</p>
           <div class="legacy-vault-actions">
             <span id="legacy-selection-count" class="legacy-selection-count">0 / 3 selected</span>
+            <button id="legacy-delete-selected" class="legacy-vault-btn">Delete Selected</button>
             <button id="legacy-vault-close" class="legacy-vault-btn">Back</button>
             <button id="legacy-start-run" class="legacy-vault-btn legacy-vault-btn-primary" disabled>Start New Run</button>
           </div>
         </header>
         <div id="legacy-vault-grid" class="legacy-vault-grid"></div>
+      </div>
+    </div>
+
+    <div id="notification-overlay" class="notification-overlay hidden">
+      <div class="notification-box">
+        <h2 class="notification-title" id="notification-title">Notification</h2>
+        <p class="notification-message" id="notification-message">Message</p>
+        <button id="notification-close" class="notification-close-btn">OK</button>
       </div>
     </div>
 
@@ -198,6 +304,25 @@
           <p class="event-pick-label">Choose an item to invest:</p>
           <ul id="event-invest-list" class="event-invest-list"></ul>
           <button id="event-invest-cancel" class="event-btn event-btn-secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="shrine-overlay" class="shrine-overlay hidden">
+      <div class="shrine-card">
+        <h1 class="shrine-title" id="shrine-title">Shrine</h1>
+        <p class="shrine-desc" id="shrine-desc">Description</p>
+        <div id="shrine-upgrade-select" class="shrine-upgrade-select hidden">
+          <p class="shrine-pick-label">Choose an upgrade to remove:</p>
+          <ul id="shrine-upgrade-list" class="shrine-upgrade-list"></ul>
+        </div>
+        <div id="shrine-penalty-select" class="shrine-penalty-select hidden">
+          <p class="shrine-pick-label">Choose a penalty to remove:</p>
+          <ul id="shrine-penalty-list" class="shrine-penalty-list"></ul>
+        </div>
+        <div class="shrine-actions">
+          <button id="shrine-confirm" class="shrine-btn shrine-btn-primary">Confirm</button>
+          <button id="shrine-cancel" class="shrine-btn shrine-btn-secondary">Cancel</button>
         </div>
       </div>
     </div>
@@ -224,10 +349,6 @@
           <section class="inventory-overlay-section">
             <h2>Equipped</h2>
             <ul id="inventory-overlay-equipped-list"></ul>
-          </section>
-          <section class="inventory-overlay-section">
-            <h2 id="inventory-overlay-cards-title">Upgrade Cards (0/3)</h2>
-            <ul id="inventory-overlay-cards-list"></ul>
           </section>
           <section class="inventory-overlay-section">
             <h2>Inventory</h2>
@@ -265,6 +386,23 @@
 
     <button id="inventory-button" class="inventory-button">🎒 Inventory (I)</button>
     <button id="pause-toggle" class="pause-toggle">⏸ Pause</button>
+    <button id="build-log-toggle" class="build-log-toggle" title="Build log">📋 Build</button>
+    <div id="build-log-panel" class="build-log-panel hidden">
+      <div class="build-log-header">
+        <span>Run upgrades & penalties</span>
+        <button id="build-log-close" class="build-log-close" aria-label="Close">✕</button>
+      </div>
+      <div class="build-log-content">
+        <div class="build-log-section">
+          <div class="build-log-section-title">Upgrades</div>
+          <ul id="build-log-upgrades" class="build-log-list"></ul>
+        </div>
+        <div class="build-log-section">
+          <div class="build-log-section-title">Penalties</div>
+          <ul id="build-log-penalties" class="build-log-list"></ul>
+        </div>
+      </div>
+    </div>
 
     <button id="dev-toggle" class="dev-toggle">DEV</button>
     <div id="dev-panel" class="dev-panel dev-panel-hidden">
@@ -277,6 +415,7 @@
           <button id="dev-give-all" class="dev-button">Give All Cards</button>
           <button id="dev-give-all-cubes" class="dev-button">Give All Cubes</button>
           <button id="dev-random-item" class="dev-button">Random Item (Magic/Rare)</button>
+          <button id="dev-level-up" class="dev-button">Level Up</button>
         </div>
         <div class="dev-panel-section">
           <h3>Stats</h3>
@@ -293,8 +432,32 @@
           </div>
         </div>
         <div class="dev-panel-section">
-          <h3>Spawn Upgrade Cards</h3>
-          <ul id="dev-card-list" class="dev-card-list"></ul>
+          <h3>Skill Mod Overrides (per slot)</h3>
+          <p class="dev-mod-hint">Toggle mods to force-on for the skill in that slot during combat.</p>
+          <div id="dev-skill-mod-toggles" class="dev-skill-mod-toggles"></div>
+        </div>
+        <div class="dev-panel-section">
+          <h3>Force attack upgrade / penalty</h3>
+          <p class="dev-mod-hint">Add a specific upgrade and penalty for testing (current attack type only).</p>
+          <div class="dev-force-upgrade-row">
+            <select id="dev-force-upgrade" class="dev-affix-select">
+              <option value="">-- Upgrade --</option>
+            </select>
+            <select id="dev-force-penalty" class="dev-affix-select">
+              <option value="">-- Penalty --</option>
+            </select>
+            <button id="dev-apply-force-upgrade" class="dev-button">Apply</button>
+          </div>
+        </div>
+        <div class="dev-panel-section">
+          <h3>Spawn Shrine</h3>
+          <p class="dev-mod-hint">Spawn a chosen shrine near the player character.</p>
+          <div class="dev-spawn-elite-row">
+            <select id="dev-shrine-select" class="dev-affix-select">
+              <option value="">-- Select shrine --</option>
+            </select>
+            <button id="dev-spawn-shrine" class="dev-button">Spawn Shrine</button>
+          </div>
         </div>
       </div>
     </div>
