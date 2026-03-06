@@ -1,0 +1,196 @@
+#pillar-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  background: rgba(8, 10, 18, 0.85);
+  color: #ecf1ff;
+}
+
+#pillar-overlay.hidden {
+  display: none;
+}
+
+.pillar-overlay__surface {
+  width: min(920px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+  background: linear-gradient(180deg, rgba(22, 26, 44, 0.98), rgba(12, 16, 30, 0.98));
+  border: 1px solid rgba(170, 190, 255, 0.35);
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 24px 44px rgba(0, 0, 0, 0.45);
+}
+
+.pillar-overlay__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.pillar-overlay__close {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #a4b2ff;
+  border-radius: 4px;
+  background: #1a1f3a;
+  color: #f0f4ff;
+}
+
+.pillar-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.pillar-tab {
+  padding: 8px 10px;
+  border: 1px solid rgba(180, 194, 255, 0.35);
+  background: rgba(40, 50, 80, 0.6);
+  color: #f7f9ff;
+  cursor: pointer;
+}
+
+.pillar-tab.active {
+  background: rgba(95, 112, 188, 0.7);
+}
+
+.pillar-tabpanel {
+  display: none;
+}
+
+.pillar-tabpanel.active {
+  display: block;
+}
+
+.pillar-overview-grid,
+.pillar-allocation-group,
+.pillar-proof-progress {
+  margin-bottom: 12px;
+}
+
+.pillar-overview-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pillar-overview-summary,
+.pillar-card,
+.pillar-allocation-group,
+.pillar-proof-progress {
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(170, 190, 255, 0.25);
+  border-radius: 8px;
+}
+
+.pillar-list {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pillar-card {
+  background: rgba(34, 38, 60, 0.6);
+}
+
+.pillar-card--locked {
+  opacity: 0.5;
+}
+
+.pillar-proof-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.blessing-row {
+  margin: 8px 0;
+  border: 1px solid rgba(170, 190, 255, 0.2);
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.blessing-row--allocated {
+  border-color: rgba(134, 239, 172, 0.6);
+  background: rgba(34, 78, 52, 0.24);
+}
+
+.blessing-status {
+  font-size: 12px;
+  color: #cbd9ff;
+  margin: 4px 0 8px;
+}
+
+.blessing-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pillar-feedback {
+  color: #ffbdbd;
+  min-height: 1.2em;
+}
+
+.pillar-details {
+  margin-top: 10px;
+  border: 1px solid rgba(170, 190, 255, 0.2);
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(12, 14, 28, 0.4);
+}
+
+.earned {
+  color: #9af7a6;
+}
+
+.pillars-menu-open-button {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 1100;
+  padding: 10px 14px;
+  background: #1d2858;
+  border: 1px solid #a9b8ff;
+  border-radius: 8px;
+  color: #f1f5ff;
+}
+
+.pillar-debug-section {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgba(166, 188, 255, 0.32);
+  background: rgba(22, 26, 44, 0.86);
+}
+
+.pillar-debug-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pillar-debug-buttons button {
+  padding: 6px 10px;
+}
+
+.pillar-debug-output {
+  margin-top: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid rgba(170, 190, 255, 0.2);
+  background: rgba(2, 6, 20, 0.6);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+@media (max-width: 900px) {
+  .pillar-overview-grid,
+  .pillar-list {
+    grid-template-columns: 1fr;
+  }
+}

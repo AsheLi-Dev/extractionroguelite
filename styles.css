@@ -125,7 +125,7 @@ body {
 }
 
 .skill-slot.locked .skill-icon::before {
-  content: "🔒";
+  content: "ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬â„¢";
 }
 
 /* Skill select overlay */
@@ -210,6 +210,13 @@ body {
   box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.3);
 }
 
+.skill-select-attack-icon {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .skill-select-attack-name {
   font-size: 13px;
   font-weight: 600;
@@ -230,13 +237,16 @@ body {
 
 .skill-select-slot {
   width: 72px;
-  height: 72px;
+  min-height: 72px;
+  height: auto;
+  padding: 6px 0;
   border: 2px dashed #4b5563;
   border-radius: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   cursor: pointer;
   transition: border-color 0.15s;
 }
@@ -254,6 +264,17 @@ body {
 .skill-select-slot.selected {
   border-color: #a855f7;
   box-shadow: 0 0 0 2px #a855f7;
+}
+
+.skill-select-slot-illustration {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+
+.skill-select-slot-name {
+  font-size: 11px;
+  color: #fff;
 }
 
 .skill-select-pool {
@@ -288,9 +309,17 @@ body {
   border-radius: 8px;
   cursor: pointer;
   font-size: 12px;
+  color: #fff;
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.skill-pool-item-illustration {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .skill-pool-item:hover {
@@ -876,7 +905,7 @@ body {
 }
 
 .dev-panel-inner {
-  width: 320px;
+  width: 560px;
   max-width: 100%;
   height: 100%;
   background: #020617;
@@ -887,6 +916,7 @@ body {
   flex-direction: column;
   gap: 12px;
   color: #e5e7eb;
+  overflow-y: auto;
 }
 
 .dev-panel-header {
@@ -1732,11 +1762,6 @@ body {
   color: #38bdf8;
 }
 
-.skill-library-flux {
-  font-size: 16px;
-  font-weight: 600;
-  color: #eab308;
-}
 
 .skill-library-btn {
   margin-left: auto;
@@ -1761,6 +1786,84 @@ body {
   flex-direction: row;
   min-height: 0;
   overflow: hidden;
+}
+
+.skill-library-slots-panel {
+  width: 100px;
+  flex-shrink: 0;
+  padding: 16px;
+  border-right: 1px solid #1f2937;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.skill-library-slots-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.skill-library-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skill-library-slot {
+  width: 72px;
+  min-height: 72px;
+  height: auto;
+  padding: 6px 0;
+  border: 2px dashed #4b5563;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.skill-library-slot.filled {
+  border-style: solid;
+  border-color: #6b21a8;
+}
+
+.skill-library-slot.selected {
+  border-color: #a855f7;
+  box-shadow: 0 0 0 2px #a855f7;
+}
+
+.skill-library-slot.locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.skill-library-slot-illustration {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+.skill-library-slot-name {
+  font-size: 10px;
+  color: #fff;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.skill-library-slots-hint {
+  font-size: 10px;
+  color: #64748b;
+  margin: 0;
+  text-align: center;
+  line-height: 1.3;
 }
 
 .skill-library-skills-panel {
@@ -1820,10 +1923,17 @@ body {
   font-size: 28px;
 }
 
+.skill-library-card-illustration {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .skill-library-card-name {
   font-weight: 700;
   font-size: 15px;
-  color: #f5f7ff;
+  color: #fff;
 }
 
 .skill-library-card-level {
@@ -1851,6 +1961,12 @@ body {
   font-size: 11px;
   color: #94a3b8;
   margin-bottom: 8px;
+}
+
+.skill-library-card-tags {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 10px;
 }
 
 .skill-library-mods {
@@ -2021,7 +2137,7 @@ body {
 }
 
 .instructions-section li::before {
-  content: "•";
+  content: "ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢";
   position: absolute;
   left: 0;
   color: #34d399;
@@ -2291,7 +2407,7 @@ body {
 /* Boss health bar */
 .boss-health-bar {
   position: fixed;
-  bottom: 24px;
+  top: 60px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 45;
@@ -2472,6 +2588,8 @@ body {
   padding: 36px 44px;
   max-width: 780px;
   width: 90%;
+  max-height: 85vh;
+  overflow-y: auto;
   box-shadow: 0 24px 60px rgba(124, 58, 237, 0.3);
   animation: level-up-pop 0.4s ease-out;
 }
@@ -2520,7 +2638,7 @@ body {
 .level-up-choices {
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   justify-content: center;
   align-items: stretch;
   gap: 16px;
@@ -2633,6 +2751,43 @@ body {
   font-weight: 600;
   color: #fbbf24;
   margin-bottom: 12px;
+}
+
+.victory-gold {
+  font-size: 14px;
+  color: #e5e7eb;
+  margin-bottom: 6px;
+}
+
+.victory-lp-section {
+  margin-bottom: 12px;
+}
+
+.victory-lp-buy-btn {
+  padding: 8px 14px;
+  margin-right: 8px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  background: #7c3aed;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.victory-lp-buy-btn:hover:not(:disabled) {
+  background: #6d28d9;
+}
+
+.victory-lp-buy-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.victory-lp-cap {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 4px;
 }
 
 .champion-level {
@@ -2831,6 +2986,66 @@ body {
 .pre-run-accept:hover {
   background: #15803d;
   border-color: #4ade80;
+}
+
+.pre-run-companion h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.pre-run-companion-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pre-run-companion-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: rgba(15, 23, 42, 0.9);
+  color: #e2e8f0;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.pre-run-companion-btn:hover {
+  border-color: #475569;
+  background: rgba(30, 41, 59, 0.95);
+}
+
+.pre-run-companion-btn.selected {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.pre-run-companion-sprite,
+.pre-run-companion-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pre-run-companion-sprite {
+  width: 32px;
+  height: 32px;
+  max-width: 32px;
+  max-height: 32px;
+  object-fit: contain;
+}
+
+.pre-run-companion-icon {
+  font-size: 24px;
 }
 
 /* Event overlay */
@@ -3543,4 +3758,3 @@ body {
 .item-tooltip .tooltip-stats.tooltip-worse {
   color: #ef4444;
 }
-

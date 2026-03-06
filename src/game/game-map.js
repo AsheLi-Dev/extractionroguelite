@@ -7,6 +7,7 @@ import { OBSTACLE_TYPES } from '../data/obstacles.js';
 import { BREAKABLE_DEFS } from '../data/breakables-data.js';
 import { SEARCHABLE_PROP_DEFS } from '../data/searchable-props-data.js';
 import { SHRINE_DEFS } from '../data/shrines.js';
+import { NPC_DEFS } from '../data/npc-data.js';
 import { Obstacle } from '../entities/obstacle.js';
 import { Breakable } from '../entities/breakable.js';
 import { SearchableProp } from '../entities/searchable-prop.js';
@@ -65,6 +66,10 @@ export function applyGameMapMixin(Game) {
           toxicStacks: e.toxicStacks,
           toxicUntil: e.toxicUntil,
           toxicAccum: e.toxicAccum || 0,
+          bleedStacks: e.bleedStacks || 0,
+          bleedDps: e.bleedDps || 0,
+          bleedTimer: e.bleedTimer || 0,
+          bleedAccum: e.bleedAccum || 0,
           voidDefenseUntil: e.voidDefenseUntil,
           voidDefenseMult: e.voidDefenseMult,
           regenRate: e.regenRate,
@@ -101,6 +106,10 @@ export function applyGameMapMixin(Game) {
           toxicStacks: es.boss.toxicStacks,
           toxicUntil: es.boss.toxicUntil,
           toxicAccum: es.boss.toxicAccum || 0,
+          bleedStacks: es.boss.bleedStacks || 0,
+          bleedDps: es.boss.bleedDps || 0,
+          bleedTimer: es.boss.bleedTimer || 0,
+          bleedAccum: es.boss.bleedAccum || 0,
           voidDefenseUntil: es.boss.voidDefenseUntil,
           voidDefenseMult: es.boss.voidDefenseMult
         } : null,
@@ -155,6 +164,10 @@ export function applyGameMapMixin(Game) {
         enemy.toxicStacks = eData.toxicStacks;
         enemy.toxicUntil = eData.toxicUntil;
         enemy.toxicAccum = eData.toxicAccum || 0;
+        enemy.bleedStacks = eData.bleedStacks || 0;
+        enemy.bleedDps = eData.bleedDps || 0;
+        enemy.bleedTimer = eData.bleedTimer || 0;
+        enemy.bleedAccum = eData.bleedAccum || 0;
         enemy.voidDefenseUntil = eData.voidDefenseUntil;
         enemy.voidDefenseMult = eData.voidDefenseMult;
         enemy.regenRate = eData.regenRate;
@@ -188,6 +201,10 @@ export function applyGameMapMixin(Game) {
           boss.toxicStacks = bossData.toxicStacks;
           boss.toxicUntil = bossData.toxicUntil;
           boss.toxicAccum = bossData.toxicAccum || 0;
+          boss.bleedStacks = bossData.bleedStacks || 0;
+          boss.bleedDps = bossData.bleedDps || 0;
+          boss.bleedTimer = bossData.bleedTimer || 0;
+          boss.bleedAccum = bossData.bleedAccum || 0;
           boss.voidDefenseUntil = bossData.voidDefenseUntil;
           boss.voidDefenseMult = bossData.voidDefenseMult;
           es.boss = boss;
@@ -226,6 +243,7 @@ export function applyGameMapMixin(Game) {
           position: { x: obs.position.x, y: obs.position.y },
           type: obs.type,
           size: { w: obs.size.w, h: obs.size.h },
+          treeTile: obs.treeTile ? { row: obs.treeTile.row, col: obs.treeTile.col } : null,
           destroyed: obs.destroyed,
           triggered: obs.triggered,
           meltTimer: obs.meltTimer
@@ -238,21 +256,16 @@ export function applyGameMapMixin(Game) {
           maxHp: b.maxHp,
           isDead: b.isDead
         })),
-        mapInteractables: (this.mapInteractables || []).map(obj => ({
-          type: obj.type,
-          shopId: obj.shopId || null,
-          x: obj.x,
-          y: obj.y,
-          w: obj.w,
-          h: obj.h,
-          used: obj.used || false
-        })),
+        mapInteractables: (this.mapInteractables || [])
+          .filter((obj) => obj.type !== "shop")
+          .map(obj => ({ ...obj })),
         searchableProps: (this.searchableProps || []).map(p => ({
           id: p.id,
           typeId: p.typeId,
           x: p.position.x,
           y: p.position.y,
-          isSearched: p.isSearched
+          isSearched: p.isSearched,
+          pendingLootDefs: Array.isArray(p.pendingLootDefs) ? p.pendingLootDefs.map((d) => ({ ...d })) : null
         }))
       };
     },
@@ -270,10 +283,15 @@ export function applyGameMapMixin(Game) {
       }
 
       this.obstacles = savedState.obstacles.map(obsData => {
+        if (obsData.type === "barrel") return null;
         const typeDef = OBSTACLE_TYPES[obsData.type];
         if (!typeDef) return null;
         const obstacle = new Obstacle(obsData.position.x, obsData.position.y, typeDef);
         obstacle.id = obsData.id;
+        if (obsData.treeTile) {
+          const treeCol = (obsData.treeTile.row === 26 && obsData.treeTile.col === "d") ? "c" : obsData.treeTile.col;
+          obstacle.treeTile = { row: obsData.treeTile.row, col: treeCol };
+        }
         obstacle.destroyed = obsData.destroyed;
         obstacle.triggered = obsData.triggered || false;
         obstacle.meltTimer = obsData.meltTimer;
@@ -289,21 +307,16 @@ export function applyGameMapMixin(Game) {
         return b;
       }).filter(Boolean);
 
-      this.mapInteractables = savedState.mapInteractables ? savedState.mapInteractables.map(obj => ({
-        type: obj.type,
-        shopId: obj.shopId || null,
-        x: obj.x,
-        y: obj.y,
-        w: obj.w,
-        h: obj.h,
-        used: obj.used || false
-      })) : [];
+      this.mapInteractables = savedState.mapInteractables
+        ? savedState.mapInteractables.filter((obj) => obj.type !== "shop").map(obj => ({ ...obj }))
+        : [];
 
       this.searchableProps = (savedState.searchableProps || []).map(pData => {
         const def = SEARCHABLE_PROP_DEFS[pData.typeId];
         if (!def) return null;
         const p = new SearchableProp(pData.id, pData.x, pData.y, pData.typeId);
         p.isSearched = pData.isSearched || false;
+        p.pendingLootDefs = Array.isArray(pData.pendingLootDefs) ? pData.pendingLootDefs.map((d) => ({ ...d })) : null;
         return p;
       }).filter(Boolean);
     },
@@ -316,9 +329,12 @@ export function applyGameMapMixin(Game) {
       const count = 6 + Math.floor(rng() * 10);
       const nextId = (this.breakableNextId ?? 1);
       const weights = [
-        { id: "crate_basic", w: 70 },
-        { id: "urn_magic", w: 25 },
-        { id: "chest_rare", w: 5 }
+        { id: "crate_basic", w: 48 },
+        { id: "urn_magic", w: 16 },
+        { id: "chest_rare", w: 4 },
+        { id: "jar_1", w: 14 },
+        { id: "jar_2", w: 12 },
+        { id: "ore_sack", w: 6 }
       ];
       const totalW = weights.reduce((s, x) => s + x.w, 0);
       const pickDefId = () => {
@@ -364,9 +380,12 @@ export function applyGameMapMixin(Game) {
         }
         candidates.sort((a, b) => b.wallNeighbors - a.wallNeighbors);
         const used = new Set();
+        const topCandidateCount = Math.min(candidates.length, Math.max(count * 12, 80));
+        const candidatePool = candidates.slice(0, topCandidateCount);
         let placed = 0;
-        for (let i = 0; i < candidates.length && placed < count; i++) {
-          const c = candidates[i];
+        while (candidatePool.length > 0 && placed < count) {
+          const pickIdx = Math.floor(Math.random() * candidatePool.length);
+          const c = candidatePool.splice(pickIdx, 1)[0];
           const key = `${c.gx},${c.gy}`;
           if (used.has(key)) continue;
           const defId = pickDefId();
@@ -379,6 +398,7 @@ export function applyGameMapMixin(Game) {
             py < obs.position.y + obs.size.h && py + def.hitbox.h > obs.position.y
           );
           if (overlap) continue;
+          if (this.overlapsTileWall(px, py, def.hitbox.w, def.hitbox.h)) continue;
           used.add(key);
           const b = new Breakable(nextId + placed, px, py, defId);
           this.breakables.push(b);
@@ -388,7 +408,7 @@ export function applyGameMapMixin(Game) {
         return;
       }
 
-      // Fallback: no tile grid (e.g. non-procedural map) — place breakables randomly in playable area
+      // Fallback: no tile grid (e.g. non-procedural map)  place breakables randomly in playable area
       let placed = 0;
       const maxAttempts = count * 40;
       for (let attempt = 0; attempt < maxAttempts && placed < count; attempt++) {
@@ -422,9 +442,10 @@ export function applyGameMapMixin(Game) {
       const count = 5 + Math.floor(rng() * 8);
       const nextId = (this.searchablePropNextId ?? 1);
       const weights = [
-        { typeId: "crate", w: 60 },
+        { typeId: "crate", w: 45 },
         { typeId: "locker", w: 25 },
-        { typeId: "deadWarrior", w: 15 }
+        { typeId: "deadWarrior", w: 15 },
+        { typeId: "chest", w: 15 }
       ];
       const totalW = weights.reduce((s, x) => s + x.w, 0);
       const pickTypeId = () => {
@@ -486,9 +507,12 @@ export function applyGameMapMixin(Game) {
         }
         candidates.sort((a, b) => b.wallNeighbors - a.wallNeighbors);
         const used = new Set();
+        const topCandidateCount = Math.min(candidates.length, Math.max(count * 12, 80));
+        const candidatePool = candidates.slice(0, topCandidateCount);
         let placed = 0;
-        for (let i = 0; i < candidates.length && placed < count; i++) {
-          const c = candidates[i];
+        while (candidatePool.length > 0 && placed < count) {
+          const pickIdx = Math.floor(Math.random() * candidatePool.length);
+          const c = candidatePool.splice(pickIdx, 1)[0];
           const key = `${c.gx},${c.gy}`;
           if (used.has(key)) continue;
           const typeId = pickTypeId();
@@ -499,6 +523,7 @@ export function applyGameMapMixin(Game) {
           const px = c.gx * tileSize + (tileSize - w) / 2;
           const py = c.gy * tileSize + (tileSize - h) / 2;
           if (overlapsAnything(px, py, w, h, null)) continue;
+          if (this.overlapsTileWall(px, py, w, h)) continue;
           used.add(key);
           const prop = new SearchableProp(nextId + placed, px, py, typeId);
           this.searchableProps.push(prop);
@@ -533,8 +558,8 @@ export function applyGameMapMixin(Game) {
       if (!mapDef) return;
 
       // Get available obstacle types for this map
-      const availableTypes = Object.values(OBSTACLE_TYPES).filter(obs => 
-        obs.maps.includes(mapId)
+      const availableTypes = Object.values(OBSTACLE_TYPES).filter(obs =>
+        obs.maps.includes(mapId) && obs.id !== "barrel"
       );
       if (availableTypes.length === 0) return;
 
@@ -543,14 +568,14 @@ export function applyGameMapMixin(Game) {
         1: { min: 24, max: 38 }, // Forest: heavy tree density
         2: { min: 10, max: 16 },
         3: { min: 12, max: 18 },
-        4: { min: 12, max: 18 }
+        4: { min: 3, max: 5 } // Boss room: keep arena readable
       };
       const profile = obstacleProfiles[mapId] || { min: 8, max: 15 };
       const count = profile.min + Math.floor(Math.random() * (profile.max - profile.min + 1));
 
       const weightedSpawnByMap = {
-        0: { giantRock: 5, ruinedPillar: 5, ancientTree: 3, barrel: 1, bonePile: 1 },
-        1: { ancientTree: 12, giantRock: 2, barrel: 1 }
+        0: { giantRock: 5, ruinedPillar: 5, ancientTree: 3, bonePile: 1 },
+        1: { ancientTree: 12, giantRock: 2 }
       };
       const weightedDefs = [];
       const weights = weightedSpawnByMap[mapId] || null;
@@ -597,7 +622,9 @@ export function applyGameMapMixin(Game) {
         const size = typeDef.size;
         
         // Random position
-        const x = margin + Math.random() * (this.world.width - 2 * margin - size.w);
+        const minSpawnX = Math.max(margin, this.world.width * 0.2);
+        const xRange = Math.max(1, this.world.width - margin - size.w - minSpawnX);
+        const x = minSpawnX + Math.random() * xRange;
         const y = margin + Math.random() * (this.world.height - 2 * margin - size.h);
 
         // Check if position is valid
@@ -669,7 +696,30 @@ export function applyGameMapMixin(Game) {
         if (valid && this.overlapsTileWall(x, y, size.w, size.h)) valid = false;
 
         if (valid) {
+          if (typeDef.id === "bonePile") {
+            // Convert legacy bone pile obstacle into searchable dead warrior prop.
+            this.searchableProps = this.searchableProps || [];
+            const nextId = this.searchablePropNextId ?? 1;
+            const deadDef = SEARCHABLE_PROP_DEFS.deadWarrior;
+            if (deadDef) {
+              const px = x + (size.w - deadDef.width) / 2;
+              const py = y + (size.h - deadDef.height) / 2;
+              const prop = new SearchableProp(nextId, px, py, "deadWarrior");
+              this.searchableProps.push(prop);
+              this.searchablePropNextId = nextId + 1;
+            }
+            spawned++;
+            continue;
+          }
           const obstacle = new Obstacle(x, y, typeDef);
+          if (typeDef.id === "ancientTree") {
+            const treeVariants = [
+              { row: 26, col: "a" }, // sapling
+              { row: 26, col: "b" }, // small tree
+              { row: 26, col: "c" } // tree
+            ];
+            obstacle.treeTile = treeVariants[Math.floor(Math.random() * treeVariants.length)];
+          }
           this.obstacles.push(obstacle);
           spawned++;
         }
@@ -680,9 +730,122 @@ export function applyGameMapMixin(Game) {
       // Sub-areas removed; no-op for compatibility with existing call sites.
     },
 
+    rollMapInterval(min, max) {
+      return min + Math.floor(Math.random() * (max - min + 1));
+    },
+
+    findInteractableSpawnSpot(size = 64) {
+      const margin = this.world.wallThickness + 80;
+      const exitZones = (this.currentMap?.exits || []).map(exit => ({
+        x: exit.x - 90,
+        y: exit.y - 90,
+        w: exit.w + 180,
+        h: exit.h + 180
+      }));
+      for (let attempts = 0; attempts < 100; attempts++) {
+        const x = margin + Math.random() * Math.max(1, this.world.width - 2 * margin - size);
+        const y = margin + Math.random() * Math.max(1, this.world.height - 2 * margin - size);
+        const overlapObj = (this.mapInteractables || []).some(obj =>
+          x < obj.x + obj.w && x + size > obj.x &&
+          y < obj.y + obj.h && y + size > obj.y
+        );
+        if (overlapObj) continue;
+        const inExit = exitZones.some(z =>
+          x < z.x + z.w && x + size > z.x &&
+          y < z.y + z.h && y + size > z.y
+        );
+        if (inExit) continue;
+        if (this.overlapsTileWall(x, y, size, size)) continue;
+        return { x, y };
+      }
+      return null;
+    },
+
+    spawnMapNpcsForVisit(_mapId) {
+      this.mapInteractables = this.mapInteractables || [];
+      this.npcSpawnState = this.npcSpawnState || {
+        oldWoman: { interval: this.rollMapInterval(NPC_DEFS.mysteriousOldWoman.spawn.min, NPC_DEFS.mysteriousOldWoman.spawn.max), counter: 0 },
+        oldMan: { interval: this.rollMapInterval(NPC_DEFS.mysteriousOldMan.spawn.min, NPC_DEFS.mysteriousOldMan.spawn.max), counter: 0 },
+        priest: { interval: this.rollMapInterval(NPC_DEFS.priest.spawn.min, NPC_DEFS.priest.spawn.max), counter: 0 },
+        schemaMonk: { interval: this.rollMapInterval(NPC_DEFS.schemaMonk.spawn.min, NPC_DEFS.schemaMonk.spawn.max), counter: 0 },
+        elderSchemaMonk: { interval: this.rollMapInterval(NPC_DEFS.elderSchemaMonk.spawn.min, NPC_DEFS.elderSchemaMonk.spawn.max), counter: 0 },
+        equipmentCollector: { interval: this.rollMapInterval(NPC_DEFS.equipmentCollector.spawn.min, NPC_DEFS.equipmentCollector.spawn.max), counter: 0 },
+        blacksmith: { interval: this.rollMapInterval(NPC_DEFS.blacksmith.spawn.min, NPC_DEFS.blacksmith.spawn.max), counter: 0 }
+      };
+      const npcTypes = new Set([
+        NPC_DEFS.mysteriousOldWoman.type,
+        NPC_DEFS.mysteriousOldMan.type,
+        NPC_DEFS.priest.type,
+        NPC_DEFS.schemaMonk.type,
+        NPC_DEFS.elderSchemaMonk.type,
+        NPC_DEFS.equipmentCollector.type,
+        NPC_DEFS.blacksmith.type
+      ]);
+      const existingNpcCount = this.mapInteractables.filter((obj) => npcTypes.has(obj.type)).length;
+      const maxNpcsPerMap = 2;
+      let remainingSlots = Math.max(0, maxNpcsPerMap - existingNpcCount);
+
+      const spawnNpc = (def, extra = {}) => {
+        const npcWorldW = Math.max(1, Number(def.worldSize?.w) || 56);
+        const npcWorldH = Math.max(1, Number(def.worldSize?.h) || 56);
+        const npcSize = Math.max(npcWorldW, npcWorldH);
+        const spot = this.findInteractableSpawnSpot(npcSize);
+        if (!spot) return false;
+        this.mapInteractables.push({
+          type: def.type,
+          npcName: def.name,
+          spriteAtlas: def.sprite.atlas,
+          spriteRect: { x: def.sprite.x, y: def.sprite.y, w: def.sprite.w, h: def.sprite.h },
+          x: spot.x,
+          y: spot.y,
+          w: npcWorldW,
+          h: npcWorldH,
+          npcWorldW,
+          npcWorldH,
+          used: false,
+          consumeOnInteract: extra.consumeOnInteract ?? true,
+          interactionCount: 0,
+          ...extra
+        });
+        return true;
+      };
+
+      // Special rogue NPC: 50% chance per run, only on map 3 or 4, bypasses per-map NPC cap.
+      if (this.rogueNpcRunEnabled && !this.rogueNpcSpawned && (_mapId === 2 || _mapId === 3)) {
+        if (spawnNpc(NPC_DEFS.rogue, { consumeOnInteract: false, interactionCount: 0 })) {
+          this.rogueNpcSpawned = true;
+        }
+      }
+
+      if (remainingSlots <= 0) return;
+
+      const keys = [
+        ["oldWoman", NPC_DEFS.mysteriousOldWoman],
+        ["oldMan", NPC_DEFS.mysteriousOldMan],
+        ["priest", NPC_DEFS.priest],
+        ["schemaMonk", NPC_DEFS.schemaMonk],
+        ["elderSchemaMonk", NPC_DEFS.elderSchemaMonk],
+        ["equipmentCollector", NPC_DEFS.equipmentCollector],
+        ["blacksmith", NPC_DEFS.blacksmith]
+      ];
+      for (const [stateKey, def] of keys) {
+        if (remainingSlots <= 0) break;
+        const st = this.npcSpawnState[stateKey];
+        st.counter++;
+        if (st.counter < st.interval) continue;
+        if (spawnNpc(def, { consumeOnInteract: false, interactionCount: 0 })) {
+          st.counter = 0;
+          st.interval = this.rollMapInterval(def.spawn.min, def.spawn.max);
+          remainingSlots--;
+        }
+      }
+    },
+
     transitionToMap(targetMapId, spawnSide) {
       const targetMap = MAP_DEFS.find((m) => m.id === targetMapId);
       if (!targetMap) return;
+      const bossMapId = MAP_DEFS.length - 1;
+      const isBossRoom = targetMapId === bossMapId;
 
       // Track exit reached for tutorial
       if (this.tutorialMode && this.tutorialSystem) {
@@ -700,7 +863,10 @@ export function applyGameMapMixin(Game) {
 
       if (this.useProceduralMap) {
         const seed = (this.proceduralSeed ?? Date.now()) + targetMapId * 1000;
-        const { world } = createProceduralWorld(PRESET_MEDIUM, seed, targetMap);
+        const preset = targetMapId === 4
+          ? { W: 30, H: 30, config: PRESET_MEDIUM.config }
+          : PRESET_MEDIUM;
+        const { world } = createProceduralWorld(preset, seed, targetMap);
         this.world = world;
         if (this.enemySystem) this.enemySystem.world = world;
         if (this.lootSystem) this.lootSystem.world = world;
@@ -736,12 +902,13 @@ export function applyGameMapMixin(Game) {
       if (isFirstVisit) {
         // First visit: initialize mapInteractables and spawn obstacles and sub-areas
         this.mapInteractables = [];
-        if (hasTalent("socketFinder") && Math.random() < 0.2) {
+        if (!isBossRoom && hasTalent("socketFinder") && Math.random() < 0.2) {
           const margin = this.world.wallThickness + 80;
           const ix = margin + Math.random() * (this.world.width - 2 * margin - 64);
           const iy = margin + Math.random() * (this.world.height - 2 * margin - 64);
           this.mapInteractables.push({ type: "socketWorkshop", x: ix, y: iy, w: 64, h: 64 });
         }
+        if (!isBossRoom) this.spawnMapNpcsForVisit(targetMapId);
         
         this.spawnObstacles(targetMapId);
         this.spawnBreakablesForMap(targetMap, () => Math.random());
@@ -767,33 +934,11 @@ export function applyGameMapMixin(Game) {
         this.resolveStrangerQuest();
       }
 
-      // Spawn shop every 3–5 newly visited maps
-      if (isFirstVisit) {
-        this.shopSpawnCounter = (this.shopSpawnCounter ?? 0) + 1;
-        const interval = this.shopSpawnInterval ?? 3;
-        if (this.shopSpawnCounter >= interval) {
-          const margin = this.world.wallThickness + 80;
-          let valid = false;
-          let sx, sy;
-          let attempts = 0;
-          while (!valid && attempts < 50) {
-            sx = margin + Math.random() * (this.world.width - 2 * margin - 64);
-            sy = margin + Math.random() * (this.world.height - 2 * margin - 64);
-            valid = true;
-            attempts++;
-          }
-
-          if (valid) {
-            this.mapInteractables.push({ type: "shop", shopId: `shop_map_${targetMapId}`, x: sx, y: sy, w: 64, h: 64 });
-            this.shopSpawnCounter = 0;
-            this.shopSpawnInterval = 3 + Math.floor(Math.random() * 3); // New interval 3-5
-          }
-        }
-      }
+      // Shops removed from game.
       
       // Spawn shrine based on interval
       this.shrineSpawnCounter++;
-      if (this.shrineSpawnCounter >= this.shrineSpawnInterval) {
+      if (!isBossRoom && this.shrineSpawnCounter >= this.shrineSpawnInterval) {
         const shrineDef = SHRINE_DEFS[Math.floor(Math.random() * SHRINE_DEFS.length)];
         const margin = this.world.wallThickness + 80;
         
@@ -831,6 +976,15 @@ export function applyGameMapMixin(Game) {
         this.shrineSpawnCounter++;
       }
 
+      if (isBossRoom) {
+        const npcTypes = new Set(Object.values(NPC_DEFS).map((def) => def.type));
+        this.mapInteractables = (this.mapInteractables || []).filter((obj) =>
+          obj.type !== "socketWorkshop" &&
+          obj.type !== "shrine" &&
+          !npcTypes.has(obj.type)
+        );
+      }
+
       const margin = this.world.wallThickness + 60;
       const centerY = this.world.height / 2 - this.player.size / 2;
       const ts = this.world.tileSize || 32;
@@ -863,7 +1017,21 @@ export function applyGameMapMixin(Game) {
         }
       }
 
+      // On map transitions, snap camera immediately to the player's new spawn position.
+      if (this.camera) {
+        this.camera.snapTo(this.player, this.world.width, this.world.height);
+      }
+
+      if (this.bossExtractionTimerEnabled && targetMapId === bossMapId) {
+        this.bossExtractionActive = !this.victoryPortal;
+        this.bossExtractionTimeLeft = this.bossExtractionDuration;
+      } else {
+        this.bossExtractionActive = false;
+        this.bossExtractionTimeLeft = 0;
+      }
+
       this.updateMapUI();
+      this.updateVictoryPortalUI();
     }
   });
 }

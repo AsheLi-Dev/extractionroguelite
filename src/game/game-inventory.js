@@ -3,13 +3,287 @@
 // This module adds methods to Game.prototype when imported
 
 import { escapeHtml } from '../utils.js';
-import { EQUIPMENT_BASE_STAT, EQUIPMENT_SECONDARY_BASE, MODIFIER_POOL, LOCAL_STAT_SCALE_MOD_IDS, NAME_PREFIXES, NAME_SUFFIXES, getModifierPoolForType, rollLocalStatScaleValue } from '../data/loot-data.js';
-import { MODIFIER_CUBE_TIERS, MODIFIER_CUBES, UPGRADE_CUBES, LEGENDARY_CUBES, LEGENDARY_MODIFIER_IDS, rollModifierForTier } from '../data/cubes-data.js';
+import { EQUIPMENT_BASE_STAT, EQUIPMENT_SECONDARY_BASE, MODIFIER_POOL, LOCAL_STAT_SCALE_MOD_IDS, NAME_PREFIXES, NAME_SUFFIXES, getModifierPoolForType, rollLocalStatScaleValueForDifficulty, getEquipmentSpriteCell } from '../data/loot-data.js';
+import { getRingDefById, getRingSpriteCell } from '../data/rings-data.js';
+import { MODIFIER_CUBES, UPGRADE_CUBES, LEGENDARY_CUBES, LEGENDARY_MODIFIER_IDS, rollModifierForTier, getModifierRollRangeForTier, getCubeDifficultyForTier } from '../data/cubes-data.js';
 import { showItemTooltip, hideItemTooltip, buildItemTooltipContent, getItemRarityColor } from '../ui/tooltips.js';
 import { hasTalent } from '../data/talents.js';
+import { addLegacyVaultItem } from '../ui/save-system.js';
+import { canSpendGold, spendGold } from './economy.js';
+import { play as playSfx } from '../audio.js';
+import { ANCESTOR_SPIRIT_DEFS } from '../data/ancestor-spirits-data.js';
+import {
+  ensureRunInventoryState,
+  ensureItemVessels,
+  addVesselSlotToItem,
+  getVesselCapForRarity,
+  socketSpiritIntoItemVessel,
+  removeSpiritFromItemVessel,
+  recomputeAncestorState
+} from './ancestor-system.js';
+
+const ANCESTOR_CLAN_SPRITES = {
+  swift: "assets/images/Swift Clan.png",
+  arcana: "assets/images/Arcana Clan.png",
+  savage: "assets/images/Savage Clan.png",
+  bulwark: "assets/images/Bulwark Clan.png",
+  hoarder: "assets/images/Hoarder Clan.png"
+};
+const ITEM_ATLAS_SRC = "assets/Environments/items.png";
+const ITEM_ATLAS_TILE = 32;
+const ITEM_ATLAS_WIDTH = 352;
+const ITEM_ATLAS_HEIGHT = 832;
+const SLOT_FRAME_NORMAL = "assets/UI/ui_slot_frame_normal.png";
+const SLOT_FRAME_SELECTED = "assets/UI/ui_slot_frame_selected.png";
+const INVENTORY_SLOTS_PER_ROW = 4;
+const EQUIPPED_SLOT_DEFS = [
+  { key: "Helmet", label: "Helmet" },
+  { key: "Body Armour", label: "Body Armour" },
+  { key: "Weapon", label: "Weapon" },
+  { key: "Boots", label: "Boots" },
+  { key: "Ring1", label: "Ring Slot A" },
+  { key: "Ring2", label: "Ring Slot B" }
+];
+const EQUIPPED_SLOT_LABEL_BY_KEY = Object.fromEntries(EQUIPPED_SLOT_DEFS.map((s) => [s.key, s.label]));
+const EQUIPPED_GRID_SLOTS = [
+  null, "Helmet", null,
+  "Weapon", "Body Armour", null,
+  "Ring1", "Boots", "Ring2"
+];
+
+function getAncestorSpriteSrc(clans) {
+  if (!Array.isArray(clans)) return null;
+  for (const clan of clans) {
+    const src = ANCESTOR_CLAN_SPRITES[String(clan || "").toLowerCase()];
+    if (src) return src;
+  }
+  return null;
+}
+
+function hasSpriteCell(item) {
+  return !!(
+    item &&
+    item.spriteCell &&
+    Number.isFinite(item.spriteCell.row) &&
+    Number.isFinite(item.spriteCell.col)
+  );
+}
+
+function ensureItemSpriteCell(item) {
+  if (!item || item.type === "Upgrade Card") return;
+  if (hasSpriteCell(item)) return;
+  if (item.type === "Ring" && item.ringSpriteKey) {
+    item.spriteCell = getRingSpriteCell(item.ringSpriteKey);
+    return;
+  }
+  const mapped = getEquipmentSpriteCell(item.type, item.name, item.weight || null);
+  if (mapped) item.spriteCell = mapped;
+}
+
+function getCraftModifierPoolForItem(item) {
+  if (item?.type === "Ring" && item?.ringId === "ring_forgemaster") {
+    return getModifierPoolForType("Weapon");
+  }
+  return getModifierPoolForType(item?.type);
+}
+
+function isItemCraftable(item) {
+  if (!item || item.type === "Upgrade Card" || item.livingItem) return false;
+  if (item.type === "Ring") {
+    const ringDef = getRingDefById(item.ringId);
+    return !!ringDef?.forgeLikeWeapon;
+  }
+  return item.type === "Helmet" || item.type === "Body Armour" || item.type === "Weapon" || item.type === "Boots";
+}
+
+function createItemSpriteElement(item, size = 16) {
+  ensureItemSpriteCell(item);
+  if (!hasSpriteCell(item)) return null;
+  const el = document.createElement("span");
+  const scale = size / ITEM_ATLAS_TILE;
+  const x = -item.spriteCell.col * ITEM_ATLAS_TILE * scale;
+  const y = -item.spriteCell.row * ITEM_ATLAS_TILE * scale;
+  el.className = "inventory-item-sprite";
+  el.style.display = "inline-block";
+  el.style.width = `${size}px`;
+  el.style.height = `${size}px`;
+  el.style.marginRight = "0";
+  el.style.verticalAlign = "middle";
+  el.style.backgroundImage = `url('${ITEM_ATLAS_SRC}')`;
+  el.style.backgroundRepeat = "no-repeat";
+  el.style.backgroundPosition = `${x}px ${y}px`;
+  el.style.backgroundSize = `${ITEM_ATLAS_WIDTH * scale}px ${ITEM_ATLAS_HEIGHT * scale}px`;
+  el.style.imageRendering = "pixelated";
+  el.style.flexShrink = "0";
+  el.style.border = "1px solid rgba(255,255,255,0.25)";
+  el.style.borderRadius = "3px";
+  return el;
+}
+
+function applyInventoryGridLayout(listEl) {
+  if (!listEl) return;
+  listEl.style.display = "grid";
+  listEl.style.gridTemplateColumns = "repeat(4, minmax(0, 1fr))";
+  listEl.style.gap = "8px";
+  listEl.style.padding = "0";
+  listEl.style.listStyle = "none";
+}
+
+function applyEquippedGridLayout(listEl) {
+  if (!listEl) return;
+  listEl.style.display = "grid";
+  listEl.style.gridTemplateColumns = "repeat(3, minmax(0, 1fr))";
+  listEl.style.gap = "8px";
+  listEl.style.padding = "0";
+  listEl.style.listStyle = "none";
+}
+
+function styleGridHeaderItem(li) {
+  li.style.gridColumn = "1 / -1";
+}
+
+function styleSquareInventoryItem(li, item) {
+  const rarity = String(item?.rarity || "common").toLowerCase();
+  const frameImg = rarity === "legendary" ? SLOT_FRAME_SELECTED : SLOT_FRAME_NORMAL;
+  li.style.display = "flex";
+  li.style.alignItems = "center";
+  li.style.justifyContent = "center";
+  li.style.width = "64px";
+  li.style.height = "64px";
+  li.style.padding = "0";
+  li.style.margin = "0";
+  li.style.border = "2px solid rgba(255,255,255,0.2)";
+  li.style.borderRadius = "6px";
+  li.style.backgroundImage = `url('${frameImg}')`;
+  li.style.backgroundSize = "100% 100%";
+  li.style.backgroundRepeat = "no-repeat";
+  li.style.backgroundPosition = "center";
+  if (rarity === "magic") {
+    li.style.borderColor = "#2563eb";
+    li.style.boxShadow = "0 0 0 1px rgba(37,99,235,0.6), inset 0 0 8px rgba(37,99,235,0.18)";
+  } else if (rarity === "rare") {
+    li.style.borderColor = "#facc15";
+    li.style.boxShadow = "0 0 0 1px rgba(250,204,21,0.65), inset 0 0 8px rgba(250,204,21,0.18)";
+  } else if (rarity === "legendary") {
+    li.style.borderColor = "#f59e0b";
+    li.style.boxShadow = "0 0 0 1px rgba(245,158,11,0.75), 0 0 10px rgba(245,158,11,0.25), inset 0 0 10px rgba(245,158,11,0.2)";
+  } else {
+    li.style.borderColor = "rgba(255,255,255,0.2)";
+    li.style.boxShadow = "inset 0 0 6px rgba(0,0,0,0.35)";
+  }
+}
+
+function attachSlotFrameHover(li, item) {
+  const rarity = String(item?.rarity || "common").toLowerCase();
+  const baseFrame = rarity === "legendary" ? SLOT_FRAME_SELECTED : SLOT_FRAME_NORMAL;
+  li.addEventListener("mouseenter", () => {
+    li.style.backgroundImage = `url('${SLOT_FRAME_SELECTED}')`;
+  });
+  li.addEventListener("mouseleave", () => {
+    li.style.backgroundImage = `url('${baseFrame}')`;
+  });
+}
+
+function createEmptySlotElement() {
+  const li = document.createElement("li");
+  li.className = "inventory-item inventory-empty-slot";
+  li.style.display = "flex";
+  li.style.alignItems = "center";
+  li.style.justifyContent = "center";
+  li.style.width = "64px";
+  li.style.height = "64px";
+  li.style.padding = "0";
+  li.style.margin = "0";
+  li.style.border = "2px solid rgba(255,255,255,0.15)";
+  li.style.borderRadius = "6px";
+  li.style.backgroundImage = `url('${SLOT_FRAME_NORMAL}')`;
+  li.style.backgroundSize = "100% 100%";
+  li.style.backgroundRepeat = "no-repeat";
+  li.style.backgroundPosition = "center";
+  li.style.opacity = "0.5";
+  li.style.cursor = "default";
+  li.title = "Empty slot";
+  return li;
+}
+
+function appendEmptySlotRow(listEl) {
+  for (let i = 0; i < INVENTORY_SLOTS_PER_ROW; i++) {
+    listEl.appendChild(createEmptySlotElement());
+  }
+}
+
+function styleEmptyEquippedSlot(li) {
+  li.className = "inventory-item inventory-empty-slot";
+  li.style.display = "flex";
+  li.style.alignItems = "center";
+  li.style.justifyContent = "center";
+  li.style.width = "64px";
+  li.style.height = "64px";
+  li.style.padding = "0";
+  li.style.margin = "0";
+  li.style.border = "2px solid rgba(255,255,255,0.15)";
+  li.style.borderRadius = "6px";
+  li.style.backgroundImage = `url('${SLOT_FRAME_NORMAL}')`;
+  li.style.backgroundSize = "100% 100%";
+  li.style.backgroundRepeat = "no-repeat";
+  li.style.backgroundPosition = "center";
+  li.style.opacity = "0.5";
+  li.style.cursor = "default";
+}
 
 export function applyGameInventoryMixin(Game) {
   Object.assign(Game.prototype, {
+    getVaultMasterSecureSet() {
+      if (!this.vaultMasterSecuredItemIds || typeof this.vaultMasterSecuredItemIds.has !== "function") {
+        this.vaultMasterSecuredItemIds = new Set();
+      }
+      return this.vaultMasterSecuredItemIds;
+    },
+
+    isVaultMasterSecured(item) {
+      if (!item) return false;
+      return this.getVaultMasterSecureSet().has(String(item.id));
+    },
+
+    toggleVaultMasterSecureItem(item) {
+      if (!hasTalent("vaultMaster")) return false;
+      if (!item || !this.isItemEquippable(item)) return false;
+      const set = this.getVaultMasterSecureSet();
+      const key = String(item.id);
+      if (set.has(key)) {
+        set.delete(key);
+        return true;
+      }
+      if (set.size >= 3) {
+        this.showNotification("Vault Master", "You can secure up to 3 items.");
+        return false;
+      }
+      set.add(key);
+      return true;
+    },
+
+    clearVaultMasterSecureForItem(item) {
+      if (!item) return;
+      this.getVaultMasterSecureSet().delete(String(item.id));
+    },
+
+    transferVaultMasterSecuredItemsOnDeath() {
+      if (!hasTalent("vaultMaster")) return;
+      if (this.vaultMasterSecureTransferred) return;
+      const secured = this.getVaultMasterSecureSet();
+      if (!secured || secured.size === 0) return;
+      const kept = [];
+      this.inventory = (this.inventory || []).filter((item) => {
+        if (!item || !this.isItemEquippable(item)) return true;
+        if (!secured.has(String(item.id))) return true;
+        addLegacyVaultItem({ ...item }, "Vault Master");
+        kept.push(item.name || item.type || "Item");
+        return false;
+      });
+      secured.clear();
+      this.vaultMasterSecureTransferred = true;
+    },
+
     getInventoryRaritySortRank(item) {
       const rarity = item?.rarity || "common";
       if (rarity === "legendary") return 0;
@@ -20,7 +294,7 @@ export function applyGameInventoryMixin(Game) {
     },
 
     getInventorySectionedItems() {
-      const sectionOrder = ["Weapon", "Helmet", "Body Armour", "Boots"];
+      const sectionOrder = ["Weapon", "Ring", "Helmet", "Body Armour", "Boots"];
       const sections = sectionOrder.map((title) => ({ title, items: [] }));
       const other = { title: "Other", items: [] };
       const byType = new Map(sections.map((s) => [s.title, s]));
@@ -59,8 +333,29 @@ export function applyGameInventoryMixin(Game) {
       });
     },
 
+    getAncestorSpiritDef(spiritItem) {
+      if (!spiritItem?.defId) return null;
+      return ANCESTOR_SPIRIT_DEFS[spiritItem.defId] || null;
+    },
+
+    getAncestorSpiritRarityColor(rarity) {
+      if (rarity === "legendary") return "#f97316";
+      if (rarity === "rare") return "#facc15";
+      if (rarity === "magic") return "#60a5fa";
+      return "#e2e8f0";
+    },
+
+    getSelectedAncestorSpirit() {
+      ensureRunInventoryState(this);
+      const selectedId = this.selectedAncestorSpiritId;
+      if (!selectedId) return null;
+      return this.runInventory.ancestorSpirits.find((s) => s?.id === selectedId) || null;
+    },
+
     showInventoryOverlay() {
       if (this.gameOver || this.levelUpChoices || this.currentEvent) return;
+      ensureRunInventoryState(this);
+      playSfx("inventoryOpen");
       this.inventoryOverlayOpen = true;
       this.paused = true;
       if (this.pauseToggleEl) {
@@ -70,6 +365,7 @@ export function applyGameInventoryMixin(Game) {
       const overlay = document.getElementById("inventory-overlay");
       if (overlay) overlay.classList.remove("hidden");
       this.populateInventoryOverlay();
+      this.setInventoryRightPageView(this.inventoryRightPageView || "crafting");
       
       // Track inventory open for tutorial (only once per step)
       if (this.tutorialSystem && !this.tutorialSystem.inventoryOpenedThisStep) {
@@ -79,8 +375,17 @@ export function applyGameInventoryMixin(Game) {
     },
 
     closeInventoryOverlay() {
+      if (this.inventorySellState?.active && this.currentEvent?.id === "npcEquipmentCollector") {
+        this.inventorySellState = null;
+        if (typeof this.closeEventOverlay === "function") this.closeEventOverlay();
+      }
+      if (this.rogueVaultState?.active && this.currentEvent?.id === "npcRogueVault") {
+        this.rogueVaultState = null;
+        if (typeof this.closeEventOverlay === "function") this.closeEventOverlay();
+      }
       this.inventoryOverlayOpen = false;
       this.paused = false;
+      playSfx("inventoryClose");
       if (this._craftingPreviewFadeTimer) {
         clearInterval(this._craftingPreviewFadeTimer);
         this._craftingPreviewFadeTimer = null;
@@ -98,35 +403,119 @@ export function applyGameInventoryMixin(Game) {
       const equippedList = document.getElementById("inventory-overlay-equipped-list");
       const invList = document.getElementById("inventory-overlay-inventory-list");
       if (!equippedList || !invList) return;
+      ensureRunInventoryState(this);
 
       equippedList.innerHTML = "";
-      const slots = ["Helmet", "Body Armour", "Weapon", "Boots"];
-      for (const slot of slots) {
+      applyEquippedGridLayout(equippedList);
+      for (const slot of EQUIPPED_GRID_SLOTS) {
         const li = document.createElement("li");
+        const slotLabelText = slot ? (EQUIPPED_SLOT_LABEL_BY_KEY[slot] || slot) : "Empty";
+        if (!slot) {
+          li.style.listStyle = "none";
+          li.style.width = "64px";
+          li.style.height = "64px";
+          li.style.padding = "0";
+          li.style.margin = "0";
+          li.style.background = "transparent";
+          li.style.border = "none";
+          li.style.boxShadow = "none";
+          li.style.pointerEvents = "none";
+          li.style.opacity = "0";
+          equippedList.appendChild(li);
+          continue;
+        }
         const item = this.equipment[slot];
         if (item) {
-          const color = getItemRarityColor(item);
-          const baseKey = EQUIPMENT_BASE_STAT[slot];
-          const baseVal = item.stats?.[baseKey] ?? 0;
-          if (item.rarity === "legendary") li.classList.add("item-legendary");
-          li.innerHTML = `<span style="color:${color}">${escapeHtml(item.name)}</span> (+${baseVal})`;
+          ensureItemVessels(item);
+          const iconEl = createItemSpriteElement(item, 56);
+          if (iconEl) li.appendChild(iconEl);
+          styleSquareInventoryItem(li, item);
+          attachSlotFrameHover(li, item);
+          li.title = `${slotLabelText}: ${item.name}`;
         } else {
-          li.textContent = `${slot}: None`;
+          styleEmptyEquippedSlot(li);
+          li.title = `${slotLabelText}: Empty`;
         }
         if (item) {
           li.dataset.hasItem = "1";
           li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
           li.addEventListener("mouseleave", hideItemTooltip);
-          li.addEventListener("click", () => {
-            if (item) {
-              this.inventory.push(item);
-              this.equipment[slot] = null;
-              this.updateInventoryUI();
-              this.updateEquippedUI();
-              this.populateInventoryOverlay();
-              this.recalculateStats();
+          if (!this.inventorySellState?.active) {
+            li.addEventListener("click", () => {
+              if (item) {
+                this.inventory.push(item);
+                this.equipment[slot] = null;
+                this.updateInventoryUI();
+                this.updateEquippedUI();
+                this.populateInventoryOverlay();
+                this.recalculateStats();
+              }
+            });
+          }
+
+          if ((item.vesselsMax || 0) > 0) {
+            const vesselsWrap = document.createElement("div");
+            vesselsWrap.className = "inventory-vessels-wrap";
+            vesselsWrap.style.marginTop = "6px";
+            vesselsWrap.style.display = "flex";
+            vesselsWrap.style.flexWrap = "wrap";
+            vesselsWrap.style.gap = "6px";
+
+            const label = document.createElement("span");
+            label.textContent = `Vessels ${item.vessels.filter(Boolean).length}/${item.vesselsMax}:`;
+            label.style.fontSize = "12px";
+            label.style.opacity = "0.9";
+            vesselsWrap.appendChild(label);
+
+            for (let i = 0; i < item.vessels.length; i++) {
+              const vesselEntry = item.vessels[i];
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "event-choice-btn";
+              btn.style.padding = "2px 6px";
+              btn.style.fontSize = "11px";
+              btn.style.minWidth = "48px";
+              if (vesselEntry?.spiritId) {
+                const spirit = this.runInventory.ancestorSpiritRegistry[vesselEntry.spiritId];
+                const def = this.getAncestorSpiritDef(spirit);
+                btn.textContent = def?.name || spirit?.defId || "Spirit";
+                btn.title = "Click to remove spirit";
+              } else {
+                btn.textContent = "Empty";
+                btn.title = "Click to socket selected spirit";
+              }
+              btn.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                if (vesselEntry?.spiritId) {
+                  const result = removeSpiritFromItemVessel(this, item, i);
+                  if (!result.ok && typeof this.showNotification === "function") {
+                    this.showNotification("Vessels", result.reason);
+                  }
+                  this.selectedAncestorSpiritId = this.getSelectedAncestorSpirit()?.id || null;
+                } else {
+                  const selected = this.getSelectedAncestorSpirit();
+                  if (!selected) {
+                    if (typeof this.showNotification === "function") {
+                      this.showNotification("Vessels", "Select an ancestor spirit first.");
+                    }
+                    return;
+                  }
+                  const result = socketSpiritIntoItemVessel(this, item, i, selected.id);
+                  if (!result.ok && typeof this.showNotification === "function") {
+                    this.showNotification("Vessels", result.reason);
+                  }
+                  if (!this.getSelectedAncestorSpirit()) this.selectedAncestorSpiritId = null;
+                }
+                this.recalculateStats();
+                this.updateInventoryUI();
+                this.updateEquippedUI();
+                this.populateInventoryOverlay();
+              });
+              vesselsWrap.appendChild(btn);
             }
-          });
+            li.appendChild(vesselsWrap);
+          }
         } else {
           li.classList.add("inventory-overlay-empty");
         }
@@ -134,50 +523,149 @@ export function applyGameInventoryMixin(Game) {
       }
 
       invList.innerHTML = "";
-      if (this.inventory.length === 0) {
-        const li = document.createElement("li");
-        li.className = "inventory-overlay-empty";
-        li.textContent = "No items in inventory";
-        invList.appendChild(li);
+      applyInventoryGridLayout(invList);
+      const sections = this.getInventorySectionedItems();
+      for (const section of sections) {
+        const header = document.createElement("li");
+        header.className = "inventory-section-title";
+        header.textContent = section.title;
+        styleGridHeaderItem(header);
+        invList.appendChild(header);
+
+        if (section.items.length === 0) {
+          appendEmptySlotRow(invList);
+          continue;
+        }
+
+        for (const item of section.items) {
+          const li = document.createElement("li");
+          const sellPrice = this.getSellPriceForItem(item);
+          if (item.type !== "Upgrade Card") {
+            const color = getItemRarityColor(item);
+            const baseKey = EQUIPMENT_BASE_STAT[item.type];
+            const baseVal = item.stats?.[baseKey] ?? 0;
+            if (item.rarity === "legendary") li.classList.add("item-legendary");
+            const forgedTag = item.blacksmithUpgraded ? ` <span style="color:#f59e0b;font-weight:700">(Forged)</span>` : "";
+            const sellLabel = sellPrice != null ? ` <span class="inventory-item-sell-price" style="color:#facc15">[Sell ${sellPrice}g]</span>` : "";
+            const selectedSellLabel = this.inventorySellState?.selectedItemKey === this.getInventorySellKey(item) ? ` <span style="color:#86efac">[Selected]</span>` : "";
+            const sendLabel = this.rogueVaultState?.active ? ` <span style="color:#86efac">[Send 150g]</span>` : "";
+            const secureLabel = hasTalent("vaultMaster")
+              ? (this.isVaultMasterSecured(item)
+                  ? ` <span style="color:#93c5fd">[Secured]</span>`
+                  : ` <span style="color:#94a3b8">[Right-click: Secure]</span>`)
+              : "";
+            const iconEl = createItemSpriteElement(item, 56);
+            if (iconEl) li.appendChild(iconEl);
+            li.title = item.type === "Ring"
+              ? `${item.name} (${item.type})`
+              : `${item.name} (${item.type}) +${baseVal}`;
+            if (this.inventorySellState?.active && sellPrice != null) li.title += ` [Sell ${sellPrice}g]`;
+            if (this.inventorySellState?.selectedItemKey === this.getInventorySellKey(item)) li.title += " [Selected]";
+            if (this.rogueVaultState?.active) li.title += " [Send 150g]";
+            if (hasTalent("vaultMaster") && this.isVaultMasterSecured(item)) li.title += " [Secured]";
+            void color; void forgedTag; void sellLabel; void selectedSellLabel; void sendLabel; void secureLabel;
+          } else {
+            li.textContent = this.rogueVaultState?.active ? `${item.name} [Send 150g]` : item.name;
+            styleGridHeaderItem(li);
+          }
+          if (item.type !== "Upgrade Card") {
+            styleSquareInventoryItem(li, item);
+            attachSlotFrameHover(li, item);
+          }
+          li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
+          li.addEventListener("mouseleave", hideItemTooltip);
+          if (hasTalent("vaultMaster") && !this.inventorySellState?.active && !this.rogueVaultState?.active) {
+            li.addEventListener("contextmenu", (e) => {
+              e.preventDefault();
+              if (this.toggleVaultMasterSecureItem(item) && this.inventoryOverlayOpen) this.populateInventoryOverlay();
+            });
+          }
+          li.addEventListener("click", () => this.handleInventoryItemClick(item));
+          invList.appendChild(li);
+        }
+      }
+
+      const spiritsHeader = document.createElement("li");
+      spiritsHeader.className = "inventory-section-title";
+      spiritsHeader.textContent = "Ancestor Spirits";
+      styleGridHeaderItem(spiritsHeader);
+      invList.appendChild(spiritsHeader);
+      const spirits = [...this.runInventory.ancestorSpirits];
+      spirits.sort((a, b) => {
+        const rank = (r) => (r === "legendary" ? 0 : r === "rare" ? 1 : r === "magic" ? 2 : 3);
+        const rr = rank(a?.rarity) - rank(b?.rarity);
+        if (rr !== 0) return rr;
+        const da = this.getAncestorSpiritDef(a);
+        const db = this.getAncestorSpiritDef(b);
+        return String(da?.name || a?.defId || "").localeCompare(String(db?.name || b?.defId || ""));
+      });
+      if (spirits.length === 0) {
+        appendEmptySlotRow(invList);
       } else {
-        const sections = this.getInventorySectionedItems();
-        for (const section of sections) {
-          const header = document.createElement("li");
-          header.className = "inventory-section-title";
-          header.textContent = section.title;
-          invList.appendChild(header);
-
-          if (section.items.length === 0) {
-            const empty = document.createElement("li");
-            empty.className = "inventory-overlay-empty";
-            empty.textContent = "No items";
-            invList.appendChild(empty);
-            continue;
+        for (const spirit of spirits) {
+          const def = this.getAncestorSpiritDef(spirit);
+          const li = document.createElement("li");
+          const isSelected = this.selectedAncestorSpiritId === spirit.id;
+          if (isSelected) li.classList.add("selected");
+          const color = this.getAncestorSpiritRarityColor(spirit.rarity);
+          const clans = Array.isArray(spirit.clans) && spirit.clans.length > 0 ? ` [${spirit.clans.join(", ")}]` : "";
+          const spriteSrc = getAncestorSpriteSrc(spirit.clans || def?.clans || []);
+          if (spriteSrc) {
+            const img = document.createElement("img");
+            img.src = spriteSrc;
+            img.alt = `${def?.name || spirit.defId} icon`;
+            img.width = 16;
+            img.height = 16;
+            img.style.verticalAlign = "middle";
+            img.style.marginRight = "6px";
+            li.appendChild(img);
           }
-
-          for (const item of section.items) {
-            const li = document.createElement("li");
-            if (item.type !== "Upgrade Card") {
-              const color = getItemRarityColor(item);
-              const baseKey = EQUIPMENT_BASE_STAT[item.type];
-              const baseVal = item.stats?.[baseKey] ?? 0;
-              if (item.rarity === "legendary") li.classList.add("item-legendary");
-              li.innerHTML = `<span style="color:${color}">${escapeHtml(item.name)}</span> (${escapeHtml(item.type)}) +${baseVal}`;
-            } else {
-              li.textContent = item.name;
-            }
-            li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
-            li.addEventListener("mouseleave", hideItemTooltip);
-            li.addEventListener("click", () => this.handleInventoryItemClick(item));
-            invList.appendChild(li);
+          const nameSpan = document.createElement("span");
+          nameSpan.style.color = color;
+          nameSpan.textContent = def?.name || spirit.defId;
+          li.appendChild(nameSpan);
+          li.appendChild(document.createTextNode(clans));
+          if (isSelected) {
+            const selectedSpan = document.createElement("span");
+            selectedSpan.style.color = "#86efac";
+            selectedSpan.textContent = " [Selected]";
+            li.appendChild(selectedSpan);
           }
+          li.title = "Click to select for socketing";
+          styleGridHeaderItem(li);
+          li.addEventListener("click", () => {
+            this.selectedAncestorSpiritId = isSelected ? null : spirit.id;
+            this.populateInventoryOverlay();
+          });
+          invList.appendChild(li);
         }
       }
       this.populateCraftingTab();
+      this.populateInventoryStatsPanel();
+    },
+
+    setInventoryRightPageView(view) {
+      const next = view === "stats" ? "stats" : "crafting";
+      this.inventoryRightPageView = next;
+      const crafting = document.getElementById("inventory-overlay-crafting");
+      const stats = document.getElementById("inventory-overlay-stats");
+      const tabCrafting = document.getElementById("inventory-right-tab-crafting");
+      const tabStats = document.getElementById("inventory-right-tab-stats");
+      if (crafting) crafting.classList.toggle("hidden", next !== "crafting");
+      if (stats) stats.classList.toggle("hidden", next !== "stats");
+      if (tabCrafting) tabCrafting.classList.toggle("active", next === "crafting");
+      if (tabStats) tabStats.classList.toggle("active", next === "stats");
+      if (next === "crafting") this.populateCraftingTab();
+      else this.populateInventoryStatsPanel();
+    },
+
+    populateInventoryStatsPanel() {
+      if (typeof this.updateStatsUI === "function") this.updateStatsUI();
     },
 
     getLivingItem() {
-      for (const slot of ["Helmet", "Body Armour", "Weapon", "Boots"]) {
+      for (const slotDef of EQUIPPED_SLOT_DEFS) {
+        const slot = slotDef.key;
         const item = this.equipment[slot];
         if (item?.livingItem) return item;
       }
@@ -186,13 +674,18 @@ export function applyGameInventoryMixin(Game) {
 
     getCraftableEquipmentItems() {
       const items = [];
-      for (const slot of ["Helmet", "Body Armour", "Weapon", "Boots"]) {
+      for (const slotDef of EQUIPPED_SLOT_DEFS) {
+        const slot = slotDef.key;
         const item = this.equipment[slot];
-        if (item && item.rarity !== "legendary" && !item.livingItem) items.push({ item, source: "equipped", slot });
+        if (isItemCraftable(item)) {
+          ensureItemVessels(item);
+          items.push({ item, source: "equipped", slot });
+        }
       }
       for (let i = 0; i < this.inventory.length; i++) {
         const item = this.inventory[i];
-        if (item.type !== "Upgrade Card" && item.rarity !== "legendary" && !item.livingItem && (item.type === "Helmet" || item.type === "Body Armour" || item.type === "Weapon" || item.type === "Boots")) {
+        if (isItemCraftable(item)) {
+          ensureItemVessels(item);
           items.push({ item, source: "inventory", index: i });
         }
       }
@@ -203,6 +696,15 @@ export function applyGameInventoryMixin(Game) {
       const grid = document.getElementById("cube-inventory-grid");
       const itemList = document.getElementById("crafting-item-list");
       if (!grid || !itemList) return;
+      for (let t = 1; t <= 3; t++) {
+        const oldKey = `socketCubeT${t}`;
+        const legacyCount = this.cubeInventory[oldKey] || 0;
+        if (legacyCount > 0) {
+          const newKey = `vesselCubeT${t}`;
+          this.cubeInventory[newKey] = (this.cubeInventory[newKey] || 0) + legacyCount;
+          delete this.cubeInventory[oldKey];
+        }
+      }
 
       grid.innerHTML = "";
       const allCubes = [];
@@ -225,12 +727,12 @@ export function applyGameInventoryMixin(Game) {
         const div = document.createElement("div");
         div.className = `cube-slot ${c.tier ? `tier-${c.tier}` : "tier-legendary"} ${this.craftingSelectedCube === c.key ? "selected" : ""}`;
         div.dataset.cubeKey = c.key;
-        const icon = c.tier ? (c.id.includes("magic") ? "💎" : c.id.includes("rare") ? "⭐" : c.id.includes("reforge") ? "🔧" : "✨") : "💎";
+        const icon = c.tier ? (c.id.includes("magic") ? "" : c.id.includes("rare") ? "" : c.id.includes("reforge") ? "" : "") : "";
         const tierLabel = c.tier ? ` T${c.tier}` : "";
         div.innerHTML = `
           <span class="cube-icon">${icon}${tierLabel}</span>
           <span class="cube-slot-name">${escapeHtml(c.label)}</span>
-          <span class="cube-slot-count">×${count}</span>
+          <span class="cube-slot-count">${count}</span>
         `;
         div.addEventListener("click", () => this.selectCraftingCube(c.key));
         grid.appendChild(div);
@@ -238,6 +740,10 @@ export function applyGameInventoryMixin(Game) {
 
       itemList.innerHTML = "";
       const craftables = this.getCraftableEquipmentItems();
+      if (this.craftingSelectedItem && !craftables.some((entry) => entry.item === this.craftingSelectedItem)) {
+        this.craftingSelectedItem = null;
+        this.craftingItemSource = null;
+      }
       for (const { item, source, slot, index } of craftables) {
         const li = document.createElement("li");
         const color = getItemRarityColor(item);
@@ -245,7 +751,8 @@ export function applyGameInventoryMixin(Game) {
         const baseVal = item.stats?.[baseKey] ?? 0;
         const loc = source === "equipped" ? `${slot}` : "Inventory";
         if (item.rarity === "legendary") li.classList.add("item-legendary");
-        li.innerHTML = `<span style="color:${color}">${escapeHtml(item.name)}</span> (+${baseVal}) [${loc}]`;
+        const statText = item.type === "Ring" ? "Unique Effect" : `+${baseVal}`;
+        li.innerHTML = `<span style="color:${color}">${escapeHtml(item.name)}</span> (${statText}) [${loc}]`;
         li.classList.toggle("selected", this.craftingSelectedItem === item && this.craftingItemSource?.source === source && (source === "inventory" ? this.craftingItemSource.index === index : this.craftingItemSource.slot === slot));
         li.addEventListener("click", () => this.selectCraftingItem(item, source, slot, index));
         li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
@@ -263,8 +770,9 @@ export function applyGameInventoryMixin(Game) {
     },
 
     selectCraftingCube(cubeKey) {
-      if ((this.cubeInventory[cubeKey] || 0) === 0) return;
-      this.craftingSelectedCube = cubeKey;
+      const normalizedKey = String(cubeKey || "").replace(/^socketCube/, "vesselCube");
+      if ((this.cubeInventory[normalizedKey] || 0) === 0) return;
+      this.craftingSelectedCube = normalizedKey;
       this.populateCraftingTab();
     },
 
@@ -298,12 +806,13 @@ export function applyGameInventoryMixin(Game) {
       }
 
       if (this.craftingSelectedCube) {
-        const tierMatch = this.craftingSelectedCube.match(/T(\d)$/);
+        const normalizedCubeKey = this.craftingSelectedCube.replace(/^socketCube/, "vesselCube");
+        const tierMatch = normalizedCubeKey.match(/T(\d)$/);
         const tier = tierMatch ? parseInt(tierMatch[1], 10) : 1;
-        const legCube = LEGENDARY_CUBES.find((c) => c.id === this.craftingSelectedCube);
-        const modCube = !legCube && MODIFIER_CUBES.find((c) => `${c.id}T${tier}` === this.craftingSelectedCube || this.craftingSelectedCube.startsWith(c.id));
-        const upgCube = !legCube && UPGRADE_CUBES.find((c) => this.craftingSelectedCube === `${c.id}T${tier}`);
-        const cubeLabel = legCube ? legCube.label : (modCube ? `${modCube.label} T${tier}` : (upgCube ? `${upgCube.label} T${tier}` : this.craftingSelectedCube));
+        const legCube = LEGENDARY_CUBES.find((c) => c.id === normalizedCubeKey);
+        const modCube = !legCube && MODIFIER_CUBES.find((c) => `${c.id}T${tier}` === normalizedCubeKey || normalizedCubeKey.startsWith(c.id));
+        const upgCube = !legCube && UPGRADE_CUBES.find((c) => normalizedCubeKey === `${c.id}T${tier}`);
+        const cubeLabel = legCube ? legCube.label : (modCube ? `${modCube.label} T${tier}` : (upgCube ? `${upgCube.label} T${tier}` : normalizedCubeKey));
         cubeEl.textContent = cubeLabel;
         cubeEl.classList.add("has-cube");
       } else {
@@ -315,14 +824,17 @@ export function applyGameInventoryMixin(Game) {
       let canCraft = false;
       if (this.craftingSelectedItem && this.craftingSelectedCube) {
         const item = this.craftingSelectedItem;
-        if (item.rarity === "legendary") {
-          preview = "Legendary items cannot be further crafted.";
+        const normalizedCubeKey = this.craftingSelectedCube.replace(/^socketCube/, "vesselCube");
+        const legCube = LEGENDARY_CUBES.find((c) => c.id === normalizedCubeKey);
+        const [, tierStr] = normalizedCubeKey.match(/(.+)T(\d)$/)?.slice(1) || [null, "1"];
+        const tier = parseInt(tierStr || "1", 10);
+        const modCube = !legCube && MODIFIER_CUBES.find((c) => normalizedCubeKey.startsWith(c.id));
+        const upgCube = !legCube && UPGRADE_CUBES.find((c) => normalizedCubeKey.startsWith(c.id));
+        const isVesselCube = !!upgCube && upgCube.id === "vesselCube";
+
+        if (item.rarity === "legendary" && !isVesselCube) {
+          preview = "Legendary items cannot be further crafted with this cube.";
         } else {
-          const legCube = LEGENDARY_CUBES.find((c) => c.id === this.craftingSelectedCube);
-          const [cubeId, tierStr] = this.craftingSelectedCube.match(/(.+)T(\d)$/)?.slice(1) || [null, "1"];
-          const tier = parseInt(tierStr || "1", 10);
-          const modCube = !legCube && MODIFIER_CUBES.find((c) => this.craftingSelectedCube.startsWith(c.id));
-          const upgCube = !legCube && UPGRADE_CUBES.find((c) => this.craftingSelectedCube.startsWith(c.id));
 
           if (legCube) {
             if (item.type === "Upgrade Card") {
@@ -343,16 +855,17 @@ export function applyGameInventoryMixin(Game) {
               const existing = item.modifiers?.find((m) => m.id === modCube.modifierId);
               const maxMods = item.rarity === "common" ? 0 : item.rarity === "magic" ? 2 : 4;
               const currentCount = item.modifiers?.length || 0;
-              const r = MODIFIER_CUBE_TIERS[tier - 1] || MODIFIER_CUBE_TIERS[0];
+              const r = getModifierRollRangeForTier(tier, modCube.modifierId);
               const range = (r.min * 100).toFixed(0) + "-" + (r.max * 100).toFixed(0) + "%";
               if (existing) {
-                preview = `Replaces ${modCube.modifierLabel} with new value (${range}).`;
+                preview = `${modCube.modifierLabel} already exists on this item. Choose a different cube.`;
               } else if (currentCount < maxMods) {
                 preview = `Adds ${modCube.modifierLabel} (${range}).`;
+                canCraft = true;
               } else {
                 preview = `Replaces a random modifier with ${modCube.modifierLabel} (${range}).`;
+                canCraft = true;
               }
-              canCraft = true;
             }
           } else if (upgCube) {
             const item = this.craftingSelectedItem;
@@ -364,15 +877,17 @@ export function applyGameInventoryMixin(Game) {
               preview = "Rare Cube can only be used on Blue (magic) items.";
             } else if (upgCube.id === "reforgeCube" && (item.rarity === "common" || !item.rarity)) {
               preview = "Reforge Cube can only be used on Blue or Yellow items.";
-            } else if (upgCube.id === "socketCube") {
-              const currentSockets = item.sockets ?? 0;
-              if (currentSockets >= 2) {
-                preview = "Item already has maximum sockets (2).";
+            } else if (upgCube.id === "vesselCube") {
+              ensureItemVessels(item);
+              const vesselCap = getVesselCapForRarity(item.rarity);
+              const currentVessels = item.vesselsMax || 0;
+              if (item.rarity === "common" || vesselCap <= 0) {
+                preview = "Common items cannot be upgraded with Vessel Cube.";
+              } else if (currentVessels >= vesselCap) {
+                preview = `Item already has maximum vessels (${vesselCap}).`;
               } else {
-                const socketMasteryBonus = hasTalent("socketMastery") ? " (20% chance to add 2 sockets)" : "";
-                const maxPossible = currentSockets === 0 && hasTalent("socketMastery") ? 2 : 1;
-                const newSockets = Math.min(2, currentSockets + maxPossible);
-                preview = `Adds 1 socket${socketMasteryBonus}. Item will have ${newSockets} socket${newSockets !== 1 ? "s" : ""}.`;
+                const newVessels = currentVessels + 1;
+                preview = `Adds +1 vessel slot. Item will have ${newVessels}/${vesselCap} vessels.`;
                 canCraft = true;
               }
             } else {
@@ -391,8 +906,7 @@ export function applyGameInventoryMixin(Game) {
 
     executeCraft() {
       if (!this.craftingSelectedItem || !this.craftingSelectedCube) return;
-      if (this.craftingSelectedItem.rarity === "legendary") return;
-      const cubeKey = this.craftingSelectedCube;
+      const cubeKey = this.craftingSelectedCube.replace(/^socketCube/, "vesselCube");
       const count = this.cubeInventory[cubeKey] || 0;
       if (count === 0) return;
 
@@ -400,22 +914,29 @@ export function applyGameInventoryMixin(Game) {
       const legCube = LEGENDARY_CUBES.find((c) => c.id === cubeKey);
       const modCube = !legCube && MODIFIER_CUBES.find((c) => cubeKey.startsWith(c.id));
       const upgCube = !legCube && UPGRADE_CUBES.find((c) => cubeKey.startsWith(c.id));
+      let crafted = false;
+      const item = this.craftingSelectedItem;
 
       if (legCube) {
-        const item = this.craftingSelectedItem;
         if (item.rarity !== "rare") return;
         this.applyLegendaryCube(item, legCube);
+        crafted = true;
       } else if (modCube) {
-        const item = this.craftingSelectedItem;
+        if (item.rarity === "legendary") return;
         if (item.rarity === "common" || !item.rarity) return;
+        if (item.modifiers?.some((m) => m.id === modCube.modifierId)) return;
         this.applyModifierCube(item, modCube, tier);
+        crafted = true;
       } else if (upgCube) {
-        if (upgCube.id === "socketCube") {
-          this.applySocketCube(this.craftingSelectedItem);
+        if (upgCube.id === "vesselCube") {
+          crafted = this.applyVesselCube(item);
         } else {
-          this.applyUpgradeCube(this.craftingSelectedItem, upgCube, tier);
+          if (item.rarity === "legendary") return;
+          this.applyUpgradeCube(item, upgCube, tier);
+          crafted = true;
         }
       }
+      if (!crafted) return;
 
       const cascadeSave = hasTalent("cubeCascade") && Math.random() < 0.1;
       if (!cascadeSave) {
@@ -441,9 +962,16 @@ export function applyGameInventoryMixin(Game) {
 
     applyModifierCube(item, cubeDef, tier) {
       item.modifiers = item.modifiers || [];
-      const value = rollModifierForTier(tier);
+      const value = rollModifierForTier(tier, cubeDef.modifierId);
       const poolEntry = MODIFIER_POOL.find((m) => m.id === cubeDef.modifierId);
-      const modEntry = { id: cubeDef.modifierId, label: cubeDef.modifierLabel, statKey: poolEntry?.statKey || cubeDef.modifierId.replace("Percent", ""), value, addedAt: Date.now() };
+      const modEntry = {
+        id: cubeDef.modifierId,
+        label: cubeDef.modifierLabel,
+        statKey: poolEntry?.statKey || cubeDef.modifierId.replace("Percent", ""),
+        value,
+        appliesTo: poolEntry?.appliesTo,
+        addedAt: Date.now()
+      };
 
       const existingIdx = item.modifiers.findIndex((m) => m.id === cubeDef.modifierId);
       const maxMods = item.rarity === "magic" ? 2 : item.rarity === "rare" ? 4 : 0;
@@ -453,6 +981,14 @@ export function applyGameInventoryMixin(Game) {
         item.modifiers.push(modEntry);
       } else {
         const replaceIdx = Math.floor(Math.random() * item.modifiers.length);
+        const removed = item.modifiers[replaceIdx];
+        if (removed) {
+          modEntry.removedModifier = {
+            id: removed.id,
+            label: removed.label,
+            value: removed.value
+          };
+        }
         item.modifiers[replaceIdx] = modEntry;
       }
       this.rebuildItemStats(item);
@@ -471,32 +1007,41 @@ export function applyGameInventoryMixin(Game) {
       this.rebuildItemStats(item);
     },
 
-    applySocketCube(item) {
-      // Socket Cubes add sockets but cannot exceed 2 sockets
-      const currentSockets = item.sockets ?? 0;
-      if (currentSockets >= 2) return; // Already at max
-      
-      let add = 1;
-      // socketMastery talent: 20% chance to add 2 sockets instead of 1
-      if (hasTalent("socketMastery") && Math.random() < 0.2) {
-        add = 2;
+    applyVesselCube(item) {
+      const result = addVesselSlotToItem(item);
+      if (!result.ok) {
+        if (typeof this.showNotification === "function") {
+          this.showNotification("Vessel Cube", result.reason);
+        }
+        return false;
       }
-      
-      // Cap at 2 sockets (Socket Cubes cannot exceed 2)
-      item.sockets = Math.min(2, currentSockets + add);
-      this.rebuildItemStats(item);
+      recomputeAncestorState(this);
+      return true;
+    },
+
+    applySocketCube(item) {
+      return this.applyVesselCube(item);
     },
 
     applyUpgradeCube(item, cubeDef, tier) {
+      const rollValueForMod = (m) => {
+        if (item.type === "Ring" && Number.isFinite(m?.min) && Number.isFinite(m?.max)) {
+          return m.min + Math.random() * (m.max - m.min);
+        }
+        if (LOCAL_STAT_SCALE_MOD_IDS.includes(m.id)) {
+          return rollLocalStatScaleValueForDifficulty(getCubeDifficultyForTier(tier));
+        }
+        return rollModifierForTier(tier, m.id);
+      };
       if (cubeDef.id === "magicCube") {
         item.rarity = "magic";
         item.modifiers = item.modifiers || [];
-        const pool = getModifierPoolForType(item.type);
+        const pool = getCraftModifierPoolForItem(item);
         for (let i = 0; i < 2; i++) {
           const idx = Math.floor(Math.random() * pool.length);
           const m = pool.splice(idx, 1)[0];
-          const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValue() : rollModifierForTier(tier);
-          item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, addedAt: Date.now() });
+          const val = rollValueForMod(m);
+          item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, appliesTo: m.appliesTo, addedAt: Date.now() });
         }
         const hasPrefix = NAME_PREFIXES.some((p) => item.name.startsWith(p + " "));
         const hasSuffix = NAME_SUFFIXES.some((s) => item.name.includes(" " + s));
@@ -510,14 +1055,14 @@ export function applyGameInventoryMixin(Game) {
       } else if (cubeDef.id === "rareCube") {
         item.rarity = "rare";
         item.modifiers = item.modifiers || [];
-        const pool = getModifierPoolForType(item.type).filter((p) => !item.modifiers.some((m) => m.id === p.id));
+        const pool = getCraftModifierPoolForItem(item).filter((p) => !item.modifiers.some((m) => m.id === p.id));
         const extraMods = hasTalent("transmutation") && Math.random() < 0.05 ? 3 : 2;
         for (let i = 0; i < extraMods; i++) {
           if (pool.length === 0) break;
           const idx = Math.floor(Math.random() * pool.length);
           const m = pool.splice(idx, 1)[0];
-          const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValue() : rollModifierForTier(tier);
-          item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, addedAt: Date.now() });
+          const val = rollValueForMod(m);
+          item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, appliesTo: m.appliesTo, addedAt: Date.now() });
         }
         const hasPrefix = NAME_PREFIXES.some((p) => item.name.startsWith(p + " "));
         const hasSuffix = NAME_SUFFIXES.some((s) => item.name.includes(" " + s));
@@ -525,24 +1070,30 @@ export function applyGameInventoryMixin(Game) {
         if (!hasSuffix) item.name = `${item.name} ${NAME_SUFFIXES[Math.floor(Math.random() * NAME_SUFFIXES.length)]}`;
       } else if (cubeDef.id === "reforgeCube") {
         item.modifiers = [];
-        const pool = getModifierPoolForType(item.type);
+        const pool = getCraftModifierPoolForItem(item);
         const count = item.rarity === "magic" ? 2 : 4;
         for (let i = 0; i < count; i++) {
           const idx = Math.floor(Math.random() * pool.length);
           const m = pool.splice(idx, 1)[0];
-          const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValue() : rollModifierForTier(tier);
-          item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, addedAt: Date.now() });
+          const val = rollValueForMod(m);
+          item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, appliesTo: m.appliesTo, addedAt: Date.now() });
         }
       }
+      ensureItemVessels(item);
       this.rebuildItemStats(item);
     },
 
     rebuildItemStats(item) {
       const baseKey = EQUIPMENT_BASE_STAT[item.type];
       if (!item.baseStat && item.stats) {
-        item.baseStat = { [baseKey]: item.stats[baseKey] ?? 0 };
+        item.baseStat = {};
+        if (baseKey) item.baseStat[baseKey] = item.stats[baseKey] ?? 0;
         const sec = EQUIPMENT_SECONDARY_BASE[item.type];
         if (sec) item.baseStat[sec.statKey] = item.stats[sec.statKey] ?? 0;
+        if (item.type === "Boots") {
+          if (item.stats.maxHealth) item.baseStat.maxHealth = item.stats.maxHealth;
+          if (item.stats.defense) item.baseStat.defense = item.stats.defense;
+        }
       }
       const stats = { ...(item.baseStat || {}) };
       for (const m of item.modifiers || []) {
@@ -566,11 +1117,36 @@ export function applyGameInventoryMixin(Game) {
     handleInventoryItemClick(item) {
       const index = this.inventory.indexOf(item);
       if (index === -1) return;
+      if (this.inventorySellState?.active) {
+        this.selectInventoryItemForSale(index, item);
+        return;
+      }
+      if (this.rogueVaultState?.active) {
+        this.sendInventoryItemToLegacyVault(index, item);
+        return;
+      }
 
       if (this.isUpgradeCard(item)) {
         this.equipUpgradeCardAtIndex(index);
       } else if (this.isItemEquippable(item)) {
-        const slot = item.type;
+        this.clearVaultMasterSecureForItem(item);
+        ensureItemVessels(item);
+        if (item.type === "Ring" && item.ringId) {
+          const ring1Id = this.equipment.Ring1?.ringId || null;
+          const ring2Id = this.equipment.Ring2?.ringId || null;
+          if (ring1Id === item.ringId || ring2Id === item.ringId) {
+            if (typeof this.showNotification === "function") {
+              this.showNotification("Rings", "You cannot equip two of the same ring.");
+            }
+            return;
+          }
+        }
+        let slot = item.type;
+        if (item.type === "Ring") {
+          if (!this.equipment.Ring1) slot = "Ring1";
+          else if (!this.equipment.Ring2) slot = "Ring2";
+          else slot = "Ring1";
+        }
         const currentlyEquipped = this.equipment[slot];
         if (currentlyEquipped) this.inventory.push(currentlyEquipped);
         this.equipment[slot] = item;
@@ -587,7 +1163,8 @@ export function applyGameInventoryMixin(Game) {
         item.type === "Helmet" ||
         item.type === "Boots" ||
         item.type === "Body Armour" ||
-        item.type === "Weapon"
+        item.type === "Weapon" ||
+        item.type === "Ring"
       );
     },
 
@@ -602,27 +1179,19 @@ export function applyGameInventoryMixin(Game) {
     updateInventoryUI() {
       if (!this.inventoryListEl) return;
       this.inventoryListEl.innerHTML = "";
-
-      if (this.inventory.length === 0) {
-        const li = document.createElement("li");
-        li.className = "inventory-empty";
-        li.textContent = "No items collected";
-        this.inventoryListEl.appendChild(li);
-        return;
-      }
+      applyInventoryGridLayout(this.inventoryListEl);
+      const canAnytimeSell = typeof this.canSellInventoryAnytime === "function" && this.canSellInventoryAnytime();
 
       const sections = this.getInventorySectionedItems();
       for (const section of sections) {
         const header = document.createElement("li");
         header.className = "inventory-section-title";
         header.textContent = section.title;
+        styleGridHeaderItem(header);
         this.inventoryListEl.appendChild(header);
 
         if (section.items.length === 0) {
-          const empty = document.createElement("li");
-          empty.className = "inventory-empty";
-          empty.textContent = "No items";
-          this.inventoryListEl.appendChild(empty);
+          appendEmptySlotRow(this.inventoryListEl);
           continue;
         }
 
@@ -636,49 +1205,227 @@ export function applyGameInventoryMixin(Game) {
           const nameSpan = document.createElement("span");
           nameSpan.className = "inventory-item-name" + (item.rarity === "legendary" ? " inventory-item-legendary" : "");
           nameSpan.style.color = getItemRarityColor(item);
-          nameSpan.textContent = item.name;
+          nameSpan.textContent = item.blacksmithUpgraded ? `${item.name} (Forged)` : item.name;
+          if (hasTalent("vaultMaster") && this.isVaultMasterSecured(item)) {
+            nameSpan.textContent += " [Secured]";
+          }
 
           const typeSpan = document.createElement("span");
           typeSpan.className = "inventory-item-type";
           typeSpan.textContent = item.type;
 
-          li.appendChild(nameSpan);
-          li.appendChild(typeSpan);
+          const iconEl = createItemSpriteElement(item, 56);
+          if (iconEl) li.appendChild(iconEl);
+          li.title = `${nameSpan.textContent} (${item.type})`;
+          styleSquareInventoryItem(li, item);
+          attachSlotFrameHover(li, item);
 
           if (equippable) {
             li.title =
               item.type === "Upgrade Card"
                 ? "Click to equip upgrade card"
-                : "Click to equip";
+                : `${nameSpan.textContent} (${item.type}) - click to equip`;
+            if (canAnytimeSell && !this.inventorySellState?.active && !this.rogueVaultState?.active) {
+              li.title += " | Right click to sell";
+            }
           }
 
           li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
           li.addEventListener("mouseleave", hideItemTooltip);
+          if ((canAnytimeSell || hasTalent("vaultMaster")) && !this.inventorySellState?.active && !this.rogueVaultState?.active) {
+            li.addEventListener("contextmenu", (e) => {
+              e.preventDefault();
+              if (canAnytimeSell && this.isItemEquippable(item)) {
+                const itemIndex = this.inventory.indexOf(item);
+                if (itemIndex >= 0) {
+                  this.sellInventoryItem(itemIndex, item);
+                }
+                return;
+              }
+              if (hasTalent("vaultMaster") && this.toggleVaultMasterSecureItem(item)) this.updateInventoryUI();
+            });
+          }
           li.addEventListener("click", () => this.handleInventoryItemClick(item));
           this.inventoryListEl.appendChild(li);
         }
       }
     },
 
+    getSellPriceForItem(item) {
+      const inCollector = !!this.inventorySellState?.active;
+      const canAnytimeSell = typeof this.canSellInventoryAnytime === "function" && this.canSellInventoryAnytime();
+      if (!inCollector && !canAnytimeSell) return null;
+      if (!item || !this.isItemEquippable(item)) return null;
+      const key = this.getInventorySellKey(item);
+      const sellCache = inCollector
+        ? this.inventorySellState
+        : (this.pillarSellState = this.pillarSellState || { pricesByItemId: {} });
+      const existing = sellCache?.pricesByItemId?.[key];
+      if (Number.isFinite(existing)) return existing;
+
+      const rarity = item.rarity || "common";
+      let min = 10;
+      let max = 20;
+      if (rarity === "magic") {
+        min = 25;
+        max = 30;
+      } else if (rarity === "rare" || rarity === "legendary") {
+        min = 35;
+        max = 50;
+      }
+      let price = min + Math.floor(Math.random() * (max - min + 1));
+      if (typeof this.resolvePillarSellPrice === "function") {
+        price = this.resolvePillarSellPrice(price, item, {
+          channel: inCollector ? "equipmentCollector" : "inventoryAnytime"
+        });
+      }
+      sellCache.pricesByItemId = sellCache.pricesByItemId || {};
+      sellCache.pricesByItemId[key] = price;
+      return price;
+    },
+
+    getInventorySellKey(item) {
+      if (!item) return "";
+      return String(item.id ?? item.name ?? "");
+    },
+
+    getSelectedInventorySaleEntry() {
+      if (!this.inventorySellState?.active) return null;
+      const key = this.inventorySellState.selectedItemKey;
+      if (!key) return null;
+      const index = this.inventory.findIndex((invItem) => this.getInventorySellKey(invItem) === key);
+      if (index < 0) {
+        this.inventorySellState.selectedItemKey = null;
+        return null;
+      }
+      const item = this.inventory[index];
+      const price = this.getSellPriceForItem(item);
+      return Number.isFinite(price) ? { key, index, item, price } : null;
+    },
+
+    selectInventoryItemForSale(index, item) {
+      if (!this.inventorySellState?.active) return;
+      if (!this.isItemEquippable(item)) return;
+      const price = this.getSellPriceForItem(item);
+      if (!Number.isFinite(price) || price <= 0) return;
+      this.inventorySellState.selectedItemKey = this.getInventorySellKey(item);
+      if (this.inventoryOverlayOpen) this.populateInventoryOverlay();
+      if (typeof this.updateEquipmentCollectorOfferUI === "function") this.updateEquipmentCollectorOfferUI();
+    },
+
+    confirmSelectedInventorySale() {
+      const selected = this.getSelectedInventorySaleEntry();
+      if (!selected) {
+        if (typeof this.showNotification === "function") {
+          this.showNotification("Equipment Collector", "Select an inventory item to sell.");
+        }
+        return;
+      }
+      this.sellInventoryItem(selected.index, selected.item);
+    },
+
+    sellInventoryItem(index, item) {
+      const inCollector = !!this.inventorySellState?.active;
+      const canAnytimeSell = typeof this.canSellInventoryAnytime === "function" && this.canSellInventoryAnytime();
+      if (!inCollector && !canAnytimeSell) return;
+      if (!this.isItemEquippable(item)) return;
+      const resolvedIndex = Number.isFinite(index) ? index : this.inventory.indexOf(item);
+      if (resolvedIndex < 0) return;
+      const price = this.getSellPriceForItem(item);
+      if (!Number.isFinite(price) || price <= 0) return;
+      this.clearVaultMasterSecureForItem(item);
+      this.inventory.splice(resolvedIndex, 1);
+      this.gold = Math.max(0, (this.gold || 0) + price);
+      if (this.inventorySellState?.pricesByItemId) {
+        delete this.inventorySellState.pricesByItemId[this.getInventorySellKey(item)];
+      }
+      if (this.pillarSellState?.pricesByItemId) {
+        delete this.pillarSellState.pricesByItemId[this.getInventorySellKey(item)];
+      }
+      if (this.inventorySellState?.selectedItemKey === this.getInventorySellKey(item)) {
+        this.inventorySellState.selectedItemKey = null;
+      }
+      this.updateInventoryUI();
+      this.updateMapUI();
+      if (this.inventoryOverlayOpen) this.populateInventoryOverlay();
+      if (typeof this.updateEquipmentCollectorOfferUI === "function") this.updateEquipmentCollectorOfferUI();
+      if (typeof this.runPillarEvent === "function") {
+        this.runPillarEvent("onItemSold", {
+          item,
+          price,
+          channel: inCollector ? "equipmentCollector" : "inventoryAnytime",
+          time: this.time
+        });
+      }
+      if (!inCollector && typeof this.showNotification === "function") {
+        this.showNotification("Merchant Instinct", `Sold ${item.name} for ${price} gold.`);
+      }
+    },
+
+    sendInventoryItemToLegacyVault(index, item) {
+      if (!this.rogueVaultState?.active) return;
+      const sent = this.rogueVaultState.sent || 0;
+      const max = this.rogueVaultState.max || 3;
+      const cost = this.rogueVaultState.cost || 150;
+      if (sent >= max) {
+        this.showNotification("Rogue", "You already sent the maximum number of items.");
+        return;
+      }
+      if (!canSpendGold(this, cost)) {
+        this.showNotification("Rogue", "Not enough gold.");
+        return;
+      }
+      spendGold(this, cost, "rogue_vault_send", { itemId: item?.id });
+      this.clearVaultMasterSecureForItem(item);
+      this.inventory.splice(index, 1);
+      addLegacyVaultItem({ ...item }, "Rogue");
+      this.rogueVaultState.sent = sent + 1;
+      if (this.rogueVaultState.objRef) {
+        this.rogueVaultState.objRef.vaultSentCount = this.rogueVaultState.sent;
+      }
+      this.updateInventoryUI();
+      this.updateMapUI();
+      if (typeof this.updateRogueVaultOverlayText === "function") this.updateRogueVaultOverlayText();
+      if (this.inventoryOverlayOpen) this.populateInventoryOverlay();
+      if ((this.rogueVaultState.sent || 0) >= max) {
+        this.showNotification("Rogue", "Three items sent to Legacy Vault.");
+      }
+    },
+
     updateEquippedUI() {
       if (!this.equippedListEl) return;
       this.equippedListEl.innerHTML = "";
-
-      const slots = ["Helmet", "Body Armour", "Weapon", "Boots"];
-      for (const slot of slots) {
+      applyEquippedGridLayout(this.equippedListEl);
+      for (const slot of EQUIPPED_GRID_SLOTS) {
         const li = document.createElement("li");
+        if (!slot) {
+          li.style.listStyle = "none";
+          li.style.width = "64px";
+          li.style.height = "64px";
+          li.style.padding = "0";
+          li.style.margin = "0";
+          li.style.background = "transparent";
+          li.style.border = "none";
+          li.style.boxShadow = "none";
+          li.style.pointerEvents = "none";
+          li.style.opacity = "0";
+          this.equippedListEl.appendChild(li);
+          continue;
+        }
+        const slotLabelText = EQUIPPED_SLOT_LABEL_BY_KEY[slot] || slot;
         li.className = "equipped-item";
 
         const slotLabel = document.createElement("div");
         slotLabel.className = "equipped-slot-label";
-        slotLabel.textContent = slot;
+        slotLabel.textContent = slotLabelText;
 
         const nameDiv = document.createElement("div");
         nameDiv.className = "equipped-item-name";
         const item = this.equipment[slot];
         if (item) {
-          nameDiv.style.color = getItemRarityColor(item);
-          nameDiv.textContent = item.name;
+          const iconEl = createItemSpriteElement(item, 28);
+          if (iconEl) nameDiv.appendChild(iconEl);
+          nameDiv.title = item.name;
         } else {
           nameDiv.textContent = "None";
         }
@@ -695,3 +1442,11 @@ export function applyGameInventoryMixin(Game) {
     }
   });
 }
+
+
+
+
+
+
+
+

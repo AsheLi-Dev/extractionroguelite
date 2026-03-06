@@ -1,23 +1,23 @@
 export const RUN_CONDITIONS = [
-  { id: "enemyHp", category: "enemy", icon: "❤️", name: "Hardened Foes", desc: "All enemies have 15% more health" },
-  { id: "enemyDmg", category: "enemy", icon: "⚔️", name: "Brutal Strikes", desc: "All enemies deal 15% more damage" },
-  { id: "enemySpeed", category: "enemy", icon: "💨", name: "Swift Enemies", desc: "All enemies move 20% faster" },
-  { id: "enemyRegen", category: "enemy", icon: "🩹", name: "Regenerating Foes", desc: "Enemies regenerate health over time" },
-  { id: "enemyResist", category: "enemy", icon: "🛡️", name: "Hit Resistance", desc: "Enemies take 20% less damage" },
-  { id: "eliteSpawn", category: "enemy", icon: "👑", name: "Elite Invasion", desc: "Elite enemies spawn everywhere" },
-  { id: "enemyExplode", category: "enemy", icon: "💥", name: "Death Explosions", desc: "Enemies explode on death" },
-  { id: "bossHp", category: "enemy", icon: "🐉", name: "Titan Boss", desc: "Boss has 30% more health" },
-  { id: "frozenGround", category: "env", icon: "❄️", name: "Frozen Floor", desc: "Ground slows player movement" },
-  { id: "toxicGround", category: "env", icon: "☠️", name: "Toxic Ground", desc: "Ground deals damage over time" },
-  { id: "burningGround", category: "env", icon: "🔥", name: "Burning Ground", desc: "Ground deals burst damage" },
-  { id: "shockingGround", category: "env", icon: "⚡", name: "Shocking Ground", desc: "Ground can stun the player" },
-  { id: "weakeningGround", category: "env", icon: "📉", name: "Weakening Ground", desc: "Ground reduces attack damage" },
-  { id: "darkness", category: "env", icon: "🌑", name: "Darkness", desc: "Reduced vision radius" },
-  { id: "startHealth", category: "player", icon: "💔", name: "Frail Start", desc: "Start with -30 max health" },
-  { id: "startAttack", category: "player", icon: "📉", name: "Weakened Blows", desc: "Start with -20% attack damage" },
-  { id: "startSpeed", category: "player", icon: "🐢", name: "Sluggish", desc: "Start with -20% movement speed" },
-  { id: "vaultLocked", category: "player", icon: "🔒", name: "Vault Locked", desc: "Legacy vault unavailable this run" },
-  { id: "noHealthDrops", category: "player", icon: "🚫", name: "No Healing", desc: "No health drops from enemies" },
+  { id: "enemyHp", category: "enemy", icon: "spr_condition_enemyHp", name: "Hardened Foes", desc: "All enemies have 15% more health" },
+  { id: "enemyDmg", category: "enemy", icon: "spr_condition_enemyDmg", name: "Brutal Strikes", desc: "All enemies deal 15% more damage" },
+  { id: "enemySpeed", category: "enemy", icon: "spr_condition_enemySpeed", name: "Swift Enemies", desc: "All enemies move 20% faster" },
+  { id: "enemyRegen", category: "enemy", icon: "spr_condition_enemyRegen", name: "Regenerating Foes", desc: "Enemies regenerate health over time" },
+  { id: "enemyResist", category: "enemy", icon: "spr_condition_enemyResist", name: "Hit Resistance", desc: "Enemies take 20% less damage" },
+  { id: "eliteSpawn", category: "enemy", icon: "spr_condition_eliteSpawn", name: "Elite Invasion", desc: "Elite enemies spawn everywhere" },
+  { id: "enemyExplode", category: "enemy", icon: "spr_condition_enemyExplode", name: "Death Explosions", desc: "Enemies explode on death" },
+  { id: "bossHp", category: "enemy", icon: "spr_condition_bossHp", name: "Titan Boss", desc: "Boss has 30% more health" },
+  { id: "frozenGround", category: "env", icon: "spr_condition_frozenGround", name: "Frozen Floor", desc: "Ground slows player movement" },
+  { id: "toxicGround", category: "env", icon: "spr_condition_toxicGround", name: "Toxic Ground", desc: "Ground deals damage over time" },
+  { id: "burningGround", category: "env", icon: "spr_condition_burningGround", name: "Burning Ground", desc: "Ground deals burst damage" },
+  { id: "shockingGround", category: "env", icon: "spr_condition_shockingGround", name: "Shocking Ground", desc: "Ground can stun the player" },
+  { id: "weakeningGround", category: "env", icon: "spr_condition_weakeningGround", name: "Weakening Ground", desc: "Ground reduces attack damage" },
+  { id: "darkness", category: "env", icon: "spr_condition_darkness", name: "Darkness", desc: "Reduced vision radius" },
+  { id: "startHealth", category: "player", icon: "spr_condition_startHealth", name: "Frail Start", desc: "Start with -30 max health" },
+  { id: "startAttack", category: "player", icon: "spr_condition_startAttack", name: "Weakened Blows", desc: "Start with -20% attack damage" },
+  { id: "startSpeed", category: "player", icon: "spr_condition_startSpeed", name: "Sluggish", desc: "Start with -20% movement speed" },
+  { id: "vaultLocked", category: "player", icon: "spr_condition_vaultLocked", name: "Vault Locked", desc: "Legacy vault unavailable this run" },
+  { id: "noHealthDrops", category: "player", icon: "spr_condition_noHealthDrops", name: "No Healing", desc: "No health drops from enemies" },
 ];
 
 export const GROUND_CONDITION_IDS = new Set([
@@ -31,12 +31,12 @@ export const GROUND_CONDITION_IDS = new Set([
 export const MAX_GROUND_CONDITIONS_PER_RUN = 2;
 
 export const ATTACK_TYPES = [
-  { id: "projectile", name: "Projectile Shot", illustration: "assets/UI/Projectile Shot.png", desc: "Fire a fast projectile toward the cursor. Reliable ranged damage." },
-  { id: "fanStrike", name: "Fan Strike", illustration: "assets/UI/Fan Strike.png", desc: "Melee arc sweep in cursor direction. Hits all enemies in a 120° arc at short range." },
-  { id: "pulseShot", name: "Pulse Shot", illustration: "assets/UI/Pulse Shot.png", desc: "Call down an area strike at the cursor location. Damages all enemies in a small circle after a brief delay." },
-  { id: "thrustStrike", name: "Thrust Strike", illustration: "assets/UI/Thrust Strike.png", desc: "Fast precise thrust in cursor direction. Hits only the first enemy in line for 60% increased damage." },
-  { id: "dashStrike", name: "Dash Strike", illustration: "assets/UI/Dash Strike.png", desc: "Surge forward through enemies, then perform a quick 90° fan strike at your destination." },
-  { id: "backfireShot", name: "Backfire Shot", illustration: "assets/UI/Backfire Shot.png", desc: "Fire a projectile forward while propelling yourself backward. Reposition and damage at once." }
+  { id: "projectile", name: "Projectile Shot", illustration: "assets/UI/Projectile Shot.png", desc: "Fire a fast projectile toward the cursor. Reliable ranged damage.", tags: ["projectile", "ranged"] },
+  { id: "fanStrike", name: "Fan Strike", illustration: "assets/UI/Fan Strike.png", desc: "Melee arc sweep in cursor direction. Hits all enemies in a 120 arc at short range.", tags: ["melee", "area"] },
+  { id: "pulseShot", name: "Pulse Shot", illustration: "assets/UI/Pulse Shot.png", desc: "Call down an area strike at the cursor location. Damages all enemies in a small circle after a brief delay.", tags: ["ranged", "area"] },
+  { id: "thrustStrike", name: "Thrust Strike", illustration: "assets/UI/Thrust Strike.png", desc: "Fast precise thrust in cursor direction. Hits only the first enemy in line for 60% increased damage.", tags: ["melee"] },
+  { id: "dashStrike", name: "Dash Strike", illustration: "assets/UI/Dash Strike.png", desc: "Surge forward through enemies, then perform a quick 90 fan strike at your destination.", tags: ["melee", "utility"] },
+  { id: "backfireShot", name: "Backfire Shot", illustration: "assets/UI/Backfire Shot.png", desc: "Fire a projectile forward while propelling yourself backward. Reposition and damage at once.", tags: ["ranged", "projectile", "utility"] }
 ];
 
 export function enforceConditionLimits(conditions = [], desiredCount = null) {

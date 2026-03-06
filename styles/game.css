@@ -1,0 +1,217 @@
+/* -------- Game Styles -------- */
+
+.game-root {
+  display: flex;
+  align-items: stretch;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.65);
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.canvas-wrapper {
+  flex: 0 0 auto;
+  position: relative;
+}
+
+#game-canvas {
+  display: block;
+  background: radial-gradient(circle at 20% 20%, #1b2337, #05060a 70%);
+}
+
+.skill-bar {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 50;
+}
+
+.skill-slot {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 2px solid #334155;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.skill-key {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.skill-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  color: #94a3b8;
+  overflow: hidden;
+}
+
+.skill-slot-icon-img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.skill-name {
+  font-size: 9px;
+  color: #9ca3af;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-cd-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.skill-empower-stacks {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fbbf24;
+  min-width: 12px;
+  text-align: center;
+}
+
+.skill-slot.skill-cascade-flash {
+  box-shadow: 0 0 12px 2px #38bdf8;
+  animation: skill-cascade-flash 0.3s ease-out;
+}
+
+@keyframes skill-cascade-flash {
+  0% { filter: brightness(1.4); }
+  100% { filter: brightness(1); }
+}
+
+.skill-slot.locked {
+  opacity: 0.6;
+}
+
+.skill-slot.aura-active {
+  box-shadow: 0 0 0 2px #a855f7;
+  background: rgba(139, 92, 246, 0.2);
+}
+
+.inventory-panel {
+  width: 220px;
+  padding: 16px 14px;
+  background: #020617;
+  border-left: 1px solid #1f2937;
+  display: flex;
+  flex-direction: column;
+}
+
+.map-name-section {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1f2937;
+}
+
+.map-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e5e7eb;
+  letter-spacing: 0.04em;
+}
+
+.gold-display {
+  font-size: 12px;
+  color: #fbbf24;
+  margin-top: 4px;
+}
+
+.enemy-count {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.escort-quest-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: rgba(124, 58, 237, 0.15);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  border-radius: 6px;
+  font-size: 11px;
+  color: #c4b5fd;
+}
+
+.escort-quest-indicator.hidden {
+  display: none;
+}
+
+.escort-quest-icon {
+  font-size: 14px;
+}
+
+.escort-quest-text {
+  font-weight: 500;
+}
+
+.xp-section {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1f2937;
+}
+
+.xp-level-row {
+  margin-bottom: 4px;
+}
+
+.xp-level {
+  font-size: 12px;
+  font-weight: 700;
+  color: #a78bfa;
+}
+
+.xp-bar-track {
+  width: 100%;
+  height: 8px;
+  background: #1f2937;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 2px;
+}
+
+.xp-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #7c3aed, #a78bfa);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.xp-label {
+  font-size: 10px;
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+}
+
+/* NOTE: Additional game-related styles need to be extracted from styles.css */

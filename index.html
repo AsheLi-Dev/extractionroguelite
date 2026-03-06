@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Top-Down Room Game</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles/main.css" />
   </head>
   <body>
     <div id="main-menu" class="main-menu">
@@ -13,11 +13,15 @@
         <p class="main-menu-subtitle">Defeat the Wasteland Tyrant and save your character!</p>
         <div class="main-menu-lp">Legacy Points: <span id="main-menu-lp-value">0</span></div>
         <button id="main-menu-new-game" class="main-menu-btn">New Game</button>
+        <button id="main-menu-tutorial" class="main-menu-btn main-menu-btn-secondary">Tutorial</button>
         <button id="main-menu-instructions" class="main-menu-btn main-menu-btn-secondary">Instructions</button>
+        <button id="main-menu-options" class="main-menu-btn main-menu-btn-secondary">Options</button>
         <button id="main-menu-dev-mode" class="main-menu-btn main-menu-btn-secondary">Dev Mode</button>
         <button id="main-menu-legacy-vault" class="main-menu-btn main-menu-btn-secondary">Legacy Vault</button>
         <button id="main-menu-talent-tree" class="main-menu-btn main-menu-btn-secondary">Talent Tree</button>
         <button id="main-menu-skill-library" class="main-menu-btn main-menu-btn-secondary">Skill Library</button>
+        <button id="main-menu-pillars" class="main-menu-btn main-menu-btn-secondary">Pillars</button>
+        <button id="main-menu-friends" class="main-menu-btn main-menu-btn-secondary">Friends</button>
         <div id="main-menu-dev-panel" class="main-menu-dev-panel">
           <span class="main-menu-dev-panel-title">DEV</span>
           <label class="main-menu-dev-panel-row">
@@ -37,19 +41,20 @@
       <div class="canvas-wrapper">
         <canvas id="game-canvas"></canvas>
         <div id="skill-bar" class="skill-bar">
-          <div class="skill-slot" data-slot="0"><span class="skill-key">1</span><div class="skill-icon" id="skill-icon-0">—</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-0">Empty</div><div class="skill-cd-ring" id="skill-cd-0"></div></div>
-          <div class="skill-slot" data-slot="1"><span class="skill-key">2</span><div class="skill-icon" id="skill-icon-1">—</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-1">Empty</div><div class="skill-cd-ring" id="skill-cd-1"></div></div>
-          <div class="skill-slot" data-slot="2"><span class="skill-key">3</span><div class="skill-icon" id="skill-icon-2">—</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-2">Empty</div><div class="skill-cd-ring" id="skill-cd-2"></div></div>
-          <div class="skill-slot" data-slot="3"><span class="skill-key">4</span><div class="skill-icon" id="skill-icon-3">—</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-3">Empty</div><div class="skill-cd-ring" id="skill-cd-3"></div></div>
+          <div class="skill-slot" data-slot="0"><span class="skill-key">1</span><div class="skill-icon" id="skill-icon-0">-</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-0">Empty</div><div class="skill-cd-ring" id="skill-cd-0"></div></div>
+          <div class="skill-slot" data-slot="1"><span class="skill-key">2</span><div class="skill-icon" id="skill-icon-1">-</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-1">Empty</div><div class="skill-cd-ring" id="skill-cd-1"></div></div>
+          <div class="skill-slot" data-slot="2"><span class="skill-key">3</span><div class="skill-icon" id="skill-icon-2">-</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-2">Empty</div><div class="skill-cd-ring" id="skill-cd-2"></div></div>
+          <div class="skill-slot" data-slot="3"><span class="skill-key">4</span><div class="skill-icon" id="skill-icon-3">-</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-3">Empty</div><div class="skill-cd-ring" id="skill-cd-3"></div></div>
         </div>
         <div id="blessings-bar" class="blessings-bar hidden"></div>
       </div>
       <aside class="inventory-panel">
         <section class="map-name-section">
           <div id="map-name" class="map-name">Dungeon (Map 1)</div>
+          <div id="gold-display" class="gold-display">Gold: 0</div>
           <div id="enemy-count" class="enemy-count">Enemies: 0</div>
           <div id="escort-quest-indicator" class="escort-quest-indicator hidden">
-            <span class="escort-quest-icon">👤</span>
+            <span class="escort-quest-icon">Q</span>
             <span class="escort-quest-text">Escort Quest Active</span>
           </div>
         </section>
@@ -61,28 +66,6 @@
             <div id="xp-bar-fill" class="xp-bar-fill"></div>
           </div>
           <div id="xp-label" class="xp-label">0 / 100 XP</div>
-        </section>
-        <section class="equipped-section">
-          <h2>Equipped</h2>
-          <ul id="equipped-list"></ul>
-        </section>
-        <section class="dash-section">
-          <h2>Dash</h2>
-          <div class="dash-cooldown-track">
-            <div id="dash-cooldown-fill" class="dash-cooldown-fill"></div>
-          </div>
-          <div id="dash-label" class="dash-label">Ready</div>
-        </section>
-        <section class="health-bar-section">
-          <h2>Health</h2>
-          <div class="player-health-bar-track">
-            <div id="player-health-fill" class="player-health-bar-fill"></div>
-          </div>
-          <div id="player-health-label" class="player-health-label">100 / 100</div>
-        </section>
-        <section class="stats-section">
-          <h2>Stats</h2>
-          <div id="player-stats"></div>
         </section>
       </aside>
     </div>
@@ -100,7 +83,9 @@
       <div class="victory-box">
         <h1>Victory!</h1>
         <p class="victory-message">Your character has been saved!</p>
-        <p class="victory-lp" id="victory-lp-earned">+0 Legacy Points earned this run</p>
+        <p class="victory-gold" id="victory-gold">Gold: 0</p>
+        <p class="victory-lp" id="victory-lp-earned">Convert gold to Legacy Points below</p>
+        <div id="victory-lp-section" class="victory-lp-section"></div>
         <div class="victory-summary">
           <div class="victory-summary-section">
             <h3>Equipped Items</h3>
@@ -131,13 +116,11 @@
     <div id="skill-select-overlay" class="skill-select-overlay hidden">
       <div class="skill-select-box">
         <h1 class="skill-select-title">Select Skills</h1>
-        <p class="skill-select-subtitle">Choose your basic attack and assign skills to 1 2 3 4. Locked slots show requirements.</p>
+        <p class="skill-select-subtitle">Choose your basic attack.</p>
         <div class="skill-select-attack-type-section">
           <label class="skill-select-attack-label">Basic Attack</label>
           <div id="skill-select-attack-type" class="skill-select-attack-type"></div>
         </div>
-        <div id="skill-select-slots" class="skill-select-slots"></div>
-        <div id="skill-select-pool" class="skill-select-pool"></div>
         <div class="skill-select-actions">
           <button id="skill-select-back" class="skill-select-back">Back</button>
           <button id="skill-select-confirm" class="skill-select-confirm">Start Run</button>
@@ -158,12 +141,16 @@
             <button class="pre-run-diff-btn" data-diff="5">5</button>
             <button class="pre-run-diff-btn pre-run-diff-6" data-diff="6">6</button>
           </div>
-          <span id="pre-run-diff-label" class="pre-run-diff-label">Difficulty 1 — No conditions</span>
+          <span id="pre-run-diff-label" class="pre-run-diff-label">Difficulty 1 - No conditions</span>
           <span id="pre-run-diff-mult" class="pre-run-diff-mult">Enemy stats: 80%</span>
         </div>
         <div class="pre-run-conditions">
           <h3>Active Conditions</h3>
           <div id="pre-run-conditions-list" class="pre-run-conditions-list"></div>
+        </div>
+        <div class="pre-run-companion">
+          <h3>Companion</h3>
+          <div id="pre-run-companion" class="pre-run-companion-list"></div>
         </div>
         <div class="pre-run-actions">
           <button id="pre-run-back" class="pre-run-btn pre-run-back">Back</button>
@@ -188,16 +175,32 @@
       <div class="skill-library-box">
         <header class="skill-library-header">
           <h1 class="skill-library-title">Skill Library</h1>
-          <div class="skill-library-flux">Flux: <span id="skill-library-flux-value">0</span></div>
           <button id="skill-library-close" class="skill-library-btn">Back</button>
         </header>
         <div id="skill-library-content" class="skill-library-content">
+          <div id="skill-library-slots-panel" class="skill-library-slots-panel">
+            <div class="skill-library-slots-title">Run slots</div>
+            <div id="skill-library-slots" class="skill-library-slots"></div>
+            <p class="skill-library-slots-hint">Click a slot, then click a skill below to assign.</p>
+          </div>
           <div id="skill-library-skills-panel" class="skill-library-skills-panel"></div>
           <div id="skill-library-cards-panel" class="skill-library-cards-panel">
             <div id="skill-library-cards-title" class="skill-library-cards-title">Modification cards</div>
             <div id="skill-library-cards-list" class="skill-library-cards-list"></div>
+            <div id="skill-library-build-paths" class="skill-library-build-paths"></div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div id="friends-overlay" class="friends-overlay hidden">
+      <div class="friends-box">
+        <header class="friends-header">
+          <h1 class="friends-title">Friends</h1>
+        </header>
+        <div id="friends-hub-content" class="friends-content"></div>
+        <div id="friends-detail-content" class="friends-content hidden"></div>
+        <div id="friends-mailbox-content" class="friends-content hidden"></div>
       </div>
     </div>
 
@@ -219,7 +222,7 @@
               <li><strong>WASD</strong> or <strong>Arrow Keys</strong> - Move your character</li>
               <li><strong>Mouse Click</strong> - Attack in the direction of your mouse</li>
               <li><strong>Space</strong> - Dash (has cooldown)</li>
-              <li><strong>E</strong> - Interact with objects (shrines, chests, doors)</li>
+              <li><strong>E</strong> - Interact with objects (shrines, doors)</li>
               <li><strong>I</strong> - Open inventory</li>
               <li><strong>Esc</strong> or <strong>P</strong> - Pause game</li>
             </ul>
@@ -241,18 +244,8 @@
             <ul>
               <li>Progress through 5 different maps, each with unique themes and enemies.</li>
               <li>Find <strong>exits</strong> to move to the next map.</li>
-              <li>Explore <strong>sub-areas</strong> like ruins, rooms, and mazes for guaranteed rewards.</li>
               <li>Discover <strong>shrines</strong> that offer powerful upgrades or remove penalties.</li>
               <li>Watch out for <strong>environmental obstacles</strong> that block movement and projectiles.</li>
-            </ul>
-          </div>
-          
-          <div class="instructions-section">
-            <h2>Sub-Areas</h2>
-            <ul>
-              <li><strong>Ruins:</strong> Open structures with enemies. Defeat all enemies to unlock the chest.</li>
-              <li><strong>Rooms:</strong> Enclosed areas with locked doors. Clear all enemies to unlock the exit and claim rewards.</li>
-              <li><strong>Mazes:</strong> Winding corridors with enemies and loot. Navigate to the center or exit for rewards.</li>
             </ul>
           </div>
           
@@ -264,8 +257,28 @@
               <li>Collect and equip items to increase your power.</li>
               <li>Level up upgrades can dramatically change your playstyle.</li>
               <li>Environmental obstacles can provide cover from enemy projectiles.</li>
-              <li>Sub-areas offer guaranteed rewards - explore them when you can!</li>
             </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="options-overlay" class="options-overlay hidden">
+      <div class="options-box">
+        <header class="options-header">
+          <h1 class="options-title">Options</h1>
+          <button id="options-close" class="options-btn">Back</button>
+        </header>
+        <div class="options-content">
+          <div class="options-section">
+            <h2>Resolution</h2>
+            <p class="options-current">Current: <span id="options-current-resolution">1080P</span></p>
+            <div class="options-resolution-grid">
+              <button class="options-resolution-btn" data-resolution="720p">720p</button>
+              <button class="options-resolution-btn" data-resolution="1080p">1080p</button>
+              <button class="options-resolution-btn" data-resolution="2k">2K</button>
+              <button class="options-resolution-btn" data-resolution="4k">4K</button>
+            </div>
           </div>
         </div>
       </div>
@@ -283,7 +296,40 @@
             <button id="legacy-start-run" class="legacy-vault-btn legacy-vault-btn-primary" disabled>Start New Run</button>
           </div>
         </header>
-        <div id="legacy-vault-grid" class="legacy-vault-grid"></div>
+        <div class="legacy-vault-tabs">
+          <button id="legacy-vault-tab-items" class="inventory-tab active">Items</button>
+          <button id="legacy-vault-tab-ancestors" class="inventory-tab">Ancestors</button>
+          <button id="legacy-vault-tab-crafting" class="inventory-tab">Crafting</button>
+        </div>
+        <div id="legacy-vault-items-content" class="inventory-overlay-tab-content">
+          <div id="legacy-vault-grid" class="legacy-vault-grid"></div>
+        </div>
+        <div id="legacy-vault-ancestors-content" class="inventory-overlay-tab-content hidden">
+          <div id="legacy-vault-ancestor-grid" class="legacy-vault-grid"></div>
+        </div>
+        <div id="legacy-vault-crafting-content" class="inventory-overlay-tab-content hidden">
+          <section class="inventory-overlay-section">
+            <h2>Cube Inventory</h2>
+            <div id="legacy-cube-inventory-grid" class="cube-inventory-grid"></div>
+          </section>
+          <section class="inventory-overlay-section">
+            <h2>Select Vault Item to Craft</h2>
+            <ul id="legacy-crafting-item-list" class="crafting-item-list"></ul>
+          </section>
+          <section class="inventory-overlay-section">
+            <h2>Craft</h2>
+            <p class="crafting-hint">Select an equipment item above, then select a cube.</p>
+            <div class="crafting-selection-row">
+              <div class="crafting-selection-col">
+                <div id="legacy-crafting-selected-item" class="crafting-selected">No item selected</div>
+                <div id="legacy-crafting-selected-cube" class="crafting-selected">No cube selected</div>
+              </div>
+              <div id="legacy-crafting-item-stats" class="crafting-item-stats hidden"></div>
+            </div>
+            <div id="legacy-crafting-preview" class="crafting-preview hidden"></div>
+            <button id="legacy-crafting-confirm" class="crafting-confirm-btn" disabled>Craft</button>
+          </section>
+        </div>
       </div>
     </div>
 
@@ -293,6 +339,25 @@
         <p class="notification-message" id="notification-message">Message</p>
         <button id="notification-close" class="notification-close-btn">OK</button>
       </div>
+    </div>
+
+    <div id="tutorial-overlay" class="tutorial-overlay hidden">
+      <div class="tutorial-box">
+        <div class="tutorial-header">
+          <h2 class="tutorial-title" id="tutorial-title">Tutorial</h2>
+          <div class="tutorial-step-indicator" id="tutorial-step-indicator">Step 1 of 8</div>
+        </div>
+        <p class="tutorial-message" id="tutorial-message">Message</p>
+        <div class="tutorial-actions">
+          <button id="tutorial-skip" class="tutorial-btn tutorial-btn-secondary">Skip Tutorial</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tutorial-space-indicator" class="tutorial-space-indicator hidden">
+      <div class="tutorial-key-hint">Press</div>
+      <div class="tutorial-key">SPACE</div>
+      <div class="tutorial-key-hint">to Dash</div>
     </div>
 
     <div id="event-overlay" class="event-overlay hidden">
@@ -327,11 +392,30 @@
       </div>
     </div>
 
-    <div id="game-over" class="game-over-overlay hidden">
-      <div class="game-over-box">
-        <h1>Game Over</h1>
-        <p>You were defeated.</p>
-        <button id="try-again-btn" class="try-again-btn">Try Again</button>
+    <div id="game-over" class="game-over-panel hidden">
+      <div class="game-over-content">
+        <div class="game-over-header">
+          <h1 class="game-over-title">Defeat</h1>
+          <p class="game-over-subtitle">You were defeated in battle</p>
+        </div>
+        <div class="game-over-stats">
+          <div class="game-over-stat">
+            <span class="game-over-stat-label">Maps Cleared</span>
+            <span class="game-over-stat-value" id="game-over-maps">0</span>
+          </div>
+          <div class="game-over-stat">
+            <span class="game-over-stat-label">Enemies Defeated</span>
+            <span class="game-over-stat-value" id="game-over-enemies">0</span>
+          </div>
+          <div class="game-over-stat">
+            <span class="game-over-stat-label">Level Reached</span>
+            <span class="game-over-stat-value" id="game-over-level">1</span>
+          </div>
+        </div>
+        <div class="game-over-actions">
+          <button id="game-over-try-again" class="game-over-btn game-over-btn-primary">Try Again</button>
+          <button id="game-over-main-menu" class="game-over-btn game-over-btn-secondary">Main Menu</button>
+        </div>
       </div>
     </div>
 
@@ -341,42 +425,54 @@
           <h1 class="inventory-overlay-title">Inventory</h1>
           <button id="inventory-overlay-close" class="inventory-overlay-close">Close (I)</button>
         </header>
-        <div class="inventory-overlay-tabs">
-          <button id="inventory-tab-items" class="inventory-tab active">Items</button>
-          <button id="inventory-tab-crafting" class="inventory-tab">Crafting</button>
-        </div>
-        <div id="inventory-overlay-items" class="inventory-overlay-tab-content">
-          <section class="inventory-overlay-section">
-            <h2>Equipped</h2>
-            <ul id="inventory-overlay-equipped-list"></ul>
-          </section>
-          <section class="inventory-overlay-section">
-            <h2>Inventory</h2>
-            <ul id="inventory-overlay-inventory-list"></ul>
-          </section>
-        </div>
-        <div id="inventory-overlay-crafting" class="inventory-overlay-tab-content hidden">
-          <section class="inventory-overlay-section">
-            <h2>Cube Inventory</h2>
-            <div id="cube-inventory-grid" class="cube-inventory-grid"></div>
-          </section>
-          <section class="inventory-overlay-section">
-            <h2>Select Item to Craft</h2>
-            <ul id="crafting-item-list" class="crafting-item-list"></ul>
-          </section>
-          <section class="inventory-overlay-section">
-            <h2>Craft</h2>
-            <p class="crafting-hint">Select an equipment item above, then select a cube.</p>
-            <div class="crafting-selection-row">
-              <div class="crafting-selection-col">
-                <div id="crafting-selected-item" class="crafting-selected">No item selected</div>
-                <div id="crafting-selected-cube" class="crafting-selected">No cube selected</div>
-              </div>
-              <div id="crafting-item-stats" class="crafting-item-stats hidden"></div>
+        <div class="inventory-overlay-book">
+          <div class="inventory-overlay-page inventory-overlay-page-left">
+            <div id="inventory-overlay-items" class="inventory-overlay-tab-content">
+              <section class="inventory-overlay-section">
+                <h2>Equipped</h2>
+                <ul id="inventory-overlay-equipped-list"></ul>
+              </section>
+              <section class="inventory-overlay-section">
+                <h2>Inventory</h2>
+                <ul id="inventory-overlay-inventory-list"></ul>
+              </section>
             </div>
-            <div id="crafting-preview" class="crafting-preview hidden"></div>
-            <button id="crafting-confirm" class="crafting-confirm-btn" disabled>Craft</button>
-          </section>
+          </div>
+          <div class="inventory-overlay-page inventory-overlay-page-right">
+            <div class="inventory-overlay-right-tabs">
+              <button id="inventory-right-tab-stats" class="inventory-right-tab">Character Stats</button>
+              <button id="inventory-right-tab-crafting" class="inventory-right-tab active">Crafting</button>
+            </div>
+            <div id="inventory-overlay-crafting" class="inventory-overlay-tab-content">
+              <section class="inventory-overlay-section">
+                <h2>Cube Inventory</h2>
+                <div id="cube-inventory-grid" class="cube-inventory-grid"></div>
+              </section>
+              <section class="inventory-overlay-section">
+                <h2>Select Item to Craft</h2>
+                <ul id="crafting-item-list" class="crafting-item-list"></ul>
+              </section>
+              <section class="inventory-overlay-section">
+                <h2>Craft</h2>
+                <p class="crafting-hint">Select an equipment item above, then select a cube.</p>
+                <div class="crafting-selection-row">
+                  <div class="crafting-selection-col">
+                    <div id="crafting-selected-item" class="crafting-selected">No item selected</div>
+                    <div id="crafting-selected-cube" class="crafting-selected">No cube selected</div>
+                  </div>
+                  <div id="crafting-item-stats" class="crafting-item-stats hidden"></div>
+                </div>
+                <div id="crafting-preview" class="crafting-preview hidden"></div>
+                <button id="crafting-confirm" class="crafting-confirm-btn" disabled>Craft</button>
+              </section>
+            </div>
+            <div id="inventory-overlay-stats" class="inventory-overlay-tab-content hidden">
+              <section class="inventory-overlay-section">
+                <h2>Character Stats</h2>
+                <div id="inventory-overlay-stats-list" class="inventory-overlay-stats-list"></div>
+              </section>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -384,13 +480,13 @@
     <div id="item-tooltip" class="item-tooltip hidden"></div>
     <div id="affix-tooltip" class="item-tooltip affix-tooltip hidden"></div>
 
-    <button id="inventory-button" class="inventory-button">🎒 Inventory (I)</button>
-    <button id="pause-toggle" class="pause-toggle">⏸ Pause</button>
-    <button id="build-log-toggle" class="build-log-toggle" title="Build log">📋 Build</button>
+      <button id="inventory-button" class="inventory-button">Inventory (I)</button>
+      <button id="pause-toggle" class="pause-toggle">Pause</button>
+      <button id="build-log-toggle" class="build-log-toggle" title="Build log">Build</button>
     <div id="build-log-panel" class="build-log-panel hidden">
       <div class="build-log-header">
-        <span>Run upgrades & penalties</span>
-        <button id="build-log-close" class="build-log-close" aria-label="Close">✕</button>
+        <span>Upgrades &amp; Penalties</span>
+          <button id="build-log-close" class="build-log-close" aria-label="Close">X</button>
       </div>
       <div class="build-log-content">
         <div class="build-log-section">
@@ -409,13 +505,14 @@
       <div class="dev-panel-inner">
         <header class="dev-panel-header">
           <h2>Developer Tools</h2>
-          <button id="dev-close" class="dev-close-button" aria-label="Close">✕</button>
+        <button id="dev-close" class="dev-close-button" aria-label="Close">X</button>
         </header>
         <div class="dev-panel-actions">
           <button id="dev-give-all" class="dev-button">Give All Cards</button>
           <button id="dev-give-all-cubes" class="dev-button">Give All Cubes</button>
           <button id="dev-random-item" class="dev-button">Random Item (Magic/Rare)</button>
           <button id="dev-level-up" class="dev-button">Level Up</button>
+          <button id="dev-teleport-boss" class="dev-button">Teleport to Boss</button>
         </div>
         <div class="dev-panel-section">
           <h3>Stats</h3>
@@ -429,6 +526,12 @@
               <option value="">-- Select affix --</option>
             </select>
             <button id="dev-spawn-elite" class="dev-button">Spawn Elite</button>
+          </div>
+          <div class="dev-spawn-elite-row">
+            <select id="dev-miniboss-select" class="dev-affix-select">
+              <option value="">-- Select enemy --</option>
+            </select>
+            <button id="dev-spawn-miniboss" class="dev-button">Spawn Miniboss</button>
           </div>
         </div>
         <div class="dev-panel-section">
@@ -450,6 +553,27 @@
           </div>
         </div>
         <div class="dev-panel-section">
+          <h3>Force Attack Transform</h3>
+          <p class="dev-mod-hint">Apply or clear an attack transform for the current attack type.</p>
+          <div class="dev-spawn-elite-row">
+            <select id="dev-transform-select" class="dev-affix-select">
+              <option value="">-- Transform --</option>
+            </select>
+            <button id="dev-apply-transform" class="dev-button">Apply Transform</button>
+          </div>
+        </div>
+        <div class="dev-panel-section">
+          <h3>Rings Debug</h3>
+          <p class="dev-mod-hint">Spawn designed rings and toggle ring proc logs.</p>
+          <div class="dev-spawn-elite-row">
+            <select id="dev-ring-select" class="dev-affix-select">
+              <option value="">-- Ring --</option>
+            </select>
+            <button id="dev-give-ring" class="dev-button">Give Ring</button>
+          </div>
+          <label class="dev-mod-hint"><input type="checkbox" id="dev-ring-proc-log"> Enable ring proc logging</label>
+        </div>
+        <div class="dev-panel-section">
           <h3>Spawn Shrine</h3>
           <p class="dev-mod-hint">Spawn a chosen shrine near the player character.</p>
           <div class="dev-spawn-elite-row">
@@ -459,9 +583,27 @@
             <button id="dev-spawn-shrine" class="dev-button">Spawn Shrine</button>
           </div>
         </div>
+        <div class="dev-panel-section">
+          <h3>Spawn NPC</h3>
+          <p class="dev-mod-hint">Spawn a chosen NPC near the player.</p>
+          <div class="dev-spawn-elite-row">
+            <select id="dev-npc-select" class="dev-affix-select">
+              <option value="">-- Select NPC --</option>
+            </select>
+            <button id="dev-spawn-npc" class="dev-button">Spawn NPC</button>
+          </div>
+        </div>
+        <div class="dev-panel-section">
+          <h3>Breakables (test)</h3>
+          <p class="dev-mod-hint">Spawn a cluster of breakables near the player for testing.</p>
+          <button id="dev-spawn-breakables" class="dev-button">Spawn Breakables</button>
+          <button id="dev-spawn-props" class="dev-button">Spawn Searchable Props</button>
+          <button id="dev-dust-debug" class="dev-button">Dust debug</button>
+          <button id="dev-spawn-human-squad" class="dev-button">Spawn Human Squad</button>
+        </div>
       </div>
     </div>
 
-    <script type="module" src="src/main.js"></script>
+    <script type="module" src="src/bootstrap.js"></script>
   </body>
 </html>

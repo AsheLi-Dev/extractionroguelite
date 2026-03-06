@@ -196,12 +196,6 @@ export class EnemySystem {
       }
     }
     if (enemy.affixes?.includes("regenerating")) enemy.regenRate = (enemy.regenRate || 0) + 3;
-    if (enemy.affixes?.includes("rooted")) {
-      // +50% max health for rooted enemies
-      const healthRatio = enemy.health / enemy.maxHealth;
-      enemy.maxHealth = Math.round(enemy.maxHealth * 1.5);
-      enemy.health = Math.round(enemy.maxHealth * healthRatio);
-    }
     this.enemies.push(enemy);
   }
 
@@ -468,13 +462,6 @@ export class EnemySystem {
       enemy.affixes = [...groupAffixes]; // Same affixes for all in group
       
       if (enemy.affixes?.includes("regenerating")) enemy.regenRate = (enemy.regenRate || 0) + 3;
-      if (enemy.affixes?.includes("rooted")) {
-        // +50% max health for rooted enemies
-        const healthRatio = enemy.health / enemy.maxHealth;
-        enemy.maxHealth = Math.round(enemy.maxHealth * 1.5);
-        enemy.health = Math.round(enemy.maxHealth * healthRatio);
-      }
-      
       this.enemies.push(enemy);
     }
   }

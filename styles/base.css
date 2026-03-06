@@ -1,0 +1,47 @@
+/* -------- Base Styles -------- */
+
+:root {
+  --game-cursor: url("../assets/UI/UI_TravelBook_Cursor01d.png") 2 2;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.hidden {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: #05060a;
+  color: #f5f7ff;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  /* Prevent flex items from shrinking when overlays appear */
+  min-width: 0;
+}
+
+body,
+button,
+input,
+select,
+textarea,
+canvas,
+a,
+label {
+  cursor: var(--game-cursor), auto;
+}

@@ -1,4 +1,4 @@
-﻿}
+}
 
 .main-menu-dev-panel-title {
   font-size: 11px;
@@ -359,24 +359,23 @@
   opacity: 0.4;
 }
 
-/* Calculate sprite position: For 4x4 grid with 400% size, each cell is 25% of image = 100% of container
-   Position = -col * 100% (x), -row * 100% (y) */
-.survivalist-branch .survivalist-node[data-sprite-row="0"][data-sprite-col="0"]::before { background-position: 0% 0%; }
-.survivalist-branch .survivalist-node[data-sprite-row="0"][data-sprite-col="1"]::before { background-position: -100% 0%; }
-.survivalist-branch .survivalist-node[data-sprite-row="0"][data-sprite-col="2"]::before { background-position: -200% 0%; }
-.survivalist-branch .survivalist-node[data-sprite-row="0"][data-sprite-col="3"]::before { background-position: -300% 0%; }
-.survivalist-branch .survivalist-node[data-sprite-row="1"][data-sprite-col="0"]::before { background-position: 0% -100%; }
-.survivalist-branch .survivalist-node[data-sprite-row="1"][data-sprite-col="1"]::before { background-position: -100% -100%; }
-.survivalist-branch .survivalist-node[data-sprite-row="1"][data-sprite-col="2"]::before { background-position: -200% -100%; }
-.survivalist-branch .survivalist-node[data-sprite-row="1"][data-sprite-col="3"]::before { background-position: -300% -100%; }
-.survivalist-branch .survivalist-node[data-sprite-row="2"][data-sprite-col="0"]::before { background-position: 0% -200%; }
-.survivalist-branch .survivalist-node[data-sprite-row="2"][data-sprite-col="1"]::before { background-position: -100% -200%; }
-.survivalist-branch .survivalist-node[data-sprite-row="2"][data-sprite-col="2"]::before { background-position: -200% -200%; }
-.survivalist-branch .survivalist-node[data-sprite-row="2"][data-sprite-col="3"]::before { background-position: -300% -200%; }
-.survivalist-branch .survivalist-node[data-sprite-row="3"][data-sprite-col="0"]::before { background-position: 0% -300%; }
-.survivalist-branch .survivalist-node[data-sprite-row="3"][data-sprite-col="1"]::before { background-position: -100% -300%; }
-.survivalist-branch .survivalist-node[data-sprite-row="3"][data-sprite-col="2"]::before { background-position: -200% -300%; }
-.survivalist-branch .survivalist-node[data-sprite-row="3"][data-sprite-col="3"]::before { background-position: -300% -300%; }
+/* Pixel-based sprite positions (same as Warrior – exact cell boundaries, no rounding) */
+.survivalist-branch .survivalist-node[data-sprite-row="0"][data-sprite-col="0"]::before { background-position: 0 0; }
+.survivalist-branch .survivalist-node[data-sprite-row="0"][data-sprite-col="1"]::before { background-position: -64px 0; }
+.survivalist-branch .survivalist-node[data-sprite-row="0"][data-sprite-col="2"]::before { background-position: -128px 0; }
+.survivalist-branch .survivalist-node[data-sprite-row="0"][data-sprite-col="3"]::before { background-position: -192px 0; }
+.survivalist-branch .survivalist-node[data-sprite-row="1"][data-sprite-col="0"]::before { background-position: 0 -64px; }
+.survivalist-branch .survivalist-node[data-sprite-row="1"][data-sprite-col="1"]::before { background-position: -64px -64px; }
+.survivalist-branch .survivalist-node[data-sprite-row="1"][data-sprite-col="2"]::before { background-position: -128px -64px; }
+.survivalist-branch .survivalist-node[data-sprite-row="1"][data-sprite-col="3"]::before { background-position: -192px -64px; }
+.survivalist-branch .survivalist-node[data-sprite-row="2"][data-sprite-col="0"]::before { background-position: 0 -128px; }
+.survivalist-branch .survivalist-node[data-sprite-row="2"][data-sprite-col="1"]::before { background-position: -64px -128px; }
+.survivalist-branch .survivalist-node[data-sprite-row="2"][data-sprite-col="2"]::before { background-position: -128px -128px; }
+.survivalist-branch .survivalist-node[data-sprite-row="2"][data-sprite-col="3"]::before { background-position: -192px -128px; }
+.survivalist-branch .survivalist-node[data-sprite-row="3"][data-sprite-col="0"]::before { background-position: 0 -192px; }
+.survivalist-branch .survivalist-node[data-sprite-row="3"][data-sprite-col="1"]::before { background-position: -64px -192px; }
+.survivalist-branch .survivalist-node[data-sprite-row="3"][data-sprite-col="2"]::before { background-position: -128px -192px; }
+.survivalist-branch .survivalist-node[data-sprite-row="3"][data-sprite-col="3"]::before { background-position: -192px -192px; }
 
 .survivalist-branch .survivalist-node .talent-tree-node-name,
 .survivalist-branch .survivalist-node .talent-tree-node-desc,
@@ -417,6 +416,162 @@
   border-left: 2px solid rgba(148, 163, 184, 0.7);
   transform: translateX(-50%);
 }
+
+/* -------- Icon-only Talent Trees (Warrior, Survivalist) -------- */
+.talent-icon-tree-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 10px;
+  padding: 16px;
+  width: 100%;
+  max-width: 360px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+}
+
+.talent-icon-tree-lines {
+  position: absolute;
+  inset: 16px;
+  width: calc(100% - 32px);
+  height: calc(100% - 32px);
+  pointer-events: none;
+  color: rgba(148, 163, 184, 0.6);
+}
+
+.talent-icon-tree-lines-path {
+  vector-effect: non-scaling-stroke;
+}
+
+.talent-icon-tree .talent-tree-node {
+  min-width: 0;
+  max-width: none;
+}
+
+.talent-icon-tree .survivalist-icon-node,
+.talent-icon-tree .warrior-icon-node {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  aspect-ratio: 1;
+}
+
+/* Override Survivalist card rule so icon outline stays square (same as Warrior) */
+.talent-icon-tree .survivalist-icon-node[data-sprite-row][data-sprite-col] {
+  padding-left: 0;
+  min-height: 0;
+  padding: 0;
+}
+
+/* Nudge Survivalist sprite up 7px and left 7px (icon-tree only; Warrior unchanged) */
+.talent-icon-tree .survivalist-icon-node[data-sprite-row][data-sprite-col]::before {
+  transform: translate(-7px, -7px);
+}
+
+.talent-icon-tree .survivalist-icon-node .talent-icon-tooltip,
+.talent-icon-tree .warrior-icon-node .talent-icon-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  width: 240px;
+  padding: 10px 12px;
+  background: #0b1222;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 20;
+}
+
+.talent-icon-tree .survivalist-icon-node:hover .talent-icon-tooltip,
+.talent-icon-tree .warrior-icon-node:hover .talent-icon-tooltip {
+  opacity: 1;
+}
+
+.talent-icon-tooltip-name {
+  font-weight: 800;
+  font-size: 13px;
+  color: #f1f5f9;
+  margin-bottom: 4px;
+}
+
+.talent-icon-tooltip-desc {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.35;
+  margin-bottom: 6px;
+}
+
+.talent-icon-tooltip-cost {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.talent-icon-tooltip-refund {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* Warrior icon-tree grid wrapper */
+.warrior-icon-tree-grid {
+  /* uses .talent-icon-tree-grid */
+}
+
+/* Survivalist icon-tree grid wrapper */
+.survivalist-icon-tree-grid {
+  /* uses .talent-icon-tree-grid */
+}
+
+/* Warrior sprite atlas support */
+.warrior-branch .warrior-node[data-sprite-row][data-sprite-col]::before {
+  content: "";
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background-image: url('../assets/UI/Warrior-Talent-Sprite-Atlas.png');
+  background-repeat: no-repeat;
+  background-size: 400% 400%;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+.warrior-branch .warrior-node.locked[data-sprite-row][data-sprite-col]::before {
+  opacity: 0.4;
+}
+
+/* 4x4 atlas positions (64px cells in the scaled background) */
+.warrior-branch .warrior-node[data-sprite-row="0"][data-sprite-col="0"]::before { background-position: 0 0; }
+.warrior-branch .warrior-node[data-sprite-row="0"][data-sprite-col="1"]::before { background-position: -64px 0; }
+.warrior-branch .warrior-node[data-sprite-row="0"][data-sprite-col="2"]::before { background-position: -128px 0; }
+.warrior-branch .warrior-node[data-sprite-row="0"][data-sprite-col="3"]::before { background-position: -192px 0; }
+.warrior-branch .warrior-node[data-sprite-row="1"][data-sprite-col="0"]::before { background-position: 0 -64px; }
+.warrior-branch .warrior-node[data-sprite-row="1"][data-sprite-col="1"]::before { background-position: -64px -64px; }
+.warrior-branch .warrior-node[data-sprite-row="1"][data-sprite-col="2"]::before { background-position: -128px -64px; }
+.warrior-branch .warrior-node[data-sprite-row="1"][data-sprite-col="3"]::before { background-position: -192px -64px; }
+.warrior-branch .warrior-node[data-sprite-row="2"][data-sprite-col="0"]::before { background-position: 0 -128px; }
+.warrior-branch .warrior-node[data-sprite-row="2"][data-sprite-col="1"]::before { background-position: -64px -128px; }
+.warrior-branch .warrior-node[data-sprite-row="2"][data-sprite-col="2"]::before { background-position: -128px -128px; }
+.warrior-branch .warrior-node[data-sprite-row="2"][data-sprite-col="3"]::before { background-position: -192px -128px; }
+.warrior-branch .warrior-node[data-sprite-row="3"][data-sprite-col="0"]::before { background-position: 0 -192px; }
+.warrior-branch .warrior-node[data-sprite-row="3"][data-sprite-col="1"]::before { background-position: -64px -192px; }
+.warrior-branch .warrior-node[data-sprite-row="3"][data-sprite-col="2"]::before { background-position: -128px -192px; }
+.warrior-branch .warrior-node[data-sprite-row="3"][data-sprite-col="3"]::before { background-position: -192px -192px; }
 
 /* Scavenger branching tree (8 columns) */
 .scavenger-branch .scavenger-tree-grid {
@@ -606,6 +761,84 @@
   overflow: hidden;
 }
 
+.skill-library-slots-panel {
+  width: 100px;
+  flex-shrink: 0;
+  padding: 16px;
+  border-right: 1px solid #1f2937;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.skill-library-slots-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.skill-library-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skill-library-slot {
+  width: 72px;
+  min-height: 72px;
+  height: auto;
+  padding: 6px 0;
+  border: 2px dashed #4b5563;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.skill-library-slot.filled {
+  border-style: solid;
+  border-color: #6b21a8;
+}
+
+.skill-library-slot.selected {
+  border-color: #a855f7;
+  box-shadow: 0 0 0 2px #a855f7;
+}
+
+.skill-library-slot.locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.skill-library-slot-illustration {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+.skill-library-slot-name {
+  font-size: 10px;
+  color: #fff;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.skill-library-slots-hint {
+  font-size: 10px;
+  color: #64748b;
+  margin: 0;
+  text-align: center;
+  line-height: 1.3;
+}
+
 .skill-library-skills-panel {
   flex: 1;
   min-width: 0;
@@ -637,6 +870,59 @@
   flex-direction: column;
   gap: 16px;
   align-content: flex-start;
+}
+
+.skill-library-build-paths {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid rgba(56, 189, 248, 0.25);
+  padding-top: 12px;
+}
+
+.skill-library-build-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #67e8f9;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.skill-library-build-card {
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.75);
+  padding: 10px 12px;
+}
+
+.skill-library-build-name {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #e0f2fe;
+}
+
+.skill-library-build-fantasy {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: #cbd5e1;
+  line-height: 1.35;
+}
+
+.skill-library-build-line {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.skill-library-build-pivot {
+  margin: 0;
+  font-size: 11px;
+  color: #a5f3fc;
+  line-height: 1.35;
 }
 
 .skill-library-category-header {
@@ -686,10 +972,17 @@
   font-size: 28px;
 }
 
+.skill-library-card-illustration {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .skill-library-card-name {
   font-weight: 700;
   font-size: 15px;
-  color: #f5f7ff;
+  color: #fff;
 }
 
 .skill-library-card-level {
@@ -893,6 +1186,110 @@
   font-weight: 700;
   color: #34d399;
   margin-bottom: 12px;
+}
+
+/* Options Overlay */
+.options-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(5, 6, 10, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.options-overlay.hidden {
+  display: none;
+}
+
+.options-box {
+  background: #020617;
+  border: 2px solid #60a5fa;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(96, 165, 250, 0.25);
+}
+
+.options-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #1f2937;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.options-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #93c5fd;
+}
+
+.options-btn {
+  margin-left: auto;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1px solid #4b5563;
+  background: #111827;
+  color: #e5e7eb;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.options-btn:hover {
+  background: #1f2937;
+  border-color: #6b7280;
+}
+
+.options-content {
+  padding: 24px;
+}
+
+.options-section h2 {
+  font-size: 18px;
+  color: #93c5fd;
+  margin-bottom: 10px;
+}
+
+.options-current {
+  font-size: 13px;
+  color: #cbd5e1;
+  margin-bottom: 14px;
+}
+
+.options-resolution-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.options-resolution-btn {
+  padding: 12px 10px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.options-resolution-btn:hover {
+  background: #1e293b;
+  border-color: #64748b;
+}
+
+.options-resolution-btn.active {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.2);
+  color: #dbeafe;
 }
 
 /* Friends Overlay */

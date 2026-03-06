@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sprite Atlas Measurement Tool</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #fff;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            margin-bottom: 20px;
+            color: #4ade80;
+        }
+        
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 10px 20px;
+            background: #4ade80;
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        button:hover {
+            background: #22c55e;
+        }
+        
+        button.secondary {
+            background: #64748b;
+            color: #fff;
+        }
+        
+        button.secondary:hover {
+            background: #475569;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 20px;
+        }
+        
+        .atlas-container {
+            position: relative;
+            background: #2a2a2a;
+            border: 2px solid #4ade80;
+            border-radius: 8px;
+            padding: 10px;
+            overflow: auto;
+        }
+        
+        #atlasCanvas {
+            display: block;
+            cursor: crosshair;
+            background: #1a1a1a;
+        }
+        
+        .info-panel {
+            background: #2a2a2a;
+            border: 2px solid #64748b;
+            border-radius: 8px;
+            padding: 20px;
+            overflow-y: auto;
+            max-height: 800px;
+        }
+        
+        .current-sprite {
+            background: #3a3a3a;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .current-sprite h3 {
+            color: #4ade80;
+            margin-bottom: 10px;
+        }
+        
+        .coords-display {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        
+        .coords-display div {
+            margin: 5px 0;
+        }
+        
+        .sprite-list {
+            margin-top: 20px;
+        }
+        
+        .sprite-list h3 {
+            color: #4ade80;
+            margin-bottom: 10px;
+        }
+        
+        .sprite-item {
+            padding: 8px;
+            margin: 5px 0;
+            background: #3a3a3a;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .sprite-item:hover {
+            background: #4a4a4a;
+        }
+        
+        .sprite-item.selected {
+            background: #4ade80;
+            color: #000;
+        }
+        
+        .sprite-item.measured {
+            border-left: 4px solid #22c55e;
+        }
+        
+        .output-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #64748b;
+        }
+        
+        .output-section h3 {
+            color: #4ade80;
+            margin-bottom: 10px;
+        }
+        
+        #outputCode {
+            width: 100%;
+            height: 300px;
+            background: #1a1a1a;
+            color: #4ade80;
+            border: 1px solid #64748b;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            resize: vertical;
+        }
+        
+        .instructions {
+            background: #3a3a3a;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .instructions h3 {
+            color: #4ade80;
+            margin-bottom: 10px;
+        }
+        
+        .instructions ol {
+            margin-left: 20px;
+        }
+        
+        .instructions li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Sprite Atlas Measurement Tool</h1>
+        
+        <div class="instructions">
+            <h3>How to use:</h3>
+            <ol>
+                <li>Click on a sprite from the list on the right to select it</li>
+                <li>On the canvas, click and drag to draw a rectangle around the sprite</li>
+                <li>The coordinates will be automatically saved for that sprite</li>
+                <li>Repeat for all sprites</li>
+                <li>Click "Copy Output Code" to copy the SPRITE_COORDS object</li>
+                <li>Paste it into src/entities/enemy.js to replace the empty SPRITE_COORDS object</li>
+            </ol>
+        </div>
+        
+        <div class="toolbar">
+            <button onclick="clearSelection()">Clear Selection</button>
+            <button onclick="zoomIn()">Zoom In (+)</button>
+            <button onclick="zoomOut()">Zoom Out (-)</button>
+            <button onclick="resetZoom()">Reset Zoom</button>
+            <button class="secondary" onclick="copyOutput()">Copy Output Code</button>
+            <button class="secondary" onclick="exportJSON()">Export as JSON</button>
+        </div>
+        
+        <div class="main-content">
+            <div class="atlas-container">
+                <canvas id="atlasCanvas"></canvas>
+            </div>
+            
+            <div class="info-panel">
+                <div class="current-sprite">
+                    <h3>Current Sprite</h3>
+                    <div id="currentSpriteName">None selected</div>
+                    <div class="coords-display" id="coordsDisplay">
+                        <div>Click and drag on canvas to measure</div>
+                    </div>
+                </div>
+                
+                <div class="sprite-list">
+                    <h3>Sprite List</h3>
+                    <div id="spriteList"></div>
+                </div>
+                
+                <div class="output-section">
+                    <h3>Output Code</h3>
+                    <textarea id="outputCode" readonly></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Sprite list matching your enemy database
+        const spriteList = [
+            { row: 1, col: 'a', name: 'orc' },
+            { row: 1, col: 'b', name: 'orc wizard' },
+            { row: 1, col: 'c', name: 'goblin' },
+            { row: 1, col: 'd', name: 'orc blademaster' },
+            { row: 1, col: 'e', name: 'orc warchief' },
+            { row: 1, col: 'f', name: 'goblin archer' },
+            { row: 1, col: 'g', name: 'goblin mage' },
+            { row: 1, col: 'h', name: 'goblin brute' },
+            { row: 2, col: 'a', name: 'ettin' },
+            { row: 2, col: 'b', name: 'two headed ettin' },
+            { row: 2, col: 'c', name: 'troll' },
+            { row: 3, col: 'a', name: 'small slime' },
+            { row: 3, col: 'b', name: 'big slime' },
+            { row: 3, col: 'c', name: 'slimebody' },
+            { row: 3, col: 'd', name: 'merged slimebodies' },
+            { row: 4, col: 'a', name: 'faceless monk' },
+            { row: 4, col: 'b', name: 'unholy cardinal' },
+            { row: 5, col: 'a', name: 'skeleton' },
+            { row: 5, col: 'b', name: 'skeleton archer' },
+            { row: 5, col: 'c', name: 'lich' },
+            { row: 5, col: 'd', name: 'death knight' },
+            { row: 5, col: 'e', name: 'zombie' },
+            { row: 5, col: 'f', name: 'ghoul' },
+            { row: 6, col: 'a', name: 'banshee' },
+            { row: 6, col: 'b', name: 'reaper' },
+            { row: 6, col: 'c', name: 'wraith' },
+            { row: 6, col: 'd', name: 'cultist' },
+            { row: 6, col: 'e', name: 'hag/witch' },
+            { row: 7, col: 'a', name: 'giant centipede' },
+            { row: 7, col: 'b', name: 'lampreymander' },
+            { row: 7, col: 'c', name: 'giant earthworm' },
+            { row: 7, col: 'd', name: 'manticore' },
+            { row: 7, col: 'e', name: 'giant ant' },
+            { row: 7, col: 'f', name: 'lycanthrope' },
+            { row: 7, col: 'g', name: 'giant bat' },
+            { row: 7, col: 'h', name: 'lesser giant ant' },
+            { row: 7, col: 'i', name: 'giant spider' },
+            { row: 7, col: 'j', name: 'lesser giant spider' },
+            { row: 7, col: 'k', name: 'warg/dire wolf' },
+            { row: 7, col: 'l', name: 'giant rat' },
+            { row: 8, col: 'a', name: 'dryad' },
+            { row: 8, col: 'b', name: 'wendigo' },
+            { row: 8, col: 'c', name: 'rock golem' },
+            { row: 8, col: 'd', name: 'centaur' },
+            { row: 8, col: 'e', name: 'naga' },
+            { row: 8, col: 'f', name: 'forest spirit' },
+            { row: 8, col: 'g', name: 'satyr' },
+            { row: 8, col: 'h', name: 'minotaur' },
+            { row: 8, col: 'i', name: 'harpy' },
+            { row: 8, col: 'j', name: 'gorgon/medusa' },
+            { row: 9, col: 'a', name: 'lizardfolk / kobold (reptile)' },
+            { row: 9, col: 'b', name: 'drake / lesser dragon' },
+            { row: 9, col: 'c', name: 'dragon' },
+            { row: 9, col: 'd', name: 'cockatrice' },
+            { row: 9, col: 'e', name: 'basilisk' },
+            { row: 10, col: 'a', name: 'small kobold (canine)' },
+            { row: 10, col: 'b', name: 'kobold (canine)' },
+            { row: 11, col: 'a', name: 'small myconid' },
+            { row: 11, col: 'b', name: 'large myconid' },
+            { row: 12, col: 'a', name: 'angel / archangel' },
+            { row: 12, col: 'b', name: 'imp / devil' },
+            { row: 13, col: 'a', name: 'small writhing mass' },
+            { row: 13, col: 'b', name: 'large writhing mass' },
+            { row: 13, col: 'c', name: 'writhing humanoid' }
+        ];
+
+        const canvas = document.getElementById('atlasCanvas');
+        const ctx = canvas.getContext('2d');
+        const atlasImage = new Image();
+        
+        let zoom = 2; // Start with 2x zoom
+        let isDrawing = false;
+        let startX = 0;
+        let startY = 0;
+        let currentRect = null;
+        let currentSprite = null;
+        const spriteCoords = {};
+        
+        // Load the atlas image
+        atlasImage.onload = function() {
+            canvas.width = atlasImage.width * zoom;
+            canvas.height = atlasImage.height * zoom;
+            drawAtlas();
+            renderSpriteList();
+        };
+        
+        atlasImage.src = 'assets/Enemies/monsters.png';
+        
+        function drawAtlas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(atlasImage, 0, 0, canvas.width, canvas.height);
+            
+            // Draw grid overlay
+            ctx.strokeStyle = 'rgba(100, 100, 100, 0.3)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= canvas.width; x += 32 * zoom) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= canvas.height; y += 32 * zoom) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+            
+            // Draw all measured sprites
+            for (const key in spriteCoords) {
+                const coords = spriteCoords[key];
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(
+                    coords.x * zoom,
+                    coords.y * zoom,
+                    coords.width * zoom,
+                    coords.height * zoom
+                );
+            }
+            
+            // Draw current selection rectangle
+            if (currentRect) {
+                ctx.strokeStyle = '#4ade80';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(
+                    currentRect.x * zoom,
+                    currentRect.y * zoom,
+                    currentRect.width * zoom,
+                    currentRect.height * zoom
+                );
+            }
+        }
+        
+        canvas.addEventListener('mousedown', (e) => {
+            if (!currentSprite) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / zoom);
+            const y = Math.floor((e.clientY - rect.top) / zoom);
+            
+            isDrawing = true;
+            startX = x;
+            startY = y;
+            currentRect = { x, y, width: 0, height: 0 };
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing || !currentSprite) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / zoom);
+            const y = Math.floor((e.clientY - rect.top) / zoom);
+            
+            currentRect.width = x - startX;
+            currentRect.height = y - startY;
+            drawAtlas();
+            
+            // Update display
+            updateCoordsDisplay();
+        });
+        
+        canvas.addEventListener('mouseup', (e) => {
+            if (!isDrawing || !currentSprite) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / zoom);
+            const y = Math.floor((e.clientY - rect.top) / zoom);
+            
+            // Normalize rectangle (handle drag in any direction)
+            const finalX = Math.min(startX, x);
+            const finalY = Math.min(startY, y);
+            const finalWidth = Math.abs(x - startX);
+            const finalHeight = Math.abs(y - startY);
+            
+            if (finalWidth > 0 && finalHeight > 0) {
+                const key = `${currentSprite.row}_${currentSprite.col}`;
+                spriteCoords[key] = {
+                    x: finalX,
+                    y: finalY,
+                    width: finalWidth,
+                    height: finalHeight
+                };
+                
+                currentRect = null;
+                drawAtlas();
+                renderSpriteList();
+                updateOutput();
+            }
+            
+            isDrawing = false;
+        });
+        
+        function selectSprite(sprite) {
+            currentSprite = sprite;
+            document.getElementById('currentSpriteName').textContent = 
+                `${sprite.row}.${sprite.col} - ${sprite.name}`;
+            
+            const key = `${sprite.row}_${sprite.col}`;
+            if (spriteCoords[key]) {
+                currentRect = { ...spriteCoords[key] };
+                drawAtlas();
+            } else {
+                currentRect = null;
+                drawAtlas();
+            }
+            
+            updateCoordsDisplay();
+            renderSpriteList();
+        }
+        
+        function updateCoordsDisplay() {
+            const display = document.getElementById('coordsDisplay');
+            if (currentRect && currentRect.width > 0 && currentRect.height > 0) {
+                display.innerHTML = `
+                    <div><strong>X:</strong> ${currentRect.x}</div>
+                    <div><strong>Y:</strong> ${currentRect.y}</div>
+                    <div><strong>Width:</strong> ${currentRect.width}</div>
+                    <div><strong>Height:</strong> ${currentRect.height}</div>
+                `;
+            } else if (currentSprite) {
+                const key = `${currentSprite.row}_${currentSprite.col}`;
+                const coords = spriteCoords[key];
+                if (coords) {
+                    display.innerHTML = `
+                        <div><strong>X:</strong> ${coords.x}</div>
+                        <div><strong>Y:</strong> ${coords.y}</div>
+                        <div><strong>Width:</strong> ${coords.width}</div>
+                        <div><strong>Height:</strong> ${coords.height}</div>
+                    `;
+                } else {
+                    display.innerHTML = '<div>Click and drag on canvas to measure</div>';
+                }
+            }
+        }
+        
+        function renderSpriteList() {
+            const list = document.getElementById('spriteList');
+            list.innerHTML = '';
+            
+            spriteList.forEach(sprite => {
+                const key = `${sprite.row}_${sprite.col}`;
+                const isMeasured = spriteCoords[key] !== undefined;
+                const isSelected = currentSprite && 
+                    currentSprite.row === sprite.row && 
+                    currentSprite.col === sprite.col;
+                
+                const item = document.createElement('div');
+                item.className = `sprite-item ${isSelected ? 'selected' : ''} ${isMeasured ? 'measured' : ''}`;
+                item.innerHTML = `
+                    <span>${sprite.row}.${sprite.col} - ${sprite.name}</span>
+                    ${isMeasured ? '<span>✓</span>' : ''}
+                `;
+                item.onclick = () => selectSprite(sprite);
+                list.appendChild(item);
+            });
+        }
+        
+        function clearSelection() {
+            currentRect = null;
+            drawAtlas();
+            updateCoordsDisplay();
+        }
+        
+        function zoomIn() {
+            zoom = Math.min(zoom + 0.5, 8);
+            canvas.width = atlasImage.width * zoom;
+            canvas.height = atlasImage.height * zoom;
+            drawAtlas();
+        }
+        
+        function zoomOut() {
+            zoom = Math.max(zoom - 0.5, 0.5);
+            canvas.width = atlasImage.width * zoom;
+            canvas.height = atlasImage.height * zoom;
+            drawAtlas();
+        }
+        
+        function resetZoom() {
+            zoom = 2;
+            canvas.width = atlasImage.width * zoom;
+            canvas.height = atlasImage.height * zoom;
+            drawAtlas();
+        }
+        
+        function updateOutput() {
+            let output = 'const SPRITE_COORDS = {\n';
+            
+            spriteList.forEach(sprite => {
+                const key = `${sprite.row}_${sprite.col}`;
+                const coords = spriteCoords[key];
+                if (coords) {
+                    output += `  "${key}": { x: ${coords.x}, y: ${coords.y}, width: ${coords.width}, height: ${coords.height} },\n`;
+                }
+            });
+            
+            output += '};';
+            
+            document.getElementById('outputCode').value = output;
+        }
+        
+        function copyOutput() {
+            const output = document.getElementById('outputCode');
+            output.select();
+            document.execCommand('copy');
+            alert('Code copied to clipboard!');
+        }
+        
+        function exportJSON() {
+            const json = JSON.stringify(spriteCoords, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'sprite-coords.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // Initialize
+        renderSpriteList();
+    </script>
+</body>
+</html>

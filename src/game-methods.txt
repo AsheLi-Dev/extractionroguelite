@@ -1,0 +1,145 @@
+﻿77: constructor(canvas, legacyItems = [], runConfig = {}) {
+459: resizeCanvas() {
+476: loop(timestamp) {
+488: initDevUI() {
+753: toggleDevPanel() {
+764: restartGame() {
+768: returnToMainMenu() {
+787: togglePause() {
+800: showInventoryOverlay() {
+813: closeInventoryOverlay() {
+829: populateInventoryOverlay() {
+895: getLivingItem() {
+903: getCraftableEquipmentItems() {
+918: populateCraftingTab() {
+975: selectCraftingItem(item, source, slot, index) {
+981: selectCraftingCube(cubeKey) {
+987: updateCraftingPreview() {
+1097: executeCraft() {
+1143: applyModifierCube(item, cubeDef, tier) {
+1162: applyLegendaryCube(item, cubeDef) {
+1175: applyUpgradeCube(item, cubeDef, tier) {
+1225: rebuildItemStats(item) {
+1251: showGameOver() {
+1271: showVictory() {
+1280: populateVictorySummary() {
+1312: saveCharacterAndReturnToMenu() {
+1342: update(dt) {
+1742: updateBossHealthBar() {
+1760: playerInExit(exit) {
+1769: saveMapEnemyState(mapId) {
+1848: restoreMapEnemyState(mapId) {
+1932: checkExits() {
+1944: spawnObstacles(mapId) {
+2063: spawnSubAreas(mapId) {
+2217: checkSubAreaInteraction(dt) {
+2380: enterSubArea(subArea) {
+2403: exitSubArea() {
+2409: spawnSubAreaEnemies(subArea) {
+2434: spawnMazeEnemies(subArea) {
+2475: updateSubArea(dt) {
+2542: spawnSubAreaReward(subArea) {
+2614: transitionToMap(targetMapId, spawnSide) {
+2747: tryTriggerEvent() {
+2759: showEventCard(eventDef) {
+2790: resolveEventChoice(eventId, choiceId) {
+2873: closeEventOverlay() {
+2884: grantEventRareEquipment() {
+2904: spawnCursedChestEnemy() {
+2925: spawnFiery() {
+2950: resolveStrangerQuest() {
+2967: showNotification(title, message) {
+2989: updateMapUI() {
+2996: updateEscortQuestUI() {
+3005: updateEnemyCountUI() {
+3013: updateXpUI() {
+3025: grantXP(amount) {
+3047: checkLevelUp() {
+3060: buildLevelUpCards() {
+3145: showLevelUpChoices() {
+3193: applyLevelUpChoice(card, cardEl) {
+3228: getWorldPositionFromScreen(clientX, clientY) {
+3247: getWorldPositionFromClick(e) {
+3251: updateAffixTooltip(clientX, clientY) {
+3279: hideAffixTooltip() {
+3284: onCanvasMouseDown(e) {
+3317: tryDash() {
+3349: tryBasicAttack(targetX, targetY) {
+3451: getProjectileCount() {
+3462: firePlayerProjectile(targetX, targetY) {
+3529: updatePlayerProjectiles(dt) {
+3672: updateDashStrike(dt) {
+3770: updateBackfireDash(dt) {
+3848: updatePulseOrbs(dt) {
+3869: updateEnemyAffixes(dt, enemy) {
+3940: updateCombat(dt) {
+4057: updateAuras(dt) {
+4144: dealDamageToEnemy(enemy, amount, opts = {}) {
+4229: processEnemyDebuffs(dt, enemy) {
+4257: triggerOnKillMods() {
+4271: computeSkillDamage(enemy, multiplier = 1, slot = null, opts = {}) {
+4300: getSkillCooldownMult() {
+4310: tryCastSkill(slot) {
+4334: tryReleaseChargedSkill(slot) {
+4355: executeSkill(skillId, slot, options = {}) {
+4601: getNearestEnemy(cx, cy, maxDist, exclude = null) {
+4617: updateSkillEffects(dt) {
+5130: resolveSquareOverlap(a, b) {
+5256: resolveCollisions() {
+5287: enemiesInRadius(cx, cy, r) {
+5298: enemiesInCone(cx, cy, dirX, dirY, length, angle) {
+5312: getFirstEnemyInLine(px, py, dirX, dirY, maxDist, halfWidth = 8) {
+5317: getEnemiesInLine(px, py, dirX, dirY, maxDist, halfWidth = 8) {
+5334: drawAuraEffects(ctx) {
+5361: drawSkillEffects(ctx) {
+5612: updateSkillUI() {
+5669: computePlayerDamage(enemy) {
+5697: updateBoss(dt) {
+5874: interactWithMapObject(obj) {
+5922: removeUpgradeById(upgradeId) {
+5939: removePenaltyById(penaltyId) {
+5957: getStandardUpgrades() {
+5966: getStandardPenalties() {
+5976: addShrineInteraction(shrineName, message) {
+5982: openShrineInteraction(shrineObj) {
+6095: executeShrineEffect(shrineObj) {
+6210: playerInVictoryPortal() {
+6218: checkVictoryPortal(dt) {
+6239: updateVictoryPortalUI() {
+6251: grantXPFromEnemy(enemy) {
+6263: dropLootFromEnemy(enemy) {
+6408: updateProjectiles(dt) {
+6483: onPlayerDamaged(rawAmount, fromEnemy = false) {
+6553: applyMagnetEffect(dt) {
+6573: updateUpgradeCardEffects(dt) {
+6595: render() {
+6948: handleLootPickup(lootItem) {
+6994: generateLegendaryEquipment(type) {
+7035: addCubeToInventory(cubeKey) {
+7054: tryDropCubeFromEnemy(enemy) {
+7088: healPlayer(amount) {
+7100: addFloatingText(worldX, worldY, text, type, isKillingBlow = false) {
+7112: updateHealthBar() {
+7125: updateDashUI() {
+7138: hasUpgradeCard(key) {
+7142: hasAttackUpgrade(id) {
+7146: getAttackUpgradeValue(id) {
+7152: hasAttackPenalty(id) {
+7156: getAttackPenaltyValue(id) {
+7162: hasBlessing(id) {
+7166: updateBlessings(dt) {
+7187: updateBlessingsUI() {
+7205: updateInventoryUI() {
+7250: isItemEquippable(item) {
+7259: isUpgradeCard(_item) {
+7263: handleInventoryItemClick(item) {
+7282: equipUpgradeCardAtIndex(_index) {
+7286: updateEquippedUI() {
+7320: recalculateStats() {
+7408: updateStatsUI() {
+7444: spawnUpgradeCardToInventory(_cardDef) {
+7448: handleDevGiveAllCards() {
+7452: handleDevGiveAllCubes() {
+7464: handleDevRandomItem() {
+7486: handleDevMaxStats() {
+7499: initDevStatsSliders() {

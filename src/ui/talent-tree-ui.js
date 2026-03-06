@@ -36,9 +36,9 @@ export function renderTalentTree() {
   let html = '<div class="talent-tree-branches">';
   for (const [branchName, nodes] of Object.entries(TALENT_TREE)) {
     if (branchName === "Warrior") {
-      html += renderWarriorTalentBranch(nodes, purchased, lp);
+      html += renderWarriorIconTree(nodes, purchased, lp);
     } else if (branchName === "Survivalist") {
-      html += renderSurvivalistTalentBranch(nodes, purchased, lp);
+      html += renderSurvivalistIconTree(nodes, purchased, lp);
     } else if (branchName === "Scavenger") {
       html += renderScavengerTalentBranch(nodes, purchased, lp);
     } else if (branchName === "Tinkerer") {
@@ -216,17 +216,143 @@ function renderSurvivalistTalentBranch(nodes, purchased, lp) {
   return renderBranchGrid("Survivalist", "survivalist", position, nodes, purchased, lp);
 }
 
+function renderSurvivalistIconTree(nodes, purchased, lp) {
+  // 0-based 4x4 grid layout (rows 0-3, cols 0-3)
+  const position = {
+    fortitude: { row: 0, col: 0, spriteRow: 0, spriteCol: 0 },
+    bulwark: { row: 0, col: 1, spriteRow: 0, spriteCol: 1 },
+    nimble: { row: 0, col: 2, spriteRow: 0, spriteCol: 2 },
+    vitality: { row: 0, col: 3, spriteRow: 0, spriteCol: 3 },
+    thickSkin: { row: 1, col: 0, spriteRow: 1, spriteCol: 0 },
+    toughness: { row: 1, col: 1, spriteRow: 1, spriteCol: 1 },
+    fleetFooted: { row: 1, col: 2, spriteRow: 1, spriteCol: 2 },
+    lifebloom: { row: 1, col: 3, spriteRow: 1, spriteCol: 3 },
+    secondBreath: { row: 2, col: 0, spriteRow: 2, spriteCol: 0 },
+    retaliation: { row: 2, col: 1, spriteRow: 2, spriteCol: 1 },
+    evasion: { row: 2, col: 2, spriteRow: 2, spriteCol: 2 },
+    shadowStep: { row: 2, col: 3, spriteRow: 2, spriteCol: 3 },
+    undyingResolve: { row: 3, col: 0, spriteRow: 3, spriteCol: 0 },
+    livingFortress: { row: 3, col: 1, spriteRow: 3, spriteCol: 1 },
+    ghostForm: { row: 3, col: 2, spriteRow: 3, spriteCol: 2 },
+    untouchable: { row: 3, col: 3, spriteRow: 3, spriteCol: 3 }
+  };
+
+  return renderIconTreeBranch({
+    branchName: "Survivalist",
+    cssBranchClass: "survivalist",
+    nodes,
+    purchased,
+    lp,
+    position,
+    viewBoxSize: 4
+  });
+}
+
+function renderWarriorIconTree(nodes, purchased, lp) {
+  // 0-based 4x4 grid layout based on the warrior atlas artwork.
+  // If you want a different placement, we can remap these 16 coordinates.
+  const position = {
+    fierce: { row: 0, col: 0, spriteRow: 0, spriteCol: 0 },
+    rapid: { row: 0, col: 1, spriteRow: 0, spriteCol: 1 },
+    resilient: { row: 0, col: 2, spriteRow: 0, spriteCol: 2 },
+    bloodthirst: { row: 0, col: 3, spriteRow: 0, spriteCol: 3 },
+    predator: { row: 1, col: 0, spriteRow: 1, spriteCol: 0 },
+    reflexes: { row: 1, col: 1, spriteRow: 1, spriteCol: 1 },
+    ironWill: { row: 1, col: 2, spriteRow: 1, spriteCol: 2 },
+    endurance: { row: 1, col: 3, spriteRow: 1, spriteCol: 3 },
+    executioner: { row: 2, col: 0, spriteRow: 2, spriteCol: 0 },
+    battleScarred: { row: 2, col: 1, spriteRow: 2, spriteCol: 1 },
+    frenzy: { row: 2, col: 2, spriteRow: 2, spriteCol: 2 },
+    fortress: { row: 2, col: 3, spriteRow: 2, spriteCol: 3 },
+    berserkerRage: { row: 3, col: 0, spriteRow: 3, spriteCol: 0 },
+    warlord: { row: 3, col: 1, spriteRow: 3, spriteCol: 1 },
+    secondWind: { row: 3, col: 2, spriteRow: 3, spriteCol: 2 },
+    immortal: { row: 3, col: 3, spriteRow: 3, spriteCol: 3 }
+  };
+
+  return renderIconTreeBranch({
+    branchName: "Warrior",
+    cssBranchClass: "warrior",
+    nodes,
+    purchased,
+    lp,
+    position,
+    viewBoxSize: 4
+  });
+}
+
+function renderIconTreeBranch({ branchName, cssBranchClass, nodes, purchased, lp, position, viewBoxSize }) {
+  const edges = [];
+  for (const node of nodes) {
+    const parents = [...(node.parentsAll || []), ...(node.parentsAny || [])];
+    for (const parentId of parents) {
+      if (position[parentId] && position[node.id]) edges.push({ from: parentId, to: node.id });
+    }
+  }
+
+  let pathD = "";
+  for (const e of edges) {
+    const a = position[e.from];
+    const b = position[e.to];
+    const x1 = a.col + 0.5;
+    const y1 = a.row + 0.5;
+    const x2 = b.col + 0.5;
+    const y2 = b.row + 0.5;
+    pathD += `M${x1},${y1} L${x2},${y2} `;
+  }
+  pathD = pathD.trim();
+
+  let nodesHtml = "";
+  for (const node of nodes) {
+    const pos = position[node.id];
+    if (!pos) continue;
+
+    const isPurchased = purchased.includes(node.id);
+    const parentsAll = node.parentsAll || [];
+    const parentsAny = node.parentsAny || [];
+    const hasAll = parentsAll.length === 0 || parentsAll.every((p) => purchased.includes(p));
+    const hasAny = parentsAny.length === 0 || parentsAny.some((p) => purchased.includes(p));
+    const canUnlock = !isPurchased && hasAll && hasAny && lp >= node.cost;
+    const state = isPurchased ? "purchased" : canUnlock ? "available" : "locked";
+    const canRefund = isPurchased && canRefundTalent(node.id, purchased);
+
+    const costLine = isPurchased ? "\u2713 Purchased" : `${node.cost} LP`;
+    const refundHint = canRefund ? "Click to refund." : "";
+
+    nodesHtml += `<div class="talent-tree-node ${cssBranchClass}-node ${cssBranchClass}-icon-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" data-sprite-row="${pos.spriteRow}" data-sprite-col="${pos.spriteCol}"${canRefund ? ' data-refundable="true"' : ""} style="grid-row:${pos.row + 1};grid-column:${pos.col + 1};">
+      <div class="${cssBranchClass}-icon-tooltip talent-icon-tooltip" role="tooltip">
+        <div class="talent-icon-tooltip-name">${escapeHtml(node.name)}</div>
+        <div class="talent-icon-tooltip-desc">${escapeHtml(node.desc)}</div>
+        <div class="talent-icon-tooltip-cost">${escapeHtml(costLine)}</div>
+        ${refundHint ? `<div class="talent-icon-tooltip-refund">${escapeHtml(refundHint)}</div>` : ""}
+      </div>
+    </div>`;
+  }
+
+  const branchPurchased = nodes.filter((n) => purchased.includes(n.id)).length;
+  return `<div class="talent-tree-branch ${cssBranchClass}-branch ${cssBranchClass}-icon-tree talent-icon-tree">
+    <div class="talent-tree-branch-header">
+      <div class="talent-tree-branch-title">${escapeHtml(branchName)}</div>
+      <button type="button" class="talent-tree-branch-refund-btn" data-branch="${escapeHtml(branchName)}" ${branchPurchased === 0 ? "disabled" : ""} title="Refund all talents in this branch">Refund all</button>
+    </div>
+    <div class="${cssBranchClass}-icon-tree-grid talent-icon-tree-grid">
+      <svg class="${cssBranchClass}-tree-lines talent-icon-tree-lines" viewBox="0 0 ${viewBoxSize} ${viewBoxSize}" preserveAspectRatio="none" aria-hidden="true">
+        <path class="talent-icon-tree-lines-path" d="${escapeHtml(pathD)}" fill="none" stroke="currentColor" stroke-width="0.08" stroke-linecap="round"></path>
+      </svg>
+      ${nodesHtml}
+    </div>
+  </div>`;
+}
+
 function renderScavengerTalentBranch(nodes, purchased, lp) {
   const position = {
     arcaneEye: { row: 1, col: 2 },
     swiftExtraction: { row: 1, col: 5 },
     keenEye: { row: 1, col: 8 },
     cardHoarder: { row: 3, col: 1 },
-    luckyDraw: { row: 3, col: 4 },
-    socketMastery: { row: 3, col: 5 },
-    secureFooting: { row: 3, col: 6 },
+    socketMastery: { row: 3, col: 3 },
+    secureFooting: { row: 3, col: 5 },
     itemSense: { row: 3, col: 7 },
-    modSpecialist: { row: 3, col: 8 },
     synergyMaster: { row: 5, col: 1 },
     cardSurge: { row: 5, col: 2 },
     ghostLooter: { row: 5, col: 3 },

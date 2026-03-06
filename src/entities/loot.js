@@ -1,6 +1,65 @@
 import { Vec2 } from '../utils.js';
-import { RARITY_COLORS, LOOT_COLORS, LOOT_ICONS, LOOT_DEFS, generateEquipmentItem } from '../data/loot-data.js';
+import { LOOT_DEFS, generateEquipmentItem } from '../data/loot-data.js';
 import { getCubeLabel } from '../data/cubes-data.js';
+
+const ANCESTOR_CLAN_SPRITES = {
+  swift: "assets/images/Swift Clan.png",
+  arcana: "assets/images/Arcana Clan.png",
+  savage: "assets/images/Savage Clan.png",
+  bulwark: "assets/images/Bulwark Clan.png",
+  hoarder: "assets/images/Hoarder Clan.png"
+};
+const ancestorClanSpriteCache = {};
+const FLOOR_LABEL_STYLE = {
+  common: { text: "#ffffff", bg: "#000000" },
+  magic: { text: "#ffffff", bg: ["#0b1f52", "#1e3a8a"] },
+  rare: { text: "#000000", bg: "#facc15" },
+  legendary: { text: "#000000", bg: "#f59e0b" }
+};
+
+function getCubeTier(cubeKey) {
+  const m = /T(\d+)$/i.exec(String(cubeKey || ""));
+  return m ? Number(m[1]) : null;
+}
+
+function getFloorLootTier(item) {
+  if (item?.type === "Cube") {
+    const tier = getCubeTier(item.cubeKey);
+    if (tier === 1) return "common";
+    if (tier === 2) return "magic";
+    if (tier === 3) return "rare";
+    // Non-tier cube keys are legendary/special cubes.
+    return "legendary";
+  }
+  const rarity = String(item?.rarity || "common").toLowerCase();
+  if (rarity === "legendary") return "legendary";
+  if (rarity === "rare") return "rare";
+  if (rarity === "magic") return "magic";
+  return "common";
+}
+
+function getFloorLabelColors(item) {
+  return FLOOR_LABEL_STYLE[getFloorLootTier(item)] || FLOOR_LABEL_STYLE.common;
+}
+
+function getAncestorSpriteSrc(clans) {
+  if (!Array.isArray(clans)) return null;
+  for (const clan of clans) {
+    const src = ANCESTOR_CLAN_SPRITES[String(clan || "").toLowerCase()];
+    if (src) return src;
+  }
+  return null;
+}
+
+function getAncestorSpriteImage(src) {
+  if (!src) return null;
+  if (!ancestorClanSpriteCache[src]) {
+    const img = new Image();
+    img.src = src;
+    ancestorClanSpriteCache[src] = img;
+  }
+  return ancestorClanSpriteCache[src];
+}
 
 export class LootItem {
   constructor(id, x, y, definition, burstFromX = null, burstFromY = null) {
@@ -9,6 +68,11 @@ export class LootItem {
     this.size = 20;
     this.type = definition.type;
     this.name = definition.name;
+    this.ringId = definition.ringId ?? null;
+    this.ringSpriteKey = definition.ringSpriteKey ?? null;
+    this.consumedOnTrigger = !!definition.consumedOnTrigger;
+    this.rolledModifiers = definition.rolledModifiers ?? null;
+    this.spriteCell = definition.spriteCell ?? null;
     this.cubeKey = definition.cubeKey ?? null;
     this.stats = definition.stats || {};
     this.cardKey = definition.cardKey || null;
@@ -18,8 +82,11 @@ export class LootItem {
     this.modifiers = definition.modifiers || [];
     this.baseStat = definition.baseStat || null;
     this.sockets = definition.sockets ?? 0;
+    this.vesselsMax = definition.vesselsMax ?? 0;
+    this.vessels = Array.isArray(definition.vessels) ? definition.vessels : [];
+    this.spiritDefId = definition.spiritDefId ?? null;
+    this.clans = Array.isArray(definition.clans) ? definition.clans : [];
     this.goldAmount = definition.goldAmount ?? 0;
-    this.color = this.rarity ? RARITY_COLORS[this.rarity] : (LOOT_COLORS[this.type] || "#fbbf24");
     this.burstFrom = burstFromX != null && burstFromY != null ? { x: burstFromX, y: burstFromY } : null;
     this.burstProgress = 0;
     this.pickupDelay = 1.0;
@@ -44,56 +111,8 @@ export class LootItem {
   }
 
   draw(ctx, camera, timeSeconds) {
-    const pos = this.displayPosition;
-    const sx = Math.floor(pos.x - camera.position.x);
-    const sy = Math.floor(pos.y - camera.position.y);
-    const half = this.size / 2;
-    const pulse = 0.75 + 0.25 * Math.sin(timeSeconds * 4 + this.id);
-    const icon = LOOT_ICONS[this.type] || "💰";
-
-    ctx.save();
-    ctx.translate(sx + half, sy + half);
-    ctx.scale(pulse, pulse);
-
-    if (this.type === "Gold") {
-      ctx.shadowColor = "#fbbf24";
-      ctx.shadowBlur = 10;
-    } else if (this.rarity === "legendary") {
-      ctx.shadowColor = "#f97316";
-      ctx.shadowBlur = 18 + 4 * Math.sin(timeSeconds * 6);
-    } else if (this.rarity === "magic") {
-      ctx.shadowColor = "#60a5fa";
-      ctx.shadowBlur = 14;
-    } else if (this.rarity === "rare") {
-      ctx.shadowColor = "#facc15";
-      ctx.shadowBlur = 16;
-    }
-
-    const gradient = ctx.createRadialGradient(0, 0, 2, 0, 0, half);
-    gradient.addColorStop(0, this.color);
-    gradient.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(0, 0, half, 0, Math.PI * 2);
-    ctx.fill();
-
-    if (this.rarity === "magic" || this.rarity === "rare") {
-      ctx.shadowBlur = 0;
-    }
-
-    ctx.fillStyle = "#ffffff";
-    ctx.font = `${Math.round(this.size * 1.1)}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    if (this.type === "Gold" && this.goldAmount > 0) {
-      ctx.fillText(String(this.goldAmount), 0, 0);
-    } else {
-      ctx.fillText(icon, 0, 0);
-    }
-    if (this.type === "Gold") ctx.shadowBlur = 0;
-
-    ctx.restore();
-
+    // Floor loot is intentionally label-only; see drawLabel().
+    void ctx; void camera; void timeSeconds;
   }
 
   drawLabel(ctx, camera, yOffset = 0) {
@@ -104,17 +123,30 @@ export class LootItem {
     const sy = Math.floor(pos.y - camera.position.y);
     const labelX = sx + this.size / 2;
     const labelY = sy - 6 + yOffset;
-    const labelColor = this.rarity ? (RARITY_COLORS[this.rarity] || "#f8fafc") : "#f8fafc";
+    const colors = getFloorLabelColors(this);
+    const textColor = colors.text;
+    const bgColor = colors.bg;
 
     ctx.save();
     ctx.font = "12px sans-serif";
     ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "rgba(2, 6, 23, 0.95)";
-    ctx.strokeText(label, labelX, labelY);
-    ctx.fillStyle = labelColor;
-    ctx.fillText(label, labelX, labelY);
+    ctx.textBaseline = "middle";
+    const textW = Math.ceil(ctx.measureText(label).width);
+    const boxW = textW + 8;
+    const boxH = 16;
+    const boxX = Math.floor(labelX - boxW / 2);
+    const boxY = Math.floor(labelY - boxH / 2 - 2);
+    if (Array.isArray(bgColor) && bgColor.length >= 2) {
+      const grad = ctx.createLinearGradient(boxX, boxY, boxX + boxW, boxY);
+      grad.addColorStop(0, bgColor[0]);
+      grad.addColorStop(1, bgColor[1]);
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = bgColor;
+    }
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = textColor;
+    ctx.fillText(label, labelX, boxY + boxH / 2);
     ctx.restore();
   }
 
@@ -241,6 +273,19 @@ export class LootSystem {
     this.items.push(item);
   }
 
+  spawnAncestorSpiritAt(centerX, centerY, def) {
+    if (!def) return;
+    const size = 20;
+    const margin = this.world.wallThickness + 15;
+    const landX = centerX - size / 2 + (Math.random() - 0.5) * 20;
+    const landY = centerY - size / 2 + (Math.random() - 0.5) * 20;
+    const clampedX = Math.max(margin, Math.min(landX, this.world.width - margin - size));
+    const clampedY = Math.max(margin, Math.min(landY, this.world.height - margin - size));
+    const item = new LootItem(this.nextId++, clampedX, clampedY, def, centerX, centerY);
+    item.size = size;
+    this.items.push(item);
+  }
+
   update(dt, player, onLootPicked) {
     for (const item of this.items) {
       item.updateBurst(dt);
@@ -303,3 +348,6 @@ export class LootSystem {
     ctx.restore();
   }
 }
+
+
+
