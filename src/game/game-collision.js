@@ -15,10 +15,8 @@ export function applyGameCollisionMixin(Game) {
       const overlapX = Math.min(ax2, bx2) - Math.max(ax1, bx1);
       const overlapY = Math.min(ay2, by2) - Math.max(ay1, by1);
       if (overlapX <= 0 || overlapY <= 0) return;
-      const aRooted = a.affixes && a.affixes.includes("rooted");
-      const bRooted = b.affixes && b.affixes.includes("rooted");
-      const pushA = bRooted ? 1 : (aRooted ? 0 : 0.5);
-      const pushB = aRooted ? 1 : (bRooted ? 0 : 0.5);
+      const pushA = 0.5;
+      const pushB = 0.5;
       const pushX = overlapX * 0.5;
       const pushY = overlapY * 0.5;
       const acx = ax1 + asz / 2, acy = ay1 + asz / 2;
@@ -144,11 +142,8 @@ export function applyGameCollisionMixin(Game) {
       const dirX = distance > 0 ? dx / distance : 1;
       const dirY = distance > 0 ? dy / distance : 0;
       
-      // Handle rooted affixes
-      const aRooted = a.affixes && a.affixes.includes("rooted");
-      const bRooted = b.affixes && b.affixes.includes("rooted");
-      const pushA = bRooted ? 1 : (aRooted ? 0 : 0.5);
-      const pushB = aRooted ? 1 : (bRooted ? 0 : 0.5);
+      const pushA = 0.5;
+      const pushB = 0.5;
       
       // Store original positions
       const aOrigX = a.position.x;
@@ -225,11 +220,14 @@ export function applyGameCollisionMixin(Game) {
       for (let iter = 0; iter < 2; iter++) {
         if (!skipPlayerCollision) {
           for (const enemy of allEnemies) {
+            if (enemy.isDeflectingOrbiter) continue;
             if (enemy.intersects(player)) this.resolveCircleOverlap(player, enemy);
           }
         }
         for (let i = 0; i < allEnemies.length; i++) {
           for (let j = i + 1; j < allEnemies.length; j++) {
+            if (allEnemies[i].isDeflectingOrbiter || allEnemies[j].isDeflectingOrbiter) continue;
+            if (allEnemies[i].affixes?.includes("flying") || allEnemies[j].affixes?.includes("flying")) continue;
             if (allEnemies[i].intersects(allEnemies[j])) this.resolveCircleOverlap(allEnemies[i], allEnemies[j]);
           }
         }
@@ -368,17 +366,53 @@ export function applyGameCollisionMixin(Game) {
 
     breakablesInRadius(cx, cy, r) {
       const out = [];
+      const seen = new Set();
+      const pushIfUnique = (target) => {
+        if (!target || seen.has(target)) return;
+        seen.add(target);
+        out.push(target);
+      };
       for (const b of this.breakables || []) {
         if (b.isDead) continue;
         const bx = b.centerX;
         const by = b.centerY;
-        if ((bx - cx) ** 2 + (by - cy) ** 2 <= r * r) out.push(b);
+        if ((bx - cx) ** 2 + (by - cy) ** 2 <= r * r) pushIfUnique(b);
+      }
+      if (typeof this.hasPillarEffect === "function" && this.hasPillarEffect("pillar.havoc.unmake_the_world")) {
+        for (const obstacle of this.obstacles || []) {
+          if (!obstacle || obstacle.destroyed) continue;
+          const ox = obstacle.position.x + (obstacle.size?.w || 0) / 2;
+          const oy = obstacle.position.y + (obstacle.size?.h || 0) / 2;
+          if ((ox - cx) ** 2 + (oy - cy) ** 2 > r * r) continue;
+          const destructibility = this.resolveWorldObjectDestructibility?.(obstacle, {
+            typeHint: "obstacle",
+            source: "breakablesInRadius"
+          });
+          if (destructibility?.destructible) pushIfUnique(obstacle);
+        }
+        for (const prop of this.searchableProps || []) {
+          if (!prop || prop.isSearched) continue;
+          const px = prop.centerX;
+          const py = prop.centerY;
+          if ((px - cx) ** 2 + (py - cy) ** 2 > r * r) continue;
+          const destructibility = this.resolveWorldObjectDestructibility?.(prop, {
+            typeHint: "searchable_prop",
+            source: "breakablesInRadius"
+          });
+          if (destructibility?.destructible) pushIfUnique(prop);
+        }
       }
       return out;
     },
 
     breakablesInCone(cx, cy, dirX, dirY, length, angle) {
       const out = [];
+      const seen = new Set();
+      const pushIfUnique = (target) => {
+        if (!target || seen.has(target)) return;
+        seen.add(target);
+        out.push(target);
+      };
       for (const b of this.breakables || []) {
         if (b.isDead) continue;
         const ex = b.centerX - cx;
@@ -386,13 +420,47 @@ export function applyGameCollisionMixin(Game) {
         const dist = Math.sqrt(ex * ex + ey * ey) || 1;
         if (dist > length) continue;
         const dot = (ex * dirX + ey * dirY) / dist;
-        if (dot > Math.cos(angle * Math.PI / 180)) out.push(b);
+        if (dot > Math.cos(angle * Math.PI / 180)) pushIfUnique(b);
+      }
+      if (typeof this.hasPillarEffect === "function" && this.hasPillarEffect("pillar.havoc.unmake_the_world")) {
+        for (const obstacle of this.obstacles || []) {
+          if (!obstacle || obstacle.destroyed) continue;
+          const ex = obstacle.position.x + (obstacle.size?.w || 0) / 2 - cx;
+          const ey = obstacle.position.y + (obstacle.size?.h || 0) / 2 - cy;
+          const dist = Math.sqrt(ex * ex + ey * ey) || 1;
+          if (dist > length) continue;
+          const dot = (ex * dirX + ey * dirY) / dist;
+          if (dot <= Math.cos(angle * Math.PI / 180)) continue;
+          const destructibility = this.resolveWorldObjectDestructibility?.(obstacle, {
+            typeHint: "obstacle",
+            source: "breakablesInCone"
+          });
+          if (destructibility?.destructible) pushIfUnique(obstacle);
+        }
+        for (const prop of this.searchableProps || []) {
+          if (!prop || prop.isSearched) continue;
+          const ex = prop.centerX - cx;
+          const ey = prop.centerY - cy;
+          const dist = Math.sqrt(ex * ex + ey * ey) || 1;
+          if (dist > length) continue;
+          const dot = (ex * dirX + ey * dirY) / dist;
+          if (dot <= Math.cos(angle * Math.PI / 180)) continue;
+          const destructibility = this.resolveWorldObjectDestructibility?.(prop, {
+            typeHint: "searchable_prop",
+            source: "breakablesInCone"
+          });
+          if (destructibility?.destructible) pushIfUnique(prop);
+        }
       }
       return out;
     },
 
     getBreakablesInLine(px, py, dirX, dirY, maxDist, halfWidth = 8) {
       const candidates = [];
+      const pushCandidate = (target, t) => {
+        if (!target) return;
+        candidates.push({ b: target, t });
+      };
       for (const b of this.breakables || []) {
         if (b.isDead) continue;
         const ex = b.centerX - px;
@@ -402,7 +470,39 @@ export function applyGameCollisionMixin(Game) {
         const perp = Math.abs(ex * dirY - ey * dirX);
         const half = Math.max(b.hitbox.w, b.hitbox.h) / 2;
         if (perp > halfWidth + half) continue;
-        candidates.push({ b, t });
+        pushCandidate(b, t);
+      }
+      if (typeof this.hasPillarEffect === "function" && this.hasPillarEffect("pillar.havoc.unmake_the_world")) {
+        for (const obstacle of this.obstacles || []) {
+          if (!obstacle || obstacle.destroyed) continue;
+          const ex = obstacle.position.x + (obstacle.size?.w || 0) / 2 - px;
+          const ey = obstacle.position.y + (obstacle.size?.h || 0) / 2 - py;
+          const t = ex * dirX + ey * dirY;
+          if (t <= 0 || t > maxDist) continue;
+          const perp = Math.abs(ex * dirY - ey * dirX);
+          const half = Math.max(obstacle.size?.w || 0, obstacle.size?.h || 0) / 2;
+          if (perp > halfWidth + half) continue;
+          const destructibility = this.resolveWorldObjectDestructibility?.(obstacle, {
+            typeHint: "obstacle",
+            source: "getBreakablesInLine"
+          });
+          if (destructibility?.destructible) pushCandidate(obstacle, t);
+        }
+        for (const prop of this.searchableProps || []) {
+          if (!prop || prop.isSearched) continue;
+          const ex = prop.centerX - px;
+          const ey = prop.centerY - py;
+          const t = ex * dirX + ey * dirY;
+          if (t <= 0 || t > maxDist) continue;
+          const perp = Math.abs(ex * dirY - ey * dirX);
+          const half = Math.max(prop.width || 0, prop.height || 0) / 2;
+          if (perp > halfWidth + half) continue;
+          const destructibility = this.resolveWorldObjectDestructibility?.(prop, {
+            typeHint: "searchable_prop",
+            source: "getBreakablesInLine"
+          });
+          if (destructibility?.destructible) pushCandidate(prop, t);
+        }
       }
       candidates.sort((a, b) => a.t - b.t);
       return candidates.map((c) => c.b);
