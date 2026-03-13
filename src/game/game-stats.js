@@ -95,39 +95,12 @@ export function applyGameStatsMixin(Game) {
         const pct = percentMods[key] || 0;
         if (pct !== 0) stats[key] = Math.round((stats[key] || 0) * (1 + pct));
       }
-      if (hasTalent("fortified")) stats.defense = Math.round((stats.defense || 0) * 1.2);
-      if (hasTalent("bulwark")) stats.defense = Math.round((stats.defense || 0) * 1.1);
-      if (hasTalent("thickSkin")) stats.defense = Math.round((stats.defense || 0) * 1.1);
+      if (this.hasCharacterTalent("bulwark")) stats.defense = Math.round((stats.defense || 0) * 1.1);
+      if (this.hasCharacterTalent("thickSkin")) stats.defense = Math.round((stats.defense || 0) * 1.1);
       stats.maxHealth = Math.round(stats.maxHealth);
       stats.speed = Math.round(stats.speed);
       stats.attack = Math.round(stats.attack);
-      if (hasTalent("ironFist")) stats.attack = Math.round(stats.attack * 1.1);
-      if (hasTalent("synergyMaster")) {
-        const sockets = getSkillModSockets();
-        let count = 0;
-        const slots = this.skills || [];
-        for (let i = 0; i < slots.length; i++) {
-          const skillId = slots[i];
-          if (!skillId) continue;
-          const arr = sockets[skillId];
-          if (Array.isArray(arr) && arr.some((c) => c)) count++;
-        }
-        const filled = (this.skills || []).filter(Boolean).length;
-        const allFour = filled >= 4 && count >= 4;
-        const mult = 1 + count * (allFour ? 0.1 : 0.06);
-        stats.attack = Math.round(stats.attack * mult);
-      }
-      if (hasTalent("grandSocketeer")) {
-        const sockets = getSkillModSockets();
-        let hasAny = false;
-        for (const skillId of (this.skills || [])) {
-          if (!skillId) continue;
-          const arr = sockets[skillId];
-          if (Array.isArray(arr) && arr.some((c) => c)) { hasAny = true; break; }
-        }
-        if (hasAny) stats.attack = Math.round(stats.attack * 1.5);
-      }
-      
+
       // Apply companion buffs
       const friendsState = getFriendsState();
       const companionBuff = getCompanionBuffForRun(friendsState);
@@ -183,13 +156,25 @@ export function applyGameStatsMixin(Game) {
         stats.defense = Math.round((stats.defense || 0) * (pillarStatMods.defenseMultiplier || 1) + (pillarStatMods.defenseFlat || 0));
         stats.speed = Math.round((stats.speed || 0) * (pillarStatMods.moveSpeedMultiplier || 1) + (pillarStatMods.moveSpeedFlat || 0));
       }
+      stats.hazardDamageReduction = Math.max(
+        0,
+        Math.min(0.75, Number(stats.hazardDamageReduction) || 0)
+      );
       const pillarDashOverride = typeof this.getPillarDashChargeOverride === "function"
         ? this.getPillarDashChargeOverride()
         : null;
+      const pillarInfiniteDash = !!pillarStatMods?.infiniteDashCharges;
       const pillarDashFlat = Math.max(0, Math.floor(Number(pillarStatMods?.dashChargesFlat) || 0));
       const computedDashMax = 2 + getRingExtraDashCharges(this) + pillarDashFlat;
       this.dashMaxCharges = pillarDashOverride == null ? computedDashMax : Math.max(0, pillarDashOverride);
-      this.dashCharges = Math.min(this.dashCharges ?? this.dashMaxCharges, this.dashMaxCharges);
+      if (pillarInfiniteDash) {
+        this.dashMaxCharges = Math.max(1, this.dashMaxCharges || computedDashMax || 1);
+        this.dashCharges = this.dashMaxCharges;
+        this.dashRechargeTimer = 0;
+        this.dashCooldown = 0;
+      } else {
+        this.dashCharges = Math.min(this.dashCharges ?? this.dashMaxCharges, this.dashMaxCharges);
+      }
       syncFocusCharges(this);
       
       this.currentStats = stats;
@@ -221,6 +206,7 @@ export function applyGameStatsMixin(Game) {
       const dashCd = this.equipmentDashCooldownMult ?? 1;
       rows.push(["Attack Speed", `${attacksPerSecond.toFixed(2)}/s`]);
       rows.push(["Cooldown Red.", `${cooldownReductionPct}%`]);
+      rows.push(["Hazard DR", `${Math.round((Number(stats.hazardDamageReduction) || 0) * 100)}%`]);
       if (spdMult < 1) rows.push(["Armour", `-${Math.round((1 - spdMult) * 100)}% speed`]);
       if (dashCd > 1) rows.push(["Dash CD", `+${Math.round((dashCd - 1) * 100)}%`]);
       return rows;
@@ -240,6 +226,9 @@ export function applyGameStatsMixin(Game) {
         atkSpdMult *= this.getPillarAttackSpeedMultiplier({ attackType });
       }
       if (this.frenzyBuffUntil > this.time) atkSpdMult *= 1.3;
+      if (this.hasCharacterTalent("brutalityRetaliation") && this.time < (this.brutalityRetaliationUntil || 0) && (this.brutalityRetaliationStacks || 0) > 0) {
+        atkSpdMult *= 1 + (this.brutalityRetaliationStacks || 0) * 0.05;
+      }
       if (typeof this.getAttackUpgradeValue === "function") {
         atkSpdMult *= 1 + this.getAttackUpgradeValue("attackSpeed");
       }
@@ -260,7 +249,7 @@ export function applyGameStatsMixin(Game) {
       let effectiveCooldown = (baseCooldown / atkSpdMult) * attackCooldownMult;
       effectiveCooldown /= attackSpeedMult;
 
-      if (hasTalent("cardSurge") && this.cardSurgeUntil > this.time) {
+      if (this.hasCharacterTalent("cardSurge") && this.cardSurgeUntil > this.time) {
         effectiveCooldown /= 1.2;
       }
       if (typeof this.getAttackPenaltyValue === "function") {

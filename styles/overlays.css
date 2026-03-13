@@ -340,7 +340,7 @@
 }
 
 .build-log-section:first-child .build-log-section-title { color: #22c55e; }
-.build-log-section:last-child .build-log-section-title { color: #ef4444; }
+.build-log-section:last-child .build-log-section-title { color: #eab308; }
 
 .build-log-list {
   list-style: none;
@@ -391,21 +391,46 @@
   color: #fca5a5;
 }
 
+.build-log-list .build-log-evolution {
+  color: #eab308;
+  border-left: 3px solid #eab308;
+}
+
+.build-log-list .build-log-evolution .build-log-effect {
+  color: #fde047;
+}
+
 /* Dev toggle & panel */
 .dev-toggle {
   position: fixed;
-  top: 16px;
+  bottom: 16px;
   right: 16px;
   z-index: 40;
-  padding: 4px 10px;
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 22px;
+  padding: 0;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   border-radius: 999px;
   border: 1px solid rgba(249, 115, 22, 0.8);
   background: rgba(15, 23, 42, 0.9);
   color: #fed7aa;
   cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Force-toggle sizing in case generic button rules stretch it */
+#dev-toggle {
+  width: 44px !important;
+  height: 22px !important;
+  padding: 0 !important;
+  max-height: 22px !important;
 }
 
 .dev-panel {

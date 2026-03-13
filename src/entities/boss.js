@@ -57,11 +57,11 @@ export class Boss {
     this.trailSpawnTimer = 0;
     this.trailSpawnInterval = 0.05; // Spawn particle every 0.05 seconds
 
-    // Phase 1 sprite sheet configuration (2x2 grid = 4 frames)
+    // Phase 1 sprite sheet configuration (GameMaster Idle: 48x1)
     this.spriteSheet = {
-      columns: 2,       // 2 columns in the sprite sheet
-      rows: 2,          // 2 rows in the sprite sheet
-      frameTime: 0.25   // 0.25 seconds per frame
+      columns: 48,
+      rows: 1,
+      frameTime: 1 / 16
     };
 
     // Load phase 1 sprite sheet
@@ -74,16 +74,16 @@ export class Boss {
       this.spriteSheet.frameHeight = this.sprite.height / this.spriteSheet.rows;
     };
     this.sprite.onerror = () => {
-      console.warn('Failed to load Wasteland Tyrant sprite sheet');
+      console.warn('Failed to load GameMaster phase 1 sprite sheet');
       this.spriteLoaded = false;
     };
-    this.sprite.src = 'assets/Enemies/Wasteland-Tyrant-Sprite-Sheet-First-Phase.png';
+    this.sprite.src = 'assets/Enemies/GameMaster/Idle_48x1.png';
 
-    // Transition sprite sheet configuration (3x3 grid = 9 frames)
+    // Transition sprite sheet configuration (GameMaster Upgrade: 40x1)
     this.transitionSpriteSheet = {
-      columns: 3,
-      rows: 3,
-      frameTime: 1 / 30  // 30 FPS = 1/30 seconds per frame
+      columns: 40,
+      rows: 1,
+      frameTime: this.transitionDuration / 40
     };
 
     // Load transition sprite sheet
@@ -95,16 +95,16 @@ export class Boss {
       this.transitionSpriteSheet.frameHeight = this.transitionSprite.height / this.transitionSpriteSheet.rows;
     };
     this.transitionSprite.onerror = () => {
-      console.warn('Failed to load Wasteland Tyrant transition sprite sheet');
+      console.warn('Failed to load GameMaster transition sprite sheet');
       this.transitionSpriteLoaded = false;
     };
-    this.transitionSprite.src = 'assets/Enemies/WastelandTyrantTransition-3x3SpriteSheet.png';
+    this.transitionSprite.src = 'assets/Enemies/GameMaster/Upgrade_40x1.png';
 
-    // Phase 2 sprite sheet configuration (2x2 grid = 4 frames)
+    // Phase 2 sprite sheet configuration (GameMaster ATK: 48x1)
     this.phase2SpriteSheet = {
-      columns: 2,
-      rows: 2,
-      frameTimes: [0.4, 0.2, 0.2]  // Custom timings for first 3 frames
+      columns: 48,
+      rows: 1,
+      frameTime: 1 / 18
     };
 
     // Load phase 2 sprite sheet
@@ -116,10 +116,10 @@ export class Boss {
       this.phase2SpriteSheet.frameHeight = this.phase2Sprite.height / this.phase2SpriteSheet.rows;
     };
     this.phase2Sprite.onerror = () => {
-      console.warn('Failed to load Wasteland Tyrant phase 2 sprite sheet');
+      console.warn('Failed to load GameMaster phase 2 sprite sheet');
       this.phase2SpriteLoaded = false;
     };
-    this.phase2Sprite.src = 'assets/Enemies/WastelandTyrant2ndPhase-SpriteSheet.png';
+    this.phase2Sprite.src = 'assets/Enemies/GameMaster/ATK_48x1.png';
   }
 
   get center() {
@@ -353,7 +353,7 @@ export class Boss {
       if (gameTime != null && this.transitionStartTime != null) {
         const transitionElapsed = gameTime - this.transitionStartTime;
         const frameIndex = Math.floor(transitionElapsed / this.transitionSpriteSheet.frameTime);
-        animationFrame = frameIndex % 9; // Loop through 9 frames
+        animationFrame = Math.max(0, Math.min(this.transitionSpriteSheet.columns - 1, frameIndex));
       } else {
         // Transition just started, use first frame
         animationFrame = 0;
@@ -364,19 +364,9 @@ export class Boss {
       spriteSheetToUse = this.phase2SpriteSheet;
       
       if (gameTime != null) {
-        // Calculate frame with custom timings: 0.4s, 0.2s, 0.2s
-        // Loop through frames 0, 1, 2 continuously
-        const cycleTime = this.phase2SpriteSheet.frameTimes[0] + this.phase2SpriteSheet.frameTimes[1] + this.phase2SpriteSheet.frameTimes[2];
-        const cycleElapsed = gameTime % cycleTime;
-        let accumulatedTime = 0;
-        animationFrame = 0; // Default to frame 0
-        for (let i = 0; i < 3; i++) {
-          if (cycleElapsed >= accumulatedTime && cycleElapsed < accumulatedTime + this.phase2SpriteSheet.frameTimes[i]) {
-            animationFrame = i;
-            break;
-          }
-          accumulatedTime += this.phase2SpriteSheet.frameTimes[i];
-        }
+        const totalFrames = this.phase2SpriteSheet.columns * this.phase2SpriteSheet.rows;
+        const frameIndex = Math.floor(gameTime / this.phase2SpriteSheet.frameTime) % totalFrames;
+        animationFrame = frameIndex;
       }
     } else if (this.spriteLoaded && this.sprite.complete && this.spriteSheet.frameWidth && this.spriteSheet.frameHeight) {
       // Use phase 1 sprite
@@ -384,7 +374,7 @@ export class Boss {
       spriteSheetToUse = this.spriteSheet;
       
       if (gameTime != null) {
-        const totalFrames = 3; // Only use first 3 frames (0, 1, 2)
+        const totalFrames = this.spriteSheet.columns * this.spriteSheet.rows;
         const frameIndex = Math.floor(gameTime / this.spriteSheet.frameTime) % totalFrames;
         animationFrame = frameIndex;
       }

@@ -418,46 +418,53 @@ export function generateEquipmentItem(type, lootQuality, qualityBonus = 0, force
     weight = opts.includes(forcedWeight) ? forcedWeight : opts[Math.floor(Math.random() * opts.length)];
   }
 
-  // Apply armour/helmet weight-based stat multipliers.
-  // Boots use a dedicated weight model below.
-  const WEIGHT_STAT_MULTIPLIERS = { light: 0.85, medium: 1.0, heavy: 1.2 };
-  if (ARMOUR_SLOT_TYPES.includes(type) && weight && WEIGHT_STAT_MULTIPLIERS[weight]) {
-    const multiplier = WEIGHT_STAT_MULTIPLIERS[weight];
-    for (const key of Object.keys(baseStat)) {
-      baseStat[key] = Math.round(baseStat[key] * multiplier);
+  const forceMinBaseStats = options.forceMinBaseStats === true;
+  if (forceMinBaseStats) {
+    if (baseKey && range) baseStat[baseKey] = range.min;
+    if (sec) baseStat[sec.statKey] = sec.range.min;
+    if (WEIGHT_OPTIONS[type]?.includes("medium")) weight = "medium";
+  } else {
+    // Apply armour/helmet weight-based stat multipliers.
+    // Boots use a dedicated weight model below.
+    const WEIGHT_STAT_MULTIPLIERS = { light: 0.85, medium: 1.0, heavy: 1.2 };
+    if (ARMOUR_SLOT_TYPES.includes(type) && weight && WEIGHT_STAT_MULTIPLIERS[weight]) {
+      const multiplier = WEIGHT_STAT_MULTIPLIERS[weight];
+      for (const key of Object.keys(baseStat)) {
+        baseStat[key] = Math.round(baseStat[key] * multiplier);
+      }
     }
-  }
 
-  // Boots weight model:
-  // - light: base speed rolls at 120%
-  // - medium: base speed rolls at 100%, +10-30 max health base
-  // - heavy: base speed rolls at 80%, +20-40 max health base, +5-10 defense base
-  if (type === "Boots" && weight) {
-    if (weight === "light") {
-      baseStat.speed = Math.round((baseStat.speed || 0) * 1.2);
-    } else if (weight === "medium") {
-      baseStat.speed = Math.round((baseStat.speed || 0) * 1.0);
-      baseStat.maxHealth = 10 + Math.floor(Math.random() * 21);
-    } else if (weight === "heavy") {
-      baseStat.speed = Math.round((baseStat.speed || 0) * 0.8);
-      baseStat.maxHealth = 20 + Math.floor(Math.random() * 21);
-      baseStat.defense = 5 + Math.floor(Math.random() * 6);
+    // Boots weight model:
+    // - light: base speed rolls at 120%
+    // - medium: base speed rolls at 100%, +10-30 max health base
+    // - heavy: base speed rolls at 80%, +20-40 max health base, +5-10 defense base
+    if (type === "Boots" && weight) {
+      if (weight === "light") {
+        baseStat.speed = Math.round((baseStat.speed || 0) * 1.2);
+      } else if (weight === "medium") {
+        baseStat.speed = Math.round((baseStat.speed || 0) * 1.0);
+        baseStat.maxHealth = 10 + Math.floor(Math.random() * 21);
+      } else if (weight === "heavy") {
+        baseStat.speed = Math.round((baseStat.speed || 0) * 0.8);
+        baseStat.maxHealth = 20 + Math.floor(Math.random() * 21);
+        baseStat.defense = 5 + Math.floor(Math.random() * 6);
+      }
     }
-  }
 
-  // Weapon weight model:
-  // - light: base attack at 80%, +10-20% attack speed base
-  // - medium: base attack at 100%, +5-10% attack speed base
-  // - heavy: base attack at 140%, -20-30% attack speed base
-  if (type === "Weapon" && weight) {
-    const WEAPON_ATTACK_MULT = { light: 0.8, medium: 1.0, heavy: 1.4 };
-    baseStat.attack = Math.round((baseStat.attack || 0) * (WEAPON_ATTACK_MULT[weight] || 1.0));
-    if (weight === "light") {
-      baseStat.attackSpeed = 1 + (0.10 + Math.random() * 0.10);
-    } else if (weight === "medium") {
-      baseStat.attackSpeed = 1 + (0.05 + Math.random() * 0.05);
-    } else if (weight === "heavy") {
-      baseStat.attackSpeed = 1 - (0.20 + Math.random() * 0.10);
+    // Weapon weight model:
+    // - light: base attack at 80%, +10-20% attack speed base
+    // - medium: base attack at 100%, +5-10% attack speed base
+    // - heavy: base attack at 140%, -20-30% attack speed base
+    if (type === "Weapon" && weight) {
+      const WEAPON_ATTACK_MULT = { light: 0.8, medium: 1.0, heavy: 1.4 };
+      baseStat.attack = Math.round((baseStat.attack || 0) * (WEAPON_ATTACK_MULT[weight] || 1.0));
+      if (weight === "light") {
+        baseStat.attackSpeed = 1 + (0.10 + Math.random() * 0.10);
+      } else if (weight === "medium") {
+        baseStat.attackSpeed = 1 + (0.05 + Math.random() * 0.05);
+      } else if (weight === "heavy") {
+        baseStat.attackSpeed = 1 - (0.20 + Math.random() * 0.10);
+      }
     }
   }
 
@@ -551,7 +558,7 @@ export function generateEquipmentItem(type, lootQuality, qualityBonus = 0, force
     }
   }
 
-  return {
+  const result = {
     type,
     name,
     spriteCell: getEquipmentSpriteCell(type, name, weight),
@@ -564,4 +571,8 @@ export function generateEquipmentItem(type, lootQuality, qualityBonus = 0, force
     vesselsMax: 0,
     vessels: []
   };
+  if (type === "Weapon" || type === "Helmet" || type === "Body Armour" || type === "Boots") {
+    result.weaponUpgradeLevel = 0;
+  }
+  return result;
 }

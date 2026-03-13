@@ -186,6 +186,49 @@
   text-align: center;
 }
 
+.pre-run-character {
+  margin-bottom: 20px;
+}
+
+.pre-run-character label {
+  display: block;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.pre-run-character-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pre-run-character-btn {
+  flex: 1;
+  min-width: 120px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 2px solid #374151;
+  background: #111827;
+  color: #9ca3af;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pre-run-character-btn:hover {
+  border-color: #f59e0b;
+  color: #fbbf24;
+}
+
+.pre-run-character-btn.selected {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
 .pre-run-difficulty {
   margin-bottom: 20px;
 }
@@ -238,6 +281,72 @@
   font-size: 11px;
   color: #f59e0b;
   margin-top: 4px;
+}
+
+.pre-run-companion {
+  margin-bottom: 20px;
+}
+
+.pre-run-companion label {
+  display: block;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.pre-run-companion-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pre-run-companion-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 120px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 2px solid #374151;
+  background: #111827;
+  color: #9ca3af;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pre-run-companion-btn:hover {
+  border-color: #f59e0b;
+  color: #fbbf24;
+}
+
+.pre-run-companion-btn.selected {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.pre-run-companion-sprite,
+.pre-run-companion-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pre-run-companion-sprite {
+  max-width: 32px;
+  max-height: 32px;
+  object-fit: contain;
+}
+
+.pre-run-companion-icon {
+  font-size: 24px;
 }
 
 .pre-run-conditions h3 {

@@ -1,0 +1,55 @@
+{
+    "atlas": "other_props.png",
+    "tileSize": 32,
+  
+    "tiles": {
+  
+      "grass_clumps": {
+        "grass_cluster_a": { "x": 0, "y": 1 },
+        "grass_cluster_b": { "x": 1, "y": 1 },
+        "grass_cluster_c": { "x": 2, "y": 1 }
+      },
+  
+      "reeds": {
+        "reeds_small": { "x": 1, "y": 0 },
+        "reeds_medium": { "x": 2, "y": 0 },
+        "reeds_tall": { "x": 3, "y": 0 }
+      },
+  
+      "flower_plants": {
+        "flower_orange": { "x": 1, "y": 2 },
+        "flower_green": { "x": 2, "y": 2 }
+      },
+  
+      "small_ground_objects": {
+        "stone_small": { "x": 0, "y": 2 },
+        "stone_flat": { "x": 0, "y": 3 },
+        "lily_pad": { "x": 1, "y": 3 }
+      },
+  
+      "machines": {
+        "machine_small": { "x": 5, "y": 0 },
+        "machine_terminal": { "x": 6, "y": 0 },
+        "machine_console": { "x": 7, "y": 0 }
+      },
+  
+      "chests": {
+        "chest_closed": { "x": 5, "y": 1 },
+        "chest_blue": { "x": 6, "y": 1 },
+        "chest_gold": { "x": 7, "y": 1 }
+      },
+  
+      "crafting_devices": {
+        "crafting_table": { "x": 5, "y": 2 },
+        "crafting_altar": { "x": 6, "y": 2 },
+        "crafting_node": { "x": 7, "y": 2 }
+      },
+  
+      "ritual_devices": {
+        "ritual_pedestal": { "x": 5, "y": 3 },
+        "ritual_core": { "x": 6, "y": 3 },
+        "ritual_node": { "x": 7, "y": 3 }
+      }
+  
+    }
+  }

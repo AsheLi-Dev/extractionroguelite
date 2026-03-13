@@ -3,7 +3,7 @@
 // This module adds methods to Game.prototype when imported
 
 import { getWallCollisionRect, getObstacleCollisionRect, obstacleIntersectsRect } from '../utils.js';
-import { PLAYER_WALL_COLLISION_INSET } from '../data/constants.js';
+import { PLAYER_WALL_COLLISION_INSET, PLAYER_HITBOX_SCALE } from '../data/constants.js';
 
 export function applyGameCollisionMixin(Game) {
   Object.assign(Game.prototype, {
@@ -255,8 +255,8 @@ export function applyGameCollisionMixin(Game) {
       const maxY = this.world.height - margin - player.size;
       const pi = PLAYER_WALL_COLLISION_INSET;
       const pBase = Math.max(1, player.size - 2 * pi);
-      const pw = Math.max(1, pBase * 0.25);
-      const ph = Math.max(1, pBase * 0.5);
+      const pw = Math.max(1, pBase * 0.25 * PLAYER_HITBOX_SCALE);
+      const ph = Math.max(1, pBase * 0.5 * PLAYER_HITBOX_SCALE);
       const pxo = pi + (pBase - pw) / 2;
       const pyo = pi + (pBase - ph) / 2;
       const pSide = Math.max(1, Math.min(pw, ph));
@@ -506,6 +506,67 @@ export function applyGameCollisionMixin(Game) {
       }
       candidates.sort((a, b) => a.t - b.t);
       return candidates.map((c) => c.b);
+    },
+
+    /**
+     * Raycast from (ox, oy) in direction (dx, dy) up to maxDist; return distance to first wall or blocking obstacle.
+     * Used so thrust hitbox and visual stop at walls/obstacles (same behaviour as thrust visual expectation).
+     * @param {number} ox - Ray origin X (e.g. player center)
+     * @param {number} oy - Ray origin Y
+     * @param {number} dx - Unit direction X
+     * @param {number} dy - Unit direction Y
+     * @param {number} maxDist - Max ray length
+     * @returns {number} Distance to first hit in (0, maxDist], or maxDist if no hit
+     */
+    getThrustBlockedDistance(ox, oy, dx, dy, maxDist) {
+      function rayRectHit(rx, ry, rw, rh) {
+        let t0x, t1x, t0y, t1y;
+        if (Math.abs(dx) < 1e-9) {
+          if (ox < rx || ox > rx + rw) return Infinity;
+          t0x = -Infinity;
+          t1x = Infinity;
+        } else {
+          t0x = (rx - ox) / dx;
+          t1x = (rx + rw - ox) / dx;
+          if (t0x > t1x) {
+            const tmp = t0x;
+            t0x = t1x;
+            t1x = tmp;
+          }
+        }
+        if (Math.abs(dy) < 1e-9) {
+          if (oy < ry || oy > ry + rh) return Infinity;
+          t0y = -Infinity;
+          t1y = Infinity;
+        } else {
+          t0y = (ry - oy) / dy;
+          t1y = (ry + rh - oy) / dy;
+          if (t0y > t1y) {
+            const tmp = t0y;
+            t0y = t1y;
+            t1y = tmp;
+          }
+        }
+        const tmin = Math.max(t0x, t0y);
+        const tmax = Math.min(t1x, t1y);
+        if (tmin > tmax || tmax < 0 || tmin > maxDist) return Infinity;
+        return Math.max(0, tmin);
+      }
+
+      let minT = maxDist;
+      const walls = this.world?.tileWallRects || [];
+      for (const wall of walls) {
+        const r = getWallCollisionRect(wall);
+        const t = rayRectHit(r.x, r.y, r.w, r.h);
+        if (t < minT) minT = t;
+      }
+      for (const obstacle of this.obstacles || []) {
+        if (obstacle.destroyed || !obstacle.blocksMovement) continue;
+        const r = getObstacleCollisionRect(obstacle);
+        const t = rayRectHit(r.x, r.y, r.w, r.h);
+        if (t < minT) minT = t;
+      }
+      return minT;
     }
   });
 }

@@ -96,25 +96,23 @@ export function getObstacleCollisionRect(obstacle) {
     };
   }
 
-  if (type === "ruinedPillar") {
-    const cw = 64;
-    const ch = 160;
-    return {
-      x: rx + (rw - cw) / 2,
-      y: ry + 16,
-      w: cw,
-      h: ch
-    };
+  if (type === "vaultEntrance") {
+    return { x, y, w, h };
+  }
+
+  if (type === "ruinPillar") {
+    const rw = w;
+    const rh = h;
+    const rx = x;
+    const ry = y;
+    const out = { x: rx, y: ry + rh / 2, w: rw, h: rh / 2 };
+    return out;
   }
 
   const cw = 16;
   const ch = 16;
-  return {
-    x: rx + (rw - cw) / 2,
-    y: ry + (rh - ch) / 2,
-    w: cw,
-    h: ch
-  };
+  const defaultOut = { x: rx + (rw - cw) / 2, y: ry + (rh - ch) / 2, w: cw, h: ch };
+  return defaultOut;
 }
 
 /** Overlap test between obstacle collision rect and an axis-aligned rect. */

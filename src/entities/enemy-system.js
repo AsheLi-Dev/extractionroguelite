@@ -1,11 +1,26 @@
-import { Vec2 } from '../utils.js';
+import { Vec2, getObstacleCollisionRect, obstacleIntersectsRect } from '../utils.js';
 import { DIFFICULTY_STAT_MULTIPLIER } from '../data/constants.js';
-import { MAP_DEFS } from '../data/maps.js';
-import { ENEMY_TYPES, AFFIX_DEFS, Enemy } from './enemy.js';
+import { MAP_DEFS, getBiomeCellBounds, BIOME_ARCHETYPE, BIOME_GRID_COLS, BIOME_GRID_ROWS } from '../data/maps.js';
+import { ENEMY_TYPES, UNDEAD_HERO_TYPES, AFFIX_DEFS, Enemy } from './enemy.js';
 import { Boss, BOSS_MAX_HP, BOSS_SIZE } from './boss.js';
 import { Projectile } from './projectile.js';
 import { EnemyAttackController } from './attacks/index.js';
 import { getHumanSquadTypeDef, HUMAN_SQUAD_FORMATION } from '../data/human-squad-data.js';
+
+const SPECIAL_ENEMY_TIER = "special";
+const TIER_MULTIPLIERS = {
+  minion: { hp: 0.5, atk: 1, xp: 0.7, size: 1.4 },
+  elite: { hp: 1, atk: 1.2, xp: 1.4, size: 1 },
+  miniBoss: { hp: 5, atk: 2, xp: 5, size: 1.2 },
+  [SPECIAL_ENEMY_TIER]: { hp: 2.2, atk: 1.5, xp: 2.5, size: 1.08 }
+};
+
+/** Movement speed multiplier by size category: large -40%, medium -25%, small -15%. */
+function getSizeCategorySpeedMult(baseSize) {
+  if (baseSize == null || baseSize <= 80) return 0.85; // small
+  if (baseSize > 100) return 0.6;  // large
+  return 0.75; // medium
+}
 
 export class EnemySystem {
   constructor(world, mapDef, conditions = [], difficulty = 1) {
@@ -18,6 +33,7 @@ export class EnemySystem {
     this.boss = null;
     this.projectiles = [];
     this.respawnQueue = [];
+    this.normalEnemyTypes = ENEMY_TYPES.filter((enemyType) => enemyType?.spawnPool !== "special");
   }
 
   hasCond(id) {
@@ -26,6 +42,34 @@ export class EnemySystem {
 
   setMap(mapDef) {
     this.mapDef = mapDef;
+  }
+
+  getNormalEnemyTypePool() {
+    if (this.normalEnemyTypes?.length > 0) return this.normalEnemyTypes;
+    if (ENEMY_TYPES.length > 0) return ENEMY_TYPES;
+    return [];
+  }
+
+  getValidAffixIds(affixIds = []) {
+    const validIds = new Set(AFFIX_DEFS.map((affix) => affix.id));
+    return affixIds.filter((id) => validIds.has(id));
+  }
+
+  getSpawnPool(includeSpecial = false) {
+    const normalPool = this.getNormalEnemyTypePool();
+    if (!includeSpecial) return normalPool;
+    return [...normalPool, ...UNDEAD_HERO_TYPES];
+  }
+
+  pickRandomEnemyType(includeSpecial = false) {
+    const pool = this.getSpawnPool(includeSpecial);
+    if (!pool.length) return null;
+    return pool[Math.floor(Math.random() * pool.length)] || null;
+  }
+
+  pickRandomUndeadHeroType() {
+    if (!UNDEAD_HERO_TYPES.length) return null;
+    return UNDEAD_HERO_TYPES[Math.floor(Math.random() * UNDEAD_HERO_TYPES.length)] || null;
   }
 
   getEntrySafeZone(game = null, size = 64) {
@@ -67,6 +111,26 @@ export class EnemySystem {
     return false;
   }
 
+  getSpawnCollisionRect(x, y, size) {
+    const hitSize = Math.max(4, size * 0.5);
+    return {
+      x: x + (size - hitSize) / 2,
+      y: y + (size - hitSize) / 2,
+      w: hitSize,
+      h: hitSize
+    };
+  }
+
+  isOnBlockingObstacle(x, y, size, game = null) {
+    if (!game?.obstacles?.length) return false;
+    const rect = this.getSpawnCollisionRect(x, y, size);
+    for (const obstacle of game.obstacles) {
+      if (obstacle?.destroyed || !obstacle?.blocksMovement) continue;
+      if (obstacleIntersectsRect(obstacle, rect)) return true;
+    }
+    return false;
+  }
+
   /**
    * Nudge (x, y) so that rect (x, y, size, size) no longer overlaps any tile wall.
    * Repeatedly resolves overlap with the first wall found until clear or max iterations.
@@ -104,44 +168,128 @@ export class EnemySystem {
     return new Vec2(px, py);
   }
 
+  pushOutOfBlockers(x, y, size, game = null) {
+    let px = x;
+    let py = y;
+    const margin = this.world.wallThickness ?? 32;
+    const maxX = this.world.width - margin - size;
+    const maxY = this.world.height - margin - size;
+
+    for (let iter = 0; iter < 20; iter++) {
+      let moved = false;
+
+      if (this.isOnWall(px, py, size)) {
+        const out = this.pushOutOfWalls(px, py, size);
+        if (out.x !== px || out.y !== py) {
+          px = out.x;
+          py = out.y;
+          moved = true;
+        }
+      }
+
+      if (game?.obstacles?.length) {
+        const rect = this.getSpawnCollisionRect(px, py, size);
+        for (const obstacle of game.obstacles) {
+          if (obstacle?.destroyed || !obstacle?.blocksMovement) continue;
+          if (!obstacleIntersectsRect(obstacle, rect)) continue;
+
+          const obstacleRect = getObstacleCollisionRect(obstacle);
+          const overlapL = (rect.x + rect.w) - obstacleRect.x;
+          const overlapR = (obstacleRect.x + obstacleRect.w) - rect.x;
+          const overlapT = (rect.y + rect.h) - obstacleRect.y;
+          const overlapB = (obstacleRect.y + obstacleRect.h) - rect.y;
+          const minX = Math.min(overlapL, overlapR);
+          const minY = Math.min(overlapT, overlapB);
+          const rectCenterX = rect.x + rect.w * 0.5;
+          const rectCenterY = rect.y + rect.h * 0.5;
+          const obstacleCenterX = obstacleRect.x + obstacleRect.w * 0.5;
+          const obstacleCenterY = obstacleRect.y + obstacleRect.h * 0.5;
+
+          if (minX <= minY) {
+            px += rectCenterX < obstacleCenterX ? -(minX + 0.5) : (minX + 0.5);
+          } else {
+            py += rectCenterY < obstacleCenterY ? -(minY + 0.5) : (minY + 0.5);
+          }
+
+          px = Math.max(margin, Math.min(px, maxX));
+          py = Math.max(margin, Math.min(py, maxY));
+          moved = true;
+          break;
+        }
+      }
+
+      if (!moved) break;
+    }
+
+    return new Vec2(px, py);
+  }
+
   randomPosition(size, game = null) {
     const margin = this.world.wallThickness + size + 40;
-    const minX = margin;
+    let minX = margin;
+    let rangeX = this.world.width - margin - minX;
+    let minY = margin;
+    let rangeY = this.world.height - margin * 2;
+    if (game?._biomeCellBounds) {
+      const b = game._biomeCellBounds;
+      const pad = margin;
+      minX = b.x + pad;
+      rangeX = Math.max(0, b.w - pad * 2);
+      minY = b.y + pad;
+      rangeY = Math.max(0, b.h - pad * 2);
+    }
     const maxAttempts = this.world.tileWallRects ? 80 : 1;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const x = minX + Math.random() * (this.world.width - margin - minX);
-      const y = margin + Math.random() * (this.world.height - margin * 2);
+      const x = minX + Math.random() * rangeX;
+      const y = minY + Math.random() * rangeY;
+      if (game?._biomeCellArchetype === BIOME_ARCHETYPE.CORRIDORS && this.world.tileGrid) {
+        const ts = this.world.tileSize || 32;
+        const gx = Math.floor((x + size / 2) / ts);
+        const gy = Math.floor((y + size / 2) / ts);
+        const grid = this.world.tileGrid;
+        if (gy < 0 || gy >= grid.length || gx < 0 || gx >= grid[0].length) continue;
+        // Corridor cells are mostly walls; require the spawn center tile to be on carved FLOOR.
+        if (grid[gy][gx] === 1) continue;
+      }
       if (this.isOnWall(x, y, size)) continue;
+      if (this.isOnBlockingObstacle(x, y, size, game)) continue;
       if (this.isInsideEntrySafeZone(x, y, size, game)) continue;
       return new Vec2(x, y);
     }
-    return new Vec2(minX + (this.world.width - margin - minX) * 0.5, this.world.height / 2 - size / 2);
+    return new Vec2(minX + rangeX * 0.5 - size / 2, minY + rangeY * 0.5 - size / 2);
   }
 
-  spawnOne(forceTier = null, forceAffixIds = null, nearPosition = null, game = null, forceType = null) {
+  spawnOne(forceTier = null, forceAffixIds = null, nearPosition = null, game = null, forceType = null, spawnEscorts = true, options = {}) {
+    const allowSpecialSpawn = options?.allowSpecialSpawn === true || forceTier === SPECIAL_ENEMY_TIER;
+    const pool = this.getSpawnPool(allowSpecialSpawn);
+    if (!pool.length) return null;
+
     let base = forceType
-      ? (ENEMY_TYPES.find((e) => e.name === forceType || e.id === forceType) || ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)])
-      : ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+      ? (pool.find((e) => e.name === forceType || e.id === forceType) || pool[Math.floor(Math.random() * pool.length)])
+      : pool[Math.floor(Math.random() * pool.length)];
     if (!forceType && this.hasCond("eliteSpawn")) {
-      const idx = ENEMY_TYPES.findIndex((e) => e.name === base.name);
-      base = ENEMY_TYPES[Math.min(idx + 1, ENEMY_TYPES.length - 1)] || base;
+      const idx = pool.findIndex((e) => e.name === base.name);
+      base = pool[Math.min(idx + 1, pool.length - 1)] || base;
     }
     const tier = forceTier || (Math.random() < 0.79 ? "minion" : "elite");
     const s = this.mapDef.enemyScale || { hp: 1, attack: 1, speed: 1 };
-    const tierMult = { minion: { hp: 0.5, atk: 1, xp: 0.7, size: 1.4 }, elite: { hp: 1, atk: 1.2, xp: 1.4, size: 1 }, miniBoss: { hp: 5, atk: 2, xp: 5, size: 1.2 } };
-    const tm = tierMult[tier];
+    const tm = TIER_MULTIPLIERS[tier] || TIER_MULTIPLIERS.minion;
     let hp = Math.round(base.maxHealth * this.diffMult * s.hp * tm.hp);
     let atk = Math.round(base.attack * this.diffMult * s.attack * tm.atk);
     let spd = Math.round(base.speed * s.speed);
-    const size = Math.max(16, Math.round(base.size * tm.size));
+    let size = Math.max(16, Math.round(base.size * tm.size));
+    if (game?._biomeCellArchetype === BIOME_ARCHETYPE.CORRIDORS) {
+      size = Math.max(8, Math.round(size / 3));
+    }
     if (this.hasCond("enemyHp")) hp = Math.round(hp * 1.15);
     if (this.hasCond("enemyDmg")) atk = Math.round(atk * 1.15);
     if (this.hasCond("enemySpeed")) spd = Math.round(spd * 1.2);
+    spd = Math.round(spd * getSizeCategorySpeedMult(base.size));
     const typeDef = { ...base, maxHealth: hp, attack: atk, speed: spd, size };
     let pos;
     let attempts = 0;
     const maxAttempts = 50;
-    
+
     do {
       if (nearPosition) {
         const dist = 80 + Math.random() * 70;
@@ -161,27 +309,29 @@ export class EnemySystem {
       if (this.isInsideEntrySafeZone(pos.x, pos.y, size, game)) insideRoom = true;
       // No spawns on procedural tile walls
       if (this.isOnWall(pos.x, pos.y, size)) insideRoom = true;
+      if (this.isOnBlockingObstacle(pos.x, pos.y, size, game)) insideRoom = true;
 
       if (!insideRoom) break;
       attempts++;
     } while (attempts < maxAttempts);
-    if (this.isOnWall(pos.x, pos.y, size)) {
-      pos = this.pushOutOfWalls(pos.x, pos.y, size);
+    if (this.isOnWall(pos.x, pos.y, size) || this.isOnBlockingObstacle(pos.x, pos.y, size, game)) {
+      pos = this.pushOutOfBlockers(pos.x, pos.y, size, game);
     }
     const enemy = new Enemy(pos.x, pos.y, typeDef);
     enemy.worldBounds = { width: this.world.width, height: this.world.height };
     enemy.enemyTier = tier;
     enemy.tierXpMult = tm.xp;
-    enemy.attackScale = tier === "minion" ? 1 : tier === "elite" ? 1.25 : 1.6;
+    enemy.attackScale = tier === "minion" ? 1 : tier === "elite" ? 1.25 : tier === SPECIAL_ENEMY_TIER ? 1.45 : 1.6;
     enemy.enableHiddenAttacks = tier === "miniBoss";
     if (tier === "elite") enemy.isElite = true;
     if (tier === "miniBoss") enemy.isMiniBoss = true;
+    if (tier === SPECIAL_ENEMY_TIER) enemy.isSpecial = true;
     enemy.attackCtrl = new EnemyAttackController(enemy);
     if (this.hasCond("enemyRegen")) enemy.regenRate = 2;
-    if (this.hasCond("eliteSpawn") && tier !== "miniBoss") enemy.isElite = true;
+    if (this.hasCond("eliteSpawn") && tier !== "miniBoss" && tier !== SPECIAL_ENEMY_TIER) enemy.isElite = true;
     enemy.affixes = [];
     if (forceAffixIds && forceAffixIds.length > 0) {
-      enemy.affixes = [...forceAffixIds];
+      enemy.affixes = this.getValidAffixIds(forceAffixIds);
     } else if (tier === "elite") {
       const pool = [...AFFIX_DEFS];
       for (let i = 0; i < 2 && pool.length > 0; i++) {
@@ -194,9 +344,113 @@ export class EnemySystem {
         const idx = Math.floor(Math.random() * pool.length);
         enemy.affixes.push(pool.splice(idx, 1)[0].id);
       }
+    } else if (tier === SPECIAL_ENEMY_TIER) {
+      const pool = [...AFFIX_DEFS];
+      for (let i = 0; i < 3 && pool.length > 0; i++) {
+        const idx = Math.floor(Math.random() * pool.length);
+        enemy.affixes.push(pool.splice(idx, 1)[0].id);
+      }
     }
-    if (enemy.affixes?.includes("regenerating")) enemy.regenRate = (enemy.regenRate || 0) + 3;
+    if (enemy.affixes.includes("evasive")) {
+      enemy.speed = Math.round(enemy.speed * 1.3);
+    }
     this.enemies.push(enemy);
+
+    if (spawnEscorts && (enemy.enemyTypeId === "m_5q_strong_mimic" || enemy.enemyTypeId === "m_5r_large_mimic")) {
+      const anchor = {
+        x: enemy.position.x + enemy.size / 2,
+        y: enemy.position.y + enemy.size / 2
+      };
+      this.spawnOne("minion", null, anchor, game, "m_5o_small_mimic", false);
+      this.spawnOne("minion", null, anchor, game, "m_5o_small_mimic", false);
+    }
+
+    if (spawnEscorts && enemy.enemyTier === "miniBoss" && enemy.enemyTypeId === "m_5n_large_dwarfette_ball") {
+      const anchor = {
+        x: enemy.position.x + enemy.size / 2,
+        y: enemy.position.y + enemy.size / 2
+      };
+      this.spawnOne("elite", null, anchor, game, "m_5l_medium_dwarfette", false);
+      this.spawnOne("elite", null, anchor, game, "m_5l_medium_dwarfette", false);
+    }
+
+    if (spawnEscorts && enemy.enemyTier === "miniBoss" && enemy.enemyTypeId === "m_5j_large_dummy") {
+      const anchor = {
+        x: enemy.position.x + enemy.size / 2,
+        y: enemy.position.y + enemy.size / 2
+      };
+      this.spawnOne("elite", null, anchor, game, "m_5h_medium_dummy", false);
+      this.spawnOne("elite", null, anchor, game, "m_5h_medium_dummy", false);
+    }
+
+    return enemy;
+  }
+
+  /**
+   * Spawn a single enemy at a specific position (e.g. for ambush zones). Skips entry-safe-zone check.
+   * @param {number} x - World x (left edge of enemy)
+   * @param {number} y - World y (top edge of enemy)
+   * @param {string} typeId - ENEMY_TYPES id (e.g. m_5s_small_frog)
+   * @param {Object} [game=null] - Game instance for obstacles
+   * @param {{ ambushZoneId?: number }} [options] - Optional ambushZoneId to track encounter completion
+   * @returns {Enemy|null}
+   */
+  spawnAtPosition(x, y, typeId, game = null, options = {}) {
+    const pool = this.getSpawnPool(false);
+    const base = pool.find((e) => e.id === typeId || e.name === typeId);
+    if (!base) return null;
+    const tier = "minion";
+    const s = this.mapDef?.enemyScale || { hp: 1, attack: 1, speed: 1 };
+    const tm = TIER_MULTIPLIERS[tier] || TIER_MULTIPLIERS.minion;
+    let hp = Math.round(base.maxHealth * this.diffMult * s.hp * tm.hp);
+    let atk = Math.round(base.attack * this.diffMult * s.attack * tm.atk);
+    let spd = Math.round(base.speed * s.speed);
+    const size = Math.max(16, Math.round(base.size * tm.size));
+    if (this.hasCond("enemyHp")) hp = Math.round(hp * 1.15);
+    if (this.hasCond("enemyDmg")) atk = Math.round(atk * 1.15);
+    if (this.hasCond("enemySpeed")) spd = Math.round(spd * 1.2);
+    spd = Math.round(spd * getSizeCategorySpeedMult(base.size));
+    const typeDef = { ...base, maxHealth: hp, attack: atk, speed: spd, size };
+    const margin = this.world.wallThickness ?? 32;
+    let px = Math.max(margin, Math.min(x, this.world.width - margin - size));
+    let py = Math.max(margin, Math.min(y, this.world.height - margin - size));
+    if (this.isOnWall(px, py, size) || this.isOnBlockingObstacle(px, py, size, game)) {
+      const pushed = this.pushOutOfBlockers(px, py, size, game);
+      px = pushed.x;
+      py = pushed.y;
+    }
+    const enemy = new Enemy(px, py, typeDef);
+    enemy.worldBounds = { width: this.world.width, height: this.world.height };
+    enemy.enemyTier = tier;
+    enemy.tierXpMult = tm.xp;
+    enemy.attackScale = tier === "minion" ? 1 : 1.25;
+    enemy.attackCtrl = new EnemyAttackController(enemy);
+    enemy.affixes = [];
+    if (options.ambushZoneId != null) enemy.ambushZoneId = options.ambushZoneId;
+    this.enemies.push(enemy);
+    return enemy;
+  }
+
+  spawnUndeadHero(game = null, options = {}) {
+    const requestedTypeId = options?.forceTypeId || options?.forceType || null;
+    const heroType = requestedTypeId
+      ? (UNDEAD_HERO_TYPES.find((typeDef) => typeDef.id === requestedTypeId || typeDef.name === requestedTypeId) || null)
+      : this.pickRandomUndeadHeroType();
+    if (!heroType) return null;
+    const spawned = this.spawnOne(
+      SPECIAL_ENEMY_TIER,
+      null,
+      options?.nearPosition || null,
+      game,
+      heroType.id,
+      false,
+      { allowSpecialSpawn: true }
+    );
+    if (!spawned) return null;
+    spawned.isSpecial = true;
+    spawned.isUndeadHero = true;
+    spawned.enemyTier = SPECIAL_ENEMY_TIER;
+    return spawned;
   }
 
   getCastleExitAnchor(game = null) {
@@ -240,14 +494,15 @@ export class EnemySystem {
       const eliteAtkMult = asElite ? 1.25 : 1;
       const hp = Math.round(base.maxHealth * this.diffMult * s.hp * eliteHpMult);
       const atk = Math.round(base.attack * this.diffMult * (s.attack || 1) * eliteAtkMult);
-      const spd = Math.round(base.speed * (s.speed || 1));
+      let spd = Math.round(base.speed * (s.speed || 1));
+      spd = Math.round(spd * getSizeCategorySpeedMult(base.size));
       const typeDef = { ...base, maxHealth: hp, attack: atk, speed: spd };
       let px = centerX + slot.offsetX - base.size / 2;
       let py = centerY + slot.offsetY - base.size / 2;
       px = Math.max(margin, Math.min(px, this.world.width - margin - base.size));
       py = Math.max(margin, Math.min(py, this.world.height - margin - base.size));
-      if (this.isOnWall(px, py, base.size)) {
-        const pushed = this.pushOutOfWalls(px, py, base.size);
+      if (this.isOnWall(px, py, base.size) || this.isOnBlockingObstacle(px, py, base.size, game)) {
+        const pushed = this.pushOutOfBlockers(px, py, base.size, game);
         px = pushed.x;
         py = pushed.y;
       }
@@ -266,6 +521,9 @@ export class EnemySystem {
           const idx = Math.floor(Math.random() * pool.length);
           enemy.affixes.push(pool.splice(idx, 1)[0].id);
         }
+      }
+      if (enemy.affixes.includes("evasive")) {
+        enemy.speed = Math.round(enemy.speed * 1.3);
       }
       this.enemies.push(enemy);
     }
@@ -288,12 +546,13 @@ export class EnemySystem {
       let insideRoom = false;
       if (this.isInsideEntrySafeZone(pos.x, pos.y, BOSS_SIZE, game)) insideRoom = true;
       if (this.isOnWall(pos.x, pos.y, BOSS_SIZE)) insideRoom = true;
+      if (this.isOnBlockingObstacle(pos.x, pos.y, BOSS_SIZE, game)) insideRoom = true;
 
       if (!insideRoom) break;
       attempts++;
     } while (attempts < maxAttempts);
-    if (this.isOnWall(pos.x, pos.y, BOSS_SIZE)) {
-      pos = this.pushOutOfWalls(pos.x, pos.y, BOSS_SIZE);
+    if (this.isOnWall(pos.x, pos.y, BOSS_SIZE) || this.isOnBlockingObstacle(pos.x, pos.y, BOSS_SIZE, game)) {
+      pos = this.pushOutOfBlockers(pos.x, pos.y, BOSS_SIZE, game);
     }
     const boss = new Boss(pos.x, pos.y);
     boss.maxHealth = Math.round(boss.maxHealth * this.diffMult);
@@ -307,7 +566,8 @@ export class EnemySystem {
   }
 
   spawnMinion(game = null) {
-    const base = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+    const base = this.pickRandomEnemyType(false);
+    if (!base) return;
     const s = { hp: 0.8, attack: 0.9, speed: 1.1 };
     let hp = Math.round(base.maxHealth * this.diffMult * s.hp);
     let atk = Math.round(base.attack * this.diffMult * s.attack);
@@ -315,8 +575,9 @@ export class EnemySystem {
     if (this.hasCond("enemyHp")) hp = Math.round(hp * 1.15);
     if (this.hasCond("enemyDmg")) atk = Math.round(atk * 1.15);
     if (this.hasCond("enemySpeed")) spd = Math.round(spd * 1.2);
+    spd = Math.round(spd * getSizeCategorySpeedMult(base.size));
     const typeDef = { ...base, maxHealth: hp, attack: atk, speed: spd };
-    
+
     // Try to find a valid position (not inside rooms)
     let pos;
     let attempts = 0;
@@ -327,11 +588,12 @@ export class EnemySystem {
       let insideRoom = false;
       if (this.isInsideEntrySafeZone(pos.x, pos.y, typeDef.size, game)) insideRoom = true;
       if (this.isOnWall(pos.x, pos.y, typeDef.size)) insideRoom = true;
+      if (this.isOnBlockingObstacle(pos.x, pos.y, typeDef.size, game)) insideRoom = true;
       if (!insideRoom) break;
       attempts++;
     } while (attempts < maxAttempts);
-    if (this.isOnWall(pos.x, pos.y, typeDef.size)) {
-      pos = this.pushOutOfWalls(pos.x, pos.y, typeDef.size);
+    if (this.isOnWall(pos.x, pos.y, typeDef.size) || this.isOnBlockingObstacle(pos.x, pos.y, typeDef.size, game)) {
+      pos = this.pushOutOfBlockers(pos.x, pos.y, typeDef.size, game);
     }
     const enemy = new Enemy(pos.x, pos.y, typeDef);
     enemy.attackScale = 1;
@@ -341,12 +603,31 @@ export class EnemySystem {
     this.enemies.push(enemy);
   }
 
-  spawnGroup(tier, game = null) {
+  spawnGroup(tier, game = null, options = null) {
     // Choose a random base enemy type for this group
-    let base = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+    let pool = this.getSpawnPool(false);
+    if (!pool.length) return;
+    const wantSizeCategory = options?.onlySizeCategory || null;
+    let filteredPool = wantSizeCategory
+      ? pool.filter((e) => {
+          const s = e?.size || e?.base?.size || 72;
+          const cat = s <= 80 ? "small" : (s > 100 ? "large" : "medium");
+          return cat === wantSizeCategory;
+        })
+      : pool;
+    // Mini-boss: only medium or large enemies (never small)
+    if (tier === "miniBoss" && filteredPool === pool) {
+      filteredPool = pool.filter((e) => {
+        const s = e?.size || e?.base?.size || 72;
+        return s > 80;
+      });
+    }
+    const pickPool = filteredPool.length ? filteredPool : pool;
+    let base = pickPool[Math.floor(Math.random() * pickPool.length)];
     if (this.hasCond("eliteSpawn")) {
-      const idx = ENEMY_TYPES.findIndex((e) => e.name === base.name);
-      base = ENEMY_TYPES[Math.min(idx + 1, ENEMY_TYPES.length - 1)] || base;
+      // Promote within the chosen pool so we don't accidentally break the size filter.
+      const idx = pickPool.findIndex((e) => e.name === base.name);
+      base = pickPool[Math.min(idx + 1, pickPool.length - 1)] || base;
     }
     
     // Determine size category based on base enemy size
@@ -401,8 +682,7 @@ export class EnemySystem {
     
     // Calculate stats once for the group
     const s = this.mapDef.enemyScale || { hp: 1, attack: 1, speed: 1 };
-    const tierMult = { minion: { hp: 0.5, atk: 1, xp: 0.7, size: 1.4 }, elite: { hp: 1, atk: 1.2, xp: 1.4, size: 1 }, miniBoss: { hp: 5, atk: 2, xp: 5, size: 1.2 } };
-    const tm = tierMult[tier];
+    const tm = TIER_MULTIPLIERS[tier] || TIER_MULTIPLIERS.minion;
     let hp = Math.round(base.maxHealth * this.diffMult * s.hp * tm.hp);
     let atk = Math.round(base.attack * this.diffMult * s.attack * tm.atk);
     let spd = Math.round(base.speed * s.speed);
@@ -410,8 +690,9 @@ export class EnemySystem {
     if (this.hasCond("enemyHp")) hp = Math.round(hp * 1.15);
     if (this.hasCond("enemyDmg")) atk = Math.round(atk * 1.15);
     if (this.hasCond("enemySpeed")) spd = Math.round(spd * 1.2);
+    spd = Math.round(spd * getSizeCategorySpeedMult(base.size));
     const typeDef = { ...base, maxHealth: hp, attack: atk, speed: spd, size };
-    
+
     // Spawn the group - first enemy gets a random position, others spawn near it
     let firstEnemyPos = null;
     for (let i = 0; i < groupSize; i++) {
@@ -439,12 +720,13 @@ export class EnemySystem {
         let insideRoom = false;
         if (this.isInsideEntrySafeZone(pos.x, pos.y, size, game)) insideRoom = true;
         if (this.isOnWall(pos.x, pos.y, size)) insideRoom = true;
+        if (this.isOnBlockingObstacle(pos.x, pos.y, size, game)) insideRoom = true;
 
         if (!insideRoom) break;
         attempts++;
       } while (attempts < maxAttempts);
-      if (this.isOnWall(pos.x, pos.y, size)) {
-        pos = this.pushOutOfWalls(pos.x, pos.y, size);
+      if (this.isOnWall(pos.x, pos.y, size) || this.isOnBlockingObstacle(pos.x, pos.y, size, game)) {
+        pos = this.pushOutOfBlockers(pos.x, pos.y, size, game);
       }
       if (i === 0) firstEnemyPos = pos;
       
@@ -460,13 +742,59 @@ export class EnemySystem {
       if (this.hasCond("enemyRegen")) enemy.regenRate = 2;
       if (this.hasCond("eliteSpawn") && tier !== "miniBoss") enemy.isElite = true;
       enemy.affixes = [...groupAffixes]; // Same affixes for all in group
-      
-      if (enemy.affixes?.includes("regenerating")) enemy.regenRate = (enemy.regenRate || 0) + 3;
+      if (enemy.affixes.includes("evasive")) {
+        enemy.speed = Math.round(enemy.speed * 1.3);
+      }
       this.enemies.push(enemy);
     }
   }
 
+  spawnInitialBiome(game = null) {
+    const data = this.world.archetypeGrid;
+    if (!data?.grid) return;
+    for (let row = 0; row < BIOME_GRID_ROWS; row++) {
+      for (let col = 0; col < BIOME_GRID_COLS; col++) {
+        const archetype = data.grid[row][col];
+        if (archetype === BIOME_ARCHETYPE.START || archetype === BIOME_ARCHETYPE.EXIT) continue;
+        const bounds = getBiomeCellBounds(this.world, col, row);
+        game._biomeCellBounds = bounds;
+        game._biomeCellArchetype = archetype;
+        try {
+          if (archetype === BIOME_ARCHETYPE.OPEN_SPACE) {
+            for (let i = 0; i < 4; i++) this.spawnGroup('minion', game);
+            if (Math.random() < 0.7) this.spawnGroup('elite', game);
+            if (Math.random() < 0.5) this.spawnGroup('elite', game);
+          } else if (archetype === BIOME_ARCHETYPE.CORRIDORS) {
+            const n = 2 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < n; i++) {
+              this.spawnGroup(Math.random() < 0.7 ? 'minion' : 'elite', game, { onlySizeCategory: 'small' });
+            }
+          } else if (archetype === BIOME_ARCHETYPE.LOST_CAMPS) {
+            for (let i = 0; i < 3; i++) this.spawnGroup('elite', game);
+            if (Math.random() < 0.5) this.spawnGroup('elite', game);
+          } else if (archetype === BIOME_ARCHETYPE.MINIBOSS) {
+            this.spawnGroup('miniBoss', game);
+          } else if (archetype === BIOME_ARCHETYPE.VAULT) {
+            const n = 1 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < n; i++) this.spawnGroup(Math.random() < 0.5 ? 'minion' : 'elite', game);
+          } else if (archetype === BIOME_ARCHETYPE.RUINS) {
+            for (let i = 0; i < 3; i++) this.spawnGroup(Math.random() < 0.6 ? 'minion' : 'elite', game);
+          } else if (archetype === BIOME_ARCHETYPE.WOODS) {
+            for (let i = 0; i < 2; i++) this.spawnGroup('elite', game);
+          }
+        } finally {
+          game._biomeCellBounds = null;
+          game._biomeCellArchetype = null;
+        }
+      }
+    }
+  }
+
   spawnInitial(game = null) {
+    if (this.world.archetypeGrid) {
+      this.spawnInitialBiome(game);
+      return;
+    }
     const mapId = this.mapDef?.id;
     if (mapId === 4) {
       this.spawnBoss(game);

@@ -20,16 +20,6 @@ export const OBSTACLE_TYPES = {
     canopyColor: "#1a3d0a",
     shadowColor: "rgba(0, 0, 0, 0.4)"
   },
-  ruinedPillar: {
-    id: "ruinedPillar",
-    name: "Ruined Pillar",
-    maps: [0, 3], // Dungeon, Castle
-    blocksMovement: true,
-    blocksProjectiles: true,
-    size: { w: 32, h: 96 },
-    color: "#5a5a6a",
-    shadowColor: "rgba(0, 0, 0, 0.3)"
-  },
   lavaRock: {
     id: "lavaRock",
     name: "Lava Rock",
@@ -76,5 +66,26 @@ export const OBSTACLE_TYPES = {
     color: "#e2e8f0",
     spawnChance: 0.05,
     shadowColor: "rgba(0, 0, 0, 0.2)"
+  },
+  ruinPillar: {
+    id: "ruinPillar",
+    name: "Ruin Pillar",
+    maps: [0, 1, 2, 3, 4],
+    blocksMovement: true,
+    blocksProjectiles: true,
+    size: { w: 32, h: 96 },
+    /** Used for overlap checks when placing so sprites (which load at natural size) don't overlap. */
+    placementSize: { w: 104, h: 144 },
+    color: "#5a5a6a",
+    shadowColor: "rgba(0, 0, 0, 0.3)",
+    spriteSources: [
+      "assets/Environments/Forest Land/ruin pillars/ruin pillar.png",
+      "assets/Environments/Forest Land/ruin pillars/ruin pillar (1).png",
+      "assets/Environments/Forest Land/ruin pillars/ruin pillar (2).png",
+      "assets/Environments/Forest Land/ruin pillars/ruin pillar (3).png",
+      "assets/Environments/Forest Land/ruin pillars/ruin pillar (4).png",
+      "assets/Environments/Forest Land/ruin pillars/ruin pillar (5).png",
+      "assets/Environments/Forest Land/ruin pillars/ruin pillar (6).png"
+    ]
   }
 };

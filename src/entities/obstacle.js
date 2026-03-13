@@ -14,6 +14,17 @@ export class Obstacle {
     this.destroyed = false;
     this.lastBurnTick = 0;
     this.triggered = false; // For bone pile
+    if (typeDef.spriteSources && typeDef.spriteSources.length) {
+      const src = typeDef.spriteSources[Math.floor(Math.random() * typeDef.spriteSources.length)];
+      this._spriteImage = new Image();
+      this._spriteImage.onload = () => {
+        const nw = this._spriteImage.naturalWidth;
+        const nh = this._spriteImage.naturalHeight;
+        this.size = { w: nw, h: nh };
+      };
+      this._spriteImage.src = src;
+      this._spriteFlipH = Math.random() < 0.5;
+    }
   }
 
   get center() {
@@ -86,15 +97,38 @@ export class Obstacle {
     
     const sx = Math.floor(this.position.x - camera.position.x);
     const sy = Math.floor(this.position.y - camera.position.y);
-    const scale = 2;
+    const scale = this.type === "ruinPillar" ? 1 : 2;
     const drawW = this.size.w * scale;
     const drawH = this.size.h * scale;
     const drawX = sx - (drawW - this.size.w) / 2;
     const drawY = sy - (drawH - this.size.h) / 2;
+    const floorDrawX = this.type === "ruinPillar" ? Math.floor(drawX) : drawX;
+    const floorDrawY = this.type === "ruinPillar" ? Math.floor(drawY) : drawY;
 
     // Draw shadow (scaled)
     ctx.fillStyle = this.typeDef.shadowColor || "rgba(0, 0, 0, 0.3)";
-    ctx.fillRect(drawX + 4, drawY + drawH - 8, drawW, 12);
+    ctx.fillRect(floorDrawX + 4, floorDrawY + drawH - 8, drawW, 12);
+
+    if (this.type === "ruinPillar" && this._spriteImage) {
+      if (this._spriteImage.complete && this._spriteImage.naturalWidth) {
+        const prevSmoothing = ctx.imageSmoothingEnabled;
+        ctx.imageSmoothingEnabled = false;
+        if (this._spriteFlipH) {
+          ctx.save();
+          ctx.translate(floorDrawX + drawW, floorDrawY);
+          ctx.scale(-1, 1);
+          ctx.drawImage(this._spriteImage, -drawW, 0, drawW, drawH);
+          ctx.restore();
+        } else {
+          ctx.drawImage(this._spriteImage, floorDrawX, floorDrawY, drawW, drawH);
+        }
+        ctx.imageSmoothingEnabled = prevSmoothing;
+      } else {
+        ctx.fillStyle = this.typeDef.color || "#5a5a6a";
+        ctx.fillRect(floorDrawX, floorDrawY, drawW, drawH);
+      }
+      return;
+    }
 
     // Try to use tiles if available
     if (isTileAtlasLoaded()) {
@@ -106,20 +140,6 @@ export class Obstacle {
         return;
       } else if (this.type === "giantRock") {
         drawTileByName(ctx, "large rock", drawX, drawY, drawW);
-        return;
-      } else if (this.type === "ruinedPillar") {
-        const tileSize = 32;
-        const cols = Math.max(1, Math.ceil(drawW / tileSize));
-        const rows = Math.max(1, Math.ceil(drawH / tileSize));
-        for (let row = 0; row < rows; row++) {
-          for (let col = 0; col < cols; col++) {
-            const x = drawX + col * tileSize;
-            const y = drawY + row * tileSize;
-            // 3.a stone brick wall top for body, 3.b side tile for bottom row.
-            const tileCol = row === rows - 1 ? "b" : "a";
-            drawTile(ctx, 3, tileCol, x, y, tileSize);
-          }
-        }
         return;
       } else if (this.type === "ancientTree") {
         if (this.treeTile && this.treeTile.row && this.treeTile.col) {
@@ -153,20 +173,6 @@ export class Obstacle {
       ctx.arc(drawX + drawW / 2 - 16, drawY + 30, 40, 0, Math.PI * 2);
       ctx.arc(drawX + drawW / 2 + 16, drawY + 30, 40, 0, Math.PI * 2);
       ctx.fill();
-    } else if (this.type === "ruinedPillar") {
-      ctx.fillStyle = this.typeDef.color;
-      ctx.fillRect(drawX, drawY, drawW, drawH);
-      ctx.strokeStyle = "#4a4a5a";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(drawX, drawY, drawW, drawH);
-      ctx.strokeStyle = "#3a3a4a";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(drawX + 16, drawY);
-      ctx.lineTo(drawX + 24, drawY + 80);
-      ctx.moveTo(drawX + 40, drawY + 40);
-      ctx.lineTo(drawX + 48, drawY + 120);
-      ctx.stroke();
     } else if (this.type === "lavaRock") {
       ctx.fillStyle = this.typeDef.color;
       ctx.fillRect(drawX, drawY, drawW, drawH);

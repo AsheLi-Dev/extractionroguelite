@@ -57,7 +57,7 @@ export function rollSearchableLoot(tableId, centerX, centerY, game, lootMultipli
     if (Math.random() < table.cubeChance) {
       const allCubes = [...MODIFIER_CUBES, ...UPGRADE_CUBES];
       const cube = allCubes[Math.floor(Math.random() * allCubes.length)];
-      const tier = 1 + Math.floor(Math.random() * 3);
+      const tier = 1 + Math.floor(Math.random() * 2);
       game.lootSystem.spawnCubeAt(x, y, `${cube.id}T${tier}`);
     }
 

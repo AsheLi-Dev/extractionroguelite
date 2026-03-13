@@ -1,0 +1,70 @@
+{
+    "atlas": "decorative_props.png",
+    "tileSize": 32,
+    "tiles": {
+  
+      "rocks": {
+        "rock_tall_1": { "x": 0, "y": 0 },
+        "rock_tall_2": { "x": 1, "y": 0 },
+        "rock_tall_3": { "x": 2, "y": 0 },
+        "rock_tall_4": { "x": 3, "y": 0 },
+  
+        "rock_medium_1": { "x": 0, "y": 1 },
+        "rock_medium_2": { "x": 1, "y": 1 },
+        "rock_medium_3": { "x": 2, "y": 1 },
+        "rock_medium_4": { "x": 3, "y": 1 },
+  
+        "rock_small_1": { "x": 4, "y": 0 },
+        "rock_small_2": { "x": 5, "y": 0 },
+        "rock_small_3": { "x": 6, "y": 0 },
+        "rock_small_4": { "x": 7, "y": 0 }
+      },
+  
+      "pebbles": {
+        "pebbles_a": { "x": 8, "y": 0 },
+        "pebbles_b": { "x": 9, "y": 0 },
+        "pebbles_c": { "x": 10, "y": 0 }
+      },
+  
+      "fences": {
+        "fence_horizontal": { "x": 0, "y": 3 },
+        "fence_vertical": { "x": 1, "y": 3 },
+        "fence_corner_nw": { "x": 2, "y": 3 },
+        "fence_corner_ne": { "x": 3, "y": 3 },
+        "fence_corner_sw": { "x": 4, "y": 3 },
+        "fence_corner_se": { "x": 5, "y": 3 },
+  
+        "fence_post": { "x": 6, "y": 3 }
+      },
+  
+      "bushes_pink": {
+        "bush_pink_1": { "x": 4, "y": 2 },
+        "bush_pink_2": { "x": 5, "y": 2 },
+        "bush_pink_3": { "x": 6, "y": 2 },
+        "bush_pink_4": { "x": 7, "y": 2 }
+      },
+  
+      "bushes_green": {
+        "bush_green_1": { "x": 4, "y": 4 },
+        "bush_green_2": { "x": 5, "y": 4 },
+        "bush_green_3": { "x": 6, "y": 4 },
+        "bush_green_4": { "x": 7, "y": 4 }
+      },
+  
+      "ground_details": {
+        "grass_patch_1": { "x": 0, "y": 6 },
+        "grass_patch_2": { "x": 1, "y": 6 },
+        "grass_patch_3": { "x": 2, "y": 6 },
+  
+        "flower_patch_1": { "x": 0, "y": 5 },
+        "flower_patch_2": { "x": 1, "y": 5 }
+      },
+  
+      "tree_stumps": {
+        "stump_1": { "x": 8, "y": 5 },
+        "stump_2": { "x": 9, "y": 5 },
+        "stump_3": { "x": 10, "y": 5 },
+        "stump_4": { "x": 11, "y": 5 }
+      }
+    }
+  }

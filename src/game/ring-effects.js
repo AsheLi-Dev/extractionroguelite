@@ -1,4 +1,3 @@
-﻿import { addLegacyPoints } from "../data/constants.js";
 import { addLegacyVaultItem } from "../ui/save-system.js";
 import { RING_BALANCE } from "../data/rings-data.js";
 import { PlayerProjectile } from "../entities/projectile.js";
@@ -6,22 +5,71 @@ import { PlayerProjectile } from "../entities/projectile.js";
 const WEIGHT_SLOTS = ["Helmet", "Body Armour", "Boots", "Weapon"];
 const MIRROR_FANG_REPEAT_DELAY_SEC = 0.1;
 
+function getRingSlotKeys(game) {
+  if (typeof game?.getEffectiveEquipmentSlots === "function") {
+    const slots = game.getEffectiveEquipmentSlots({ source: "ring_effects" }) || [];
+    const keys = slots
+      .filter((slot) => Array.isArray(slot?.allowedItemTypes) && slot.allowedItemTypes.includes("Ring"))
+      .map((slot) => String(slot.key || ""))
+      .filter(Boolean);
+    if (keys.length > 0) {
+      return keys;
+    }
+  }
+  return Object.keys(game?.equipment || {}).filter((key) => {
+    if (!key) return false;
+    if (/^Ring\d+$/i.test(key)) return true;
+    const item = game?.equipment?.[key];
+    return item?.type === "Ring";
+  });
+}
+
 function getRingItems(game) {
   const items = [];
-  const a = game?.equipment?.Ring1;
-  const b = game?.equipment?.Ring2;
-  if (a && !a._consumed) items.push(a);
-  if (b && !b._consumed) items.push(b);
+  for (const slot of getRingSlotKeys(game)) {
+    const item = game?.equipment?.[slot];
+    if (item && !item._consumed) items.push(item);
+  }
   return items;
 }
 
-export function getRingCount(game, ringId) {
+function getRawRingCount(game, ringId) {
   if (!ringId) return 0;
   return getRingItems(game).filter((r) => r.ringId === ringId).length;
 }
 
+function getRingEffectMultiplier(game, ringId = null) {
+  if (typeof game?.resolvePillarRingEffectMultiplier !== "function") {
+    return 1;
+  }
+  const now = Number(game?.time) || 0;
+  const signature = `${Array.isArray(game?.inventory) ? game.inventory.length : 0}|${Object.values(game?.equipment || {}).filter((item) => item?.type === "Ring").length}`;
+  const cache = game.__ringEffectMultiplierCache;
+  if (cache && cache.at === now && cache.signature === signature && Number.isFinite(cache.multiplier)) {
+    return Math.max(0, cache.multiplier);
+  }
+  const resolved = game.resolvePillarRingEffectMultiplier({
+    source: "ring_effects",
+    ringId
+  });
+  const value = Number(resolved?.multiplier);
+  const multiplier = Number.isFinite(value) ? Math.max(0, value) : 1;
+  game.__ringEffectMultiplierCache = {
+    at: now,
+    signature,
+    multiplier
+  };
+  return multiplier;
+}
+
+export function getRingCount(game, ringId) {
+  const rawCount = getRawRingCount(game, ringId);
+  if (rawCount <= 0) return 0;
+  return rawCount * getRingEffectMultiplier(game, ringId);
+}
+
 export function hasRing(game, ringId) {
-  return getRingCount(game, ringId) > 0;
+  return getRawRingCount(game, ringId) > 0;
 }
 
 export function getEquippedWeightTierState(game) {
@@ -73,7 +121,7 @@ export function setRingProcLogging(game, enabled) {
 }
 
 export function consumeOneRing(game, ringId, reason = "") {
-  for (const slot of ["Ring1", "Ring2"]) {
+  for (const slot of getRingSlotKeys(game)) {
     const item = game?.equipment?.[slot];
     if (!item || item.ringId !== ringId) continue;
     game.equipment[slot] = null;
@@ -89,7 +137,7 @@ export function consumeOneRing(game, ringId, reason = "") {
 export function getRingDropRateMult(game) {
   const state = ensureRingRuntime(game);
   if (state.trophyHunterUntil > game.time) {
-    return 1 + RING_BALANCE.TROPHY_HUNTER_BONUS * Math.max(1, getRingCount(game, "ring_trophy_hunter"));
+    return 1 + RING_BALANCE.TROPHY_HUNTER_BONUS * Math.max(0, getRingCount(game, "ring_trophy_hunter"));
   }
   return 1;
 }
@@ -207,16 +255,13 @@ export function onRingSkillCooldownRestored(game, slot) {
 
 export function onRingExtraction(game) {
   if (!hasRing(game, "ring_archivist")) return;
-  if (consumeOneRing(game, "ring_archivist", "extraction")) {
-    addLegacyPoints(RING_BALANCE.ARCHIVIST_LEGACY_POINTS);
-    game.legacyPointsEarnedThisRun = (game.legacyPointsEarnedThisRun || 0) + RING_BALANCE.ARCHIVIST_LEGACY_POINTS;
-  }
+  consumeOneRing(game, "ring_archivist", "extraction");
 }
 
 export function onRingDefeat(game) {
   if (!hasRing(game, "ring_heirloom")) return;
   let consumeSlot = null;
-  for (const slot of ["Ring1", "Ring2"]) {
+  for (const slot of getRingSlotKeys(game)) {
     if (game?.equipment?.[slot]?.ringId === "ring_heirloom") {
       consumeSlot = slot;
       break;
@@ -361,7 +406,7 @@ export function getRingAttackDamageMultiplier(game) {
 }
 
 export function getRingExtraDashCharges(game) {
-  return getRingCount(game, "ring_windrunner");
+  return Math.max(0, Math.floor(getRingCount(game, "ring_windrunner")));
 }
 
 export function getRingDashCooldownOffset(game) {
@@ -396,12 +441,19 @@ export function tryProcBattleRhythm(game, isSkillHit) {
   if (!isSkillHit) return;
   const count = getRingCount(game, "ring_battle_rhythm");
   if (count <= 0) return;
-  for (let i = 0; i < count; i++) {
+  const whole = Math.floor(count);
+  const fractional = count - whole;
+  for (let i = 0; i < whole; i++) {
     if (Math.random() < RING_BALANCE.BATTLE_RHYTHM_PROC_CHANCE) {
       const state = ensureRingRuntime(game);
       state.battleRhythmUntil = Math.max(state.battleRhythmUntil || 0, game.time + RING_BALANCE.BATTLE_RHYTHM_DURATION);
       ringLog(game, "Battle Rhythm proc");
     }
+  }
+  if (fractional > 0 && Math.random() < fractional && Math.random() < RING_BALANCE.BATTLE_RHYTHM_PROC_CHANCE) {
+    const state = ensureRingRuntime(game);
+    state.battleRhythmUntil = Math.max(state.battleRhythmUntil || 0, game.time + RING_BALANCE.BATTLE_RHYTHM_DURATION);
+    ringLog(game, "Battle Rhythm proc");
   }
 }
 
@@ -439,7 +491,9 @@ export function tryProcEchoEngine(game, enemy, opts = {}) {
   if (count <= 0) return;
   const skillId = game.skills?.[0];
   if (!skillId) return;
-  for (let i = 0; i < count; i++) {
+  const whole = Math.floor(count);
+  const fractional = count - whole;
+  for (let i = 0; i < whole; i++) {
     if (Math.random() < RING_BALANCE.ECHO_ENGINE_PROC_CHANCE) {
       game.executeSkill(skillId, 0, {
         noCooldown: true,
@@ -449,6 +503,14 @@ export function tryProcEchoEngine(game, enemy, opts = {}) {
       ringLog(game, "Echo Engine proc");
     }
   }
+  if (fractional > 0 && Math.random() < fractional && Math.random() < RING_BALANCE.ECHO_ENGINE_PROC_CHANCE) {
+    game.executeSkill(skillId, 0, {
+      noCooldown: true,
+      echoProc: true,
+      ringProcDamageMult: RING_BALANCE.ECHO_ENGINE_DAMAGE_MULT
+    });
+    ringLog(game, "Echo Engine proc");
+  }
 }
 
 export function tryProcMirrorFang(game, targetX, targetY, opts = {}) {
@@ -456,7 +518,9 @@ export function tryProcMirrorFang(game, targetX, targetY, opts = {}) {
   const count = getRingCount(game, "ring_mirror_fang");
   if (count <= 0) return false;
   let didProc = false;
-  for (let i = 0; i < count; i++) {
+  const whole = Math.floor(count);
+  const fractional = count - whole;
+  for (let i = 0; i < whole; i++) {
     if (Math.random() < RING_BALANCE.MIRROR_FANG_PROC) {
       game.delayedFireQueue = game.delayedFireQueue || [];
       game.delayedFireQueue.push({
@@ -470,6 +534,18 @@ export function tryProcMirrorFang(game, targetX, targetY, opts = {}) {
       ringLog(game, "Mirror Fang proc (delayed)");
     }
   }
+  if (fractional > 0 && Math.random() < fractional && Math.random() < RING_BALANCE.MIRROR_FANG_PROC) {
+    game.delayedFireQueue = game.delayedFireQueue || [];
+    game.delayedFireQueue.push({
+      targetX,
+      targetY,
+      at: (game.time || 0) + MIRROR_FANG_REPEAT_DELAY_SEC,
+      damageMult: opts.damageMult || 1,
+      mirrorProc: true
+    });
+    didProc = true;
+    ringLog(game, "Mirror Fang proc (delayed)");
+  }
   return didProc;
 }
 
@@ -482,7 +558,7 @@ export function tryGuardianPreDeath(game) {
 
 export function syncFocusCharges(game) {
   const state = ensureRingRuntime(game);
-  const extra = getRingCount(game, "ring_focus") * RING_BALANCE.FOCUS_EXTRA_CHARGE;
+  const extra = Math.floor(getRingCount(game, "ring_focus") * RING_BALANCE.FOCUS_EXTRA_CHARGE);
   const maxCharges = 1 + extra;
   state.focusChargesMaxSlot1 = maxCharges;
   if (!Number.isFinite(state.focusChargesSlot1) || state.focusChargesSlot1 > maxCharges) {

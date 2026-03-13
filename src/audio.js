@@ -23,11 +23,14 @@ const SOUNDS = {
   fanStrike: "assets/Audio/fan-strike.wav",
   pulseShot: "assets/Audio/pulse-shot.wav",
   enemyHurt: "assets/Audio/enemy_hurt.wav",
-  chestOpen: "assets/Audio/01_chest_open_4.wav"
+  chestOpen: "assets/Audio/01_chest_open_4.wav",
+  collectGold: "assets/Audio/collect_gold.wav",
+  portcullisGate: "assets/Audio/Portcullis Gate.wav"
 };
 
 const ATTACK_SOUNDS = new Set(["projectileShot", "fanStrike", "pulseShot", "fireball", "iceHard"]);
-const BGM_PATH = "assets/Audio/05 - Battle 1.wav";
+const BGM_PATH = "assets/Audio/05-Battle-1.wav";
+const BGM_MUTED_STORAGE_KEY = "extractDaPandaBgmMuted";
 
 let enabled = true;
 let ctx = null;
@@ -55,6 +58,9 @@ function randomPitch(soundId) {
   if (soundId === "popLow1" || soundId === "popLow2") {
     return 0.72 + Math.random() * 0.66; // Very noticeable variation
   }
+  if (soundId === "collectGold") {
+    return 0.975 + Math.random() * 0.05; // 5% pitch variation
+  }
   const isAttack = ATTACK_SOUNDS.has(soundId);
   if (isAttack) return 0.72 + Math.random() * 0.56;
   return 0.82 + Math.random() * 0.36;
@@ -65,7 +71,15 @@ function loadBuffer(soundId) {
   if (!path || bufferCache[soundId]) return loadPromises[soundId] || Promise.resolve(bufferCache[soundId]);
   if (!loadPromises[soundId]) {
     const c = getContext();
-    loadPromises[soundId] = fetch(path).then((r) => r.arrayBuffer()).then((ab) => c.decodeAudioData(ab)).then((buf) => { bufferCache[soundId] = buf; return buf; });
+    const url = path.includes(" ") ? path.replace(/ /g, "%20") : path;
+    loadPromises[soundId] = fetch(url)
+      .then((r) => { if (!r.ok) throw new Error(`SFX ${soundId}: ${r.status}`); return r.arrayBuffer(); })
+      .then((ab) => c.decodeAudioData(ab))
+      .then((buf) => { bufferCache[soundId] = buf; return buf; })
+      .catch((err) => {
+        console.warn("Audio load failed:", soundId, url, err?.message || err);
+        return null;
+      });
   }
   return loadPromises[soundId];
 }
@@ -106,7 +120,12 @@ export function play(soundId) {
     playWithBuffer(buf, resolvedSoundId);
     return;
   }
-  loadBuffer(resolvedSoundId).then((b) => { if (b) playWithBuffer(b, resolvedSoundId); }).catch(() => {});
+  loadBuffer(resolvedSoundId).then((b) => { if (b) playWithBuffer(b, resolvedSoundId); }).catch((e) => { console.warn("SFX load/play failed:", resolvedSoundId, e); });
+}
+
+/** Start loading a sound so it is ready when play() is called. Swallows load errors (e.g. server down). */
+export function preloadSound(soundId) {
+  if (SOUNDS[soundId]) loadBuffer(soundId).catch(() => {});
 }
 
 export function setEnabled(on) {
@@ -132,7 +151,23 @@ export function setBgmVolume(volume01) {
   if (bgmAudio) bgmAudio.volume = bgmVolume;
 }
 
+export function getBgmMuted() {
+  try {
+    return localStorage.getItem(BGM_MUTED_STORAGE_KEY) === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
+export function setBgmMuted(muted) {
+  try {
+    localStorage.setItem(BGM_MUTED_STORAGE_KEY, muted ? "1" : "0");
+  } catch (_) {}
+  if (muted) stopBgm();
+}
+
 export function startBgm() {
+  if (getBgmMuted()) return;
   const a = getBgmAudio();
   a.loop = true;
   a.volume = bgmVolume;

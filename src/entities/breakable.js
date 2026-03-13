@@ -62,6 +62,11 @@ export class Breakable {
     this.isDead = true;
     this.hp = 0;
 
+    if (typeof game?.grantXP === "function") {
+      const xp = 1 + Math.floor(Math.random() * 3);
+      game.grantXP(xp);
+    }
+
     const tableId = this.def.lootTable;
     const rng = typeof game?.world?.tileGrid !== "undefined" ? () => Math.random() : Math.random;
     const context = {

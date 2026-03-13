@@ -7,6 +7,8 @@ import {
   setHumanSquadAnimState,
   updateHumanSquadAnim,
   getHumanSquadAnimFrame,
+  getSheet,
+  getSheetFrameCount,
   loadHumanSquadSheets,
 } from './human-squad-anim.js';
 
@@ -27,11 +29,11 @@ const XP_BAND_MAP = {
   "elite_like": { minXp: 30, maxXp: 50 }
 };
 
-// Drop band mapping
+// Drop band mapping: dropChanceMult (low -50%, mid +10%, high +80%), min/maxDrop for quantity
 const DROP_BAND_MAP = {
-  "low": { dropChance: 0.2, minDrop: 1, maxDrop: 1 },
-  "mid": { dropChance: 0.45, minDrop: 1, maxDrop: 2 },
-  "high": { dropChance: 0.55, minDrop: 1, maxDrop: 2 }
+  "low": { dropChanceMult: 0.5, minDrop: 1, maxDrop: 1 },
+  "mid": { dropChanceMult: 1.1, minDrop: 1, maxDrop: 2 },
+  "high": { dropChanceMult: 1.8, minDrop: 2, maxDrop: 3 }
 };
 
 // Convert new enemy data format to old format
@@ -49,30 +51,34 @@ function convertEnemyData(enemyData) {
     ...DROP_BAND_MAP[enemyData.dropBand] || DROP_BAND_MAP.mid,
     // Store additional metadata
     atlas: enemyData.atlas,
+    spriteSet: enemyData.spriteSet || null,
     archetype: enemyData.archetype,
     attackStyle: enemyData.attackStyle,
     xpBand: enemyData.xpBand,
     dropBand: enemyData.dropBand,
-    notes: enemyData.notes
+    notes: enemyData.notes,
+    spawnPool: enemyData.spawnPool || "default",
+    enemyFamily: enemyData.enemyFamily || null,
+    sourceEnemyId: enemyData.sourceEnemyId || null
   };
 }
 
 // New enemy database
 const NEW_ENEMY_DATA = [
   // Row 1  Orc/Goblin set (humanoid minions)
-  {"id":"m_1a_orc","name":"Orc","atlas":{"row":1,"col":"a"},"archetype":"Skeleton","base":{"size":86,"hp":60,"atk":10,"speed":70,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Baseline bruiser. Good affixes: Volatile, Weakening."},
+  {"id":"m_1a_orc","name":"Orc","atlas":{"row":1,"col":"a"},"spriteSet":"orc_regular","archetype":"Skeleton","base":{"size":86,"hp":60,"atk":10,"speed":70,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Baseline bruiser. Good affixes: Volatile, Weakening."},
   {"id":"m_1b_orc_wizard","name":"Orc Wizard","atlas":{"row":1,"col":"b"},"archetype":"Wisp","base":{"size":72,"hp":26,"atk":7,"speed":110,"def":0},"attackStyle":"ranged_projectile","xpBand":"basic","dropBand":"mid","notes":"Caster minion. Good affixes: Lasering, Cursing."},
-  {"id":"m_1c_goblin","name":"Goblin","atlas":{"row":1,"col":"c"},"archetype":"Bat","base":{"size":72,"hp":25,"atk":8,"speed":100,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"low","notes":"Fast skirmisher."},
+  {"id":"m_1c_goblin","name":"Goblin","atlas":{"row":1,"col":"c"},"spriteSet":"goblin_regular","archetype":"Bat","base":{"size":72,"hp":25,"atk":8,"speed":100,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"low","notes":"Fast skirmisher."},
   {"id":"m_1d_orc_blademaster","name":"Orc Blademaster","atlas":{"row":1,"col":"d"},"archetype":"Skeleton","base":{"size":86,"hp":55,"atk":11,"speed":85,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Faster undead-tier melee."},
   {"id":"m_1e_orc_warchief","name":"Orc Warchief","atlas":{"row":1,"col":"e"},"archetype":"Demon","base":{"size":103,"hp":95,"atk":15,"speed":55,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Leader brute. Great as Elite/Mini-boss."},
-  {"id":"m_1f_goblin_archer","name":"Goblin Archer","atlas":{"row":1,"col":"f"},"archetype":"Bat","base":{"size":72,"hp":22,"atk":7,"speed":105,"def":0},"attackStyle":"ranged_projectile","xpBand":"basic","dropBand":"low","notes":"Ranged poke. Works with Volatile for bullet hell moments."},
-  {"id":"m_1g_goblin_mage","name":"Goblin Mage","atlas":{"row":1,"col":"g"},"archetype":"Wisp","base":{"size":72,"hp":24,"atk":6,"speed":120,"def":0},"attackStyle":"ranged_projectile","xpBand":"basic","dropBand":"mid","notes":"Glass cannon caster. Great with Lasering."},
-  {"id":"m_1h_goblin_brute","name":"Goblin Brute","atlas":{"row":1,"col":"h"},"archetype":"Skeleton","base":{"size":86,"hp":70,"atk":10,"speed":65,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Slow-ish bruiser."},
+  {"id":"m_1f_goblin_archer","name":"Goblin Archer","atlas":{"row":1,"col":"f"},"spriteSet":"goblin_archer_regular","archetype":"Bat","base":{"size":72,"hp":22,"atk":7,"speed":105,"def":0},"attackStyle":"ranged_projectile","xpBand":"basic","dropBand":"low","notes":"Ranged poke. Works with Volatile for bullet hell moments."},
+  {"id":"m_1g_goblin_mage","name":"Goblin Mage","atlas":{"row":1,"col":"g"},"spriteSet":"goblin_mage_regular","archetype":"Wisp","base":{"size":72,"hp":24,"atk":6,"speed":120,"def":0},"attackStyle":"ranged_projectile","xpBand":"basic","dropBand":"mid","notes":"Glass cannon caster. Great with Lasering."},
+  {"id":"m_1h_goblin_brute","name":"Goblin Brute","atlas":{"row":1,"col":"h"},"spriteSet":"goblin_brute_regular","archetype":"Skeleton","base":{"size":86,"hp":70,"atk":10,"speed":65,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Slow-ish bruiser."},
 
   // Row 2  Giants
   {"id":"m_2a_ettin","name":"Ettin","atlas":{"row":2,"col":"a"},"archetype":"Demon","base":{"size":103,"hp":100,"atk":14,"speed":50,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Big threat. Great as Elite/Mini-boss."},
   {"id":"m_2b_two_headed_ettin","name":"Two-Headed Ettin","atlas":{"row":2,"col":"b"},"archetype":"Demon","base":{"size":103,"hp":100,"atk":15,"speed":52,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Stronger ettin variant. Perfect Mini-boss."},
-  {"id":"m_2c_troll","name":"Troll","atlas":{"row":2,"col":"c"},"archetype":"Demon","base":{"size":103,"hp":90,"atk":13,"speed":58,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Tanky brawler. Good with Regenerating + Weakening."},
+  {"id":"m_2c_troll","name":"Troll","atlas":{"row":2,"col":"c"},"archetype":"Demon","base":{"size":103,"hp":90,"atk":13,"speed":58,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Tanky brawler. Good with Weakening."},
 
   // Row 3  Slimes
   {"id":"m_3a_small_slime","name":"Small Slime","atlas":{"row":3,"col":"a"},"archetype":"Slime","base":{"size":86,"hp":40,"atk":6,"speed":60,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"low","notes":"Baseline slime."},
@@ -87,16 +93,35 @@ const NEW_ENEMY_DATA = [
   // Row 5  Undead set
   {"id":"m_5a_skeleton","name":"Skeleton","atlas":{"row":5,"col":"a"},"archetype":"Skeleton","base":{"size":86,"hp":60,"atk":10,"speed":70,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Your existing Skeleton baseline."},
   {"id":"m_5b_skeleton_archer","name":"Skeleton Archer","atlas":{"row":5,"col":"b"},"archetype":"Skeleton","base":{"size":86,"hp":55,"atk":9,"speed":75,"def":2},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"mid","notes":"Ranged skeleton. Great with Volatile."},
-  {"id":"m_5c_lich","name":"Lich","atlas":{"row":5,"col":"c"},"archetype":"Demon","base":{"size":86,"hp":85,"atk":12,"speed":60,"def":3},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"high","notes":"Caster boss-lite. Great with Lasering."},
-  {"id":"m_5d_death_knight","name":"Death Knight","atlas":{"row":5,"col":"d"},"archetype":"Demon","base":{"size":103,"hp":100,"atk":15,"speed":50,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Top-tier melee. Perfect Mini-boss."},
+  {"id":"m_5c_lich","name":"Lich","atlas":{"row":5,"col":"c"},"spriteSet":"lich_regular","archetype":"Demon","base":{"size":86,"hp":85,"atk":12,"speed":60,"def":3},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"high","notes":"Caster boss-lite. Great with Lasering."},
+  {"id":"m_5d_death_knight","name":"Death Knight","atlas":{"row":5,"col":"d"},"spriteSet":"death_knight_regular","archetype":"Demon","base":{"size":103,"hp":100,"atk":15,"speed":50,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Top-tier melee. Perfect Mini-boss."},
   {"id":"m_5e_zombie","name":"Zombie","atlas":{"row":5,"col":"e"},"archetype":"Slime","base":{"size":86,"hp":70,"atk":8,"speed":55,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Slow tank. Good with Volatile/Orbiting."},
+  {"id":"m_5g_small_dummy","name":"Small Dummy","atlas":{"row":5,"col":"e"},"spriteSet":"small_dummy_regular","archetype":"Slime","base":{"size":86,"hp":70,"atk":8,"speed":55,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Zombie-equivalent test enemy."},
+  {"id":"m_5k_small_dwarfette","name":"Small Dwarfette","atlas":{"row":5,"col":"e"},"spriteSet":"small_dwarfette_regular","archetype":"Slime","base":{"size":86,"hp":70,"atk":8,"speed":55,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Small dummy variant with dash attack."},
+  {"id":"m_5l_medium_dwarfette","name":"Medium Dwarfette","atlas":{"row":5,"col":"e"},"spriteSet":"medium_dwarfette_regular","archetype":"Slime","base":{"size":96,"hp":85,"atk":10,"speed":52,"def":2},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Rolling attacker that bounces off walls and obstacles."},
+  {"id":"m_5m_strong_dwarfette","name":"Strong Dwarfette","atlas":{"row":5,"col":"e"},"spriteSet":"strong_dwarfette_regular","archetype":"Slime","base":{"size":112,"hp":85,"atk":10,"speed":52,"def":2},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Medium Dwarfette variant with larger hitbox and slower rolling attack."},
+  {"id":"m_5n_large_dwarfette_ball","name":"Large Dwarfette Ball","atlas":{"row":5,"col":"e"},"spriteSet":"large_dwarfette_ball_regular","archetype":"Slime","base":{"size":128,"hp":85,"atk":10,"speed":48,"def":2},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Strong Dwarfette variant with larger hitbox and slower rolling attack."},
+  {"id":"m_5o_small_mimic","name":"Small Mimic","atlas":{"row":5,"col":"e"},"spriteSet":"small_mimic_regular","archetype":"Bat","base":{"size":78,"hp":58,"atk":6,"speed":130,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Skittish looter that runs from the player and steals floor loot."},
+  {"id":"m_5p_medium_mimic","name":"Medium Mimic","atlas":{"row":5,"col":"e"},"spriteSet":"medium_mimic_regular","archetype":"Bat","base":{"size":92,"hp":92,"atk":6,"speed":130,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Larger mimic variant with the same loot-stealing behavior and higher HP."},
+  {"id":"m_5q_strong_mimic","name":"Strong Mimic","atlas":{"row":5,"col":"e"},"spriteSet":"strong_mimic_regular","archetype":"Skeleton","base":{"size":98,"hp":120,"atk":10,"speed":95,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Sword-thrust mimic that disarms the player and is escorted by small mimics."},
+  {"id":"m_5r_large_mimic","name":"Large Mimic","atlas":{"row":5,"col":"e"},"spriteSet":"large_mimic_regular","archetype":"Skeleton","base":{"size":116,"hp":150,"atk":12,"speed":72,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Slow dashing mimic that can disarm heavily and launch random projectiles while moving."},
+  {"id":"m_5s_small_frog","name":"Small Frog","atlas":{"row":5,"col":"e"},"spriteSet":"small_frog_regular","archetype":"Bat","base":{"size":64,"hp":36,"atk":5,"speed":110,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"low","notes":"Very fast mover with no special attack kit."},
+  {"id":"m_5t_large_frog","name":"Large Frog","atlas":{"row":5,"col":"e"},"spriteSet":"large_frog_regular","archetype":"Slime","base":{"size":118,"hp":130,"atk":11,"speed":78,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Uses burp-spit and jump slam attacks."},
+  {"id":"m_5u_cyclop_archer","name":"Cyclop Archer","atlas":{"row":5,"col":"e"},"spriteSet":"cyclop_archer_regular","archetype":"Skeleton","base":{"size":92,"hp":78,"atk":10,"speed":92,"def":1},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"mid","notes":"Ranged cyclop archer variant."},
+  {"id":"m_5v_monsteryfly","name":"Monsteryfly","atlas":{"row":5,"col":"e"},"spriteSet":"monsteryfly_regular","archetype":"Bat","base":{"size":96,"hp":95,"atk":10,"speed":108,"def":1},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Leaping flyer that prepares, slams, then recovers."},
+  {"id":"m_5w_monster_slasher","name":"MonsterSlasher","atlas":{"row":5,"col":"e"},"spriteSet":"monster_slasher_regular","archetype":"Skeleton","base":{"size":98,"hp":105,"atk":11,"speed":90,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Roars then performs a two-step cone slash combo."},
+  {"id":"m_5x_vampire_archer","name":"Vampire Archer","atlas":{"row":5,"col":"e"},"spriteSet":"vampire_archer_regular","archetype":"Skeleton","base":{"size":96,"hp":82,"atk":10,"speed":96,"def":1},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"mid","notes":"Quick burst archer that restores health on projectile hits."},
+  {"id":"m_5y_mercenary","name":"Mercenary","atlas":{"row":5,"col":"e"},"spriteSet":"mercenary_regular","archetype":"Skeleton","base":{"size":104,"hp":110,"atk":10,"speed":72,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Warrior using cyclone spin that advances toward the player."},
+  {"id":"m_5h_medium_dummy","name":"Medium Dummy","atlas":{"row":5,"col":"e"},"spriteSet":"medium_dummy_regular","archetype":"Slime","base":{"size":96,"hp":85,"atk":10,"speed":50,"def":2},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Spin-attack dummy variant."},
+  {"id":"m_5i_advanced_dummy","name":"Advanced Dummy","atlas":{"row":5,"col":"e"},"spriteSet":"advanced_dummy_regular","archetype":"Slime","base":{"size":96,"hp":85,"atk":10,"speed":50,"def":2},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Medium dummy variant with spin and dash attacks."},
+  {"id":"m_5j_large_dummy","name":"Large Dummy","atlas":{"row":5,"col":"e"},"spriteSet":"large_dummy_regular","archetype":"Slime","base":{"size":112,"hp":120,"atk":12,"speed":42,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Heavy dummy that performs a slow, slightly homing charge."},
   {"id":"m_5f_ghoul","name":"Ghoul","atlas":{"row":5,"col":"f"},"archetype":"Bat","base":{"size":72,"hp":38,"atk":9,"speed":110,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Fast undead. Great with Cursing."},
 
   // Row 6  Ghosts/Cult
   {"id":"m_6a_banshee","name":"Banshee","atlas":{"row":6,"col":"a"},"archetype":"Wisp","base":{"size":72,"hp":22,"atk":6,"speed":125,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Fast ethereal. Great with Lasering."},
   {"id":"m_6b_reaper","name":"Reaper","atlas":{"row":6,"col":"b"},"archetype":"Demon","base":{"size":103,"hp":90,"atk":15,"speed":55,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Elite assassin. Great with Weakening/Cursing."},
   {"id":"m_6c_wraith","name":"Wraith","atlas":{"row":6,"col":"c"},"archetype":"Wisp","base":{"size":72,"hp":20,"atk":5,"speed":130,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"low","notes":"Your existing Wisp-like baseline."},
-  {"id":"m_6d_cultist","name":"Cultist","atlas":{"row":6,"col":"d"},"archetype":"Bat","base":{"size":72,"hp":28,"atk":7,"speed":105,"def":0},"attackStyle":"ranged_projectile","xpBand":"basic","dropBand":"mid","notes":"Ranged/utility. Great with Weakening."},
+  {"id":"m_6d_cultist","name":"Cultist","atlas":{"row":6,"col":"d"},"spriteSet":"cultist_regular","archetype":"Bat","base":{"size":72,"hp":28,"atk":7,"speed":105,"def":0},"attackStyle":"ranged_projectile","xpBand":"basic","dropBand":"mid","notes":"Ranged/utility. Great with Weakening."},
   {"id":"m_6e_hag_witch","name":"Hag / Witch","atlas":{"row":6,"col":"e"},"archetype":"Wisp","base":{"size":72,"hp":30,"atk":8,"speed":100,"def":1},"attackStyle":"ranged_projectile","xpBand":"basic","dropBand":"mid","notes":"Debuff caster. Perfect for Weakening/Cursing."},
 
   // Row 7  Beasts/Insects (fast + poison-y vibe)
@@ -119,9 +144,9 @@ const NEW_ENEMY_DATA = [
   {"id":"m_8c_rock_golem","name":"Rock Golem","atlas":{"row":8,"col":"c"},"archetype":"Demon","base":{"size":103,"hp":100,"atk":12,"speed":50,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Slow tank. Great with Orbiting."},
   {"id":"m_8d_centaur","name":"Centaur","atlas":{"row":8,"col":"d"},"archetype":"Skeleton","base":{"size":86,"hp":70,"atk":11,"speed":90,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Mobile bruiser."},
   {"id":"m_8e_naga","name":"Naga","atlas":{"row":8,"col":"e"},"archetype":"Skeleton","base":{"size":86,"hp":65,"atk":10,"speed":80,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Mid threat. Great with Lasering."},
-  {"id":"m_8f_forest_spirit","name":"Forest Spirit","atlas":{"row":8,"col":"f"},"archetype":"Wisp","base":{"size":72,"hp":22,"atk":6,"speed":125,"def":0},"attackStyle":"ranged_projectile","xpBand":"basic","dropBand":"mid","notes":"Fast caster."},
+  {"id":"m_8f_forest_spirit","name":"Forest Spirit","atlas":{"row":8,"col":"f"},"spriteSet":"forest_spirit_regular","archetype":"Wisp","base":{"size":72,"hp":22,"atk":6,"speed":125,"def":0},"attackStyle":"ranged_projectile","xpBand":"basic","dropBand":"mid","notes":"Fast caster."},
   {"id":"m_8g_satyr","name":"Satyr","atlas":{"row":8,"col":"g"},"archetype":"Bat","base":{"size":72,"hp":35,"atk":8,"speed":115,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Quick melee."},
-  {"id":"m_8h_minotaur","name":"Minotaur","atlas":{"row":8,"col":"h"},"archetype":"Demon","base":{"size":103,"hp":100,"atk":15,"speed":55,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Classic boss bruiser."},
+  {"id":"m_8h_minotaur","name":"Minotaur","atlas":{"row":8,"col":"h"},"spriteSet":"minotaur_regular","archetype":"Demon","base":{"size":103,"hp":100,"atk":15,"speed":55,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Classic boss bruiser."},
   {"id":"m_8i_harpy","name":"Harpy","atlas":{"row":8,"col":"i"},"archetype":"Bat","base":{"size":72,"hp":28,"atk":8,"speed":125,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Fast aerial vibe. Great with Volatile."},
   {"id":"m_8j_gorgon_medusa","name":"Gorgon / Medusa","atlas":{"row":8,"col":"j"},"archetype":"Wisp","base":{"size":86,"hp":45,"atk":10,"speed":80,"def":1},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"high","notes":"Control caster feel. Great with Lasering/Weakening."},
 
@@ -137,7 +162,7 @@ const NEW_ENEMY_DATA = [
   {"id":"m_10b_kobold_canine","name":"Kobold (Canine)","atlas":{"row":10,"col":"b"},"archetype":"Bat","base":{"size":72,"hp":28,"atk":7,"speed":115,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"low","notes":"Slightly tougher kobold."},
 
   // Row 11  Myconids
-  {"id":"m_11a_small_myconid","name":"Small Myconid","atlas":{"row":11,"col":"a"},"archetype":"Slime","base":{"size":72,"hp":35,"atk":7,"speed":60,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Slow fungal minion."},
+  {"id":"m_11a_small_myconid","name":"Small Myconid","atlas":{"row":11,"col":"a"},"spriteSet":"small_myconid_regular","archetype":"Slime","base":{"size":72,"hp":35,"atk":7,"speed":60,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Slow fungal minion."},
   {"id":"m_11b_large_myconid","name":"Large Myconid","atlas":{"row":11,"col":"b"},"archetype":"Skeleton","base":{"size":86,"hp":65,"atk":10,"speed":55,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Tanky fungal."},
 
   // Row 12  Celestial/Infernal
@@ -150,7 +175,56 @@ const NEW_ENEMY_DATA = [
   {"id":"m_13c_writhing_humanoid","name":"Writhing Humanoid","atlas":{"row":13,"col":"c"},"archetype":"Skeleton","base":{"size":86,"hp":60,"atk":11,"speed":70,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Medium elite horror. Great with Weakening/Cursing."}
 ];
 
+const ENEMY_DATA_BY_ID = new Map(NEW_ENEMY_DATA.map((enemyData) => [enemyData.id, enemyData]));
+
+const UNDEAD_HERO_BLUEPRINTS = [
+  {
+    id: "uh_fallen_warlord",
+    sourceEnemyId: "m_5d_death_knight",
+    name: "Undead Hero: Fallen Warlord"
+  },
+  {
+    id: "uh_blight_archmage",
+    sourceEnemyId: "m_5c_lich",
+    name: "Undead Hero: Blight Archmage"
+  },
+  {
+    id: "uh_grave_ranger",
+    sourceEnemyId: "m_5x_vampire_archer",
+    name: "Undead Hero: Grave Ranger"
+  }
+];
+
+function createUndeadHeroData(blueprint) {
+  const source = ENEMY_DATA_BY_ID.get(blueprint.sourceEnemyId);
+  if (!source) return null;
+  const base = source.base || {};
+  const sourceDef = Number(base.def) || 0;
+  return {
+    ...source,
+    id: blueprint.id,
+    name: blueprint.name,
+    base: {
+      ...base,
+      size: Math.round((Number(base.size) || 80) * 1.05),
+      hp: Math.round((Number(base.hp) || 50) * 1.45),
+      atk: Math.round((Number(base.atk) || 8) * 1.3),
+      speed: Math.round((Number(base.speed) || 80) * 1.05),
+      def: Math.max(sourceDef + 1, Math.round(sourceDef * 1.35))
+    },
+    xpBand: "elite_like",
+    dropBand: "high",
+    spawnPool: "special",
+    enemyFamily: "undeadHero",
+    sourceEnemyId: source.id,
+    notes: `Special undead hero variant of ${source.name}.`
+  };
+}
+
 const _fromData = NEW_ENEMY_DATA.map(convertEnemyData);
+const _undeadHeroData = UNDEAD_HERO_BLUEPRINTS.map(createUndeadHeroData).filter(Boolean);
+const _undeadHeroTypes = _undeadHeroData.map(convertEnemyData);
+export const UNDEAD_HERO_TYPES = [..._undeadHeroTypes];
 const _humanSquadTypes = HUMAN_SQUAD_ENEMY_IDS.map((id) => getHumanSquadTypeDef(id)).filter(Boolean);
 export const ENEMY_TYPES = [..._fromData, ..._humanSquadTypes];
 
@@ -159,7 +233,6 @@ export const BOSS_XP = 200;
 export const AFFIX_DEFS = [
   { id: "swift", name: "Swift", icon: "tile_0423_r26_c07", color: "#fbbf24" },
   { id: "volatile", name: "Volatile", icon: "tile_0002_r00_c02", color: "#f97316" },
-  { id: "regenerating", name: "Regenerating", icon: "tile_0372_r23_c04", color: "#22c55e" },
   { id: "evasive", name: "Evasive", icon: "tile_0332_r20_c12", color: "#a78bfa" },
   { id: "auraBearer", name: "Aura Bearer", icon: "tile_0371_r23_c03", color: "#ec4899" },
   { id: "martyr", name: "Martyr", icon: "tile_0442_r27_c10", color: "#78716c" },
@@ -170,19 +243,28 @@ export const AFFIX_DEFS = [
   { id: "phantom", name: "Phantom", icon: "tile_0346_r21_c10", color: "#94a3b8" },
   { id: "cursing", name: "Cursing", icon: "tile_0312_r19_c08", color: "#8b5cf6" },
   { id: "erratic", name: "Erratic", icon: "tile_0259_r16_c03", color: "#e879f9" },
-  { id: "rooted", name: "Rooted", icon: "tile_0394_r24_c10", color: "#64748b" }
+  { id: "hive", name: "Hive", icon: "tile_0394_r24_c10", color: "#64748b" },
+  { id: "deflecting", name: "Deflecting", icon: "tile_0049_r03_c01", color: "#38bdf8" },
+  { id: "guarded", name: "Guarded", icon: "tile_0049_r03_c01", color: "#a855f7" },
+  { id: "flying", name: "Flying", icon: "tile_0423_r26_c07", color: "#22d3ee" }
 ];
 
 export function getAffixDef(id) {
   return AFFIX_DEFS.find((a) => a.id === id) || { id, name: id, icon: "?", color: "#94a3b8" };
 }
 
+/**
+ * Cumulative XP required to reach level (same curve as simulator).
+ * XP to next level = 120 + 35·level + 4·level² (level = current level before leveling).
+ */
 export function getXpForLevel(level) {
-  if (level <= 1) return 0;
-  if (level === 2) return 100;
-  if (level === 3) return 250;
-  if (level === 4) return 500;
-  return 500 * Math.pow(1.5, level - 4);
+  const L = Math.max(1, Math.floor(level));
+  if (L <= 1) return 0;
+  let sum = 0;
+  for (let i = 1; i < L; i++) {
+    sum += 120 + 35 * i + 4 * i * i;
+  }
+  return sum;
 }
 
 /* Level-up stat bonuses replaced by attack upgrade/penalty cards (see ATTACK_UPGRADE_DEFS and showLevelUpChoices). */
@@ -194,6 +276,879 @@ let enemySpriteAtlas = null;
 let enemySpriteAtlasLoaded = false;
 let affixIconAtlas = null;
 let affixIconAtlasLoaded = false;
+const goblinRegularSheetCache = new Map();
+const GOBLIN_VARIANT_IDS = ["01", "02", "03"];
+const goblinArcherSheetCache = new Map();
+const GOBLIN_ARCHER_VARIANT_IDS = ["01", "02", "03"];
+const goblinBruteSheetCache = new Map();
+const GOBLIN_BRUTE_VARIANT_IDS = ["01", "02", "03"];
+const goblinMageSheetCache = new Map();
+const orcRegularSheetCache = new Map();
+const ORC_VARIANT_IDS = ["01", "02", "03"];
+const cultistSheetCache = new Map();
+const deathKnightSheetCache = new Map();
+const lichSheetCache = new Map();
+const minotaurSheetCache = new Map();
+const MINOTAUR_VARIANT_IDS = ["1", "2", "3"];
+const forestSpiritSheetCache = new Map();
+const smallMyconidSheetCache = new Map();
+const smallDummySheetCache = new Map();
+const mediumDummySheetCache = new Map();
+const advancedDummySheetCache = new Map();
+const largeDummySheetCache = new Map();
+const smallDwarfetteSheetCache = new Map();
+const mediumDwarfetteSheetCache = new Map();
+const strongDwarfetteSheetCache = new Map();
+const largeDwarfetteBallSheetCache = new Map();
+const smallMimicSheetCache = new Map();
+const mediumMimicSheetCache = new Map();
+const strongMimicSheetCache = new Map();
+const largeMimicSheetCache = new Map();
+const smallFrogSheetCache = new Map();
+const largeFrogSheetCache = new Map();
+const cyclopArcherSheetCache = new Map();
+const monsteryflySheetCache = new Map();
+const monsterSlasherSheetCache = new Map();
+const vampireArcherSheetCache = new Map();
+const mercenarySheetCache = new Map();
+
+function getCachedSpriteImage(cache, path, warningLabel) {
+  let image = cache.get(path);
+  if (image) return image;
+  image = new Image();
+  image.onerror = () => {
+    console.warn(`Failed to load ${warningLabel}: ${path}`);
+  };
+  image.src = path;
+  cache.set(path, image);
+  return image;
+}
+
+function getGoblinRegularSheets(variantId) {
+  const id = String(variantId || "01");
+  const base = `assets/Enemies/Goblins/Goblin_Regular_${id}`;
+  return {
+    idle: {
+      image: getCachedSpriteImage(goblinRegularSheetCache, `${base}_Idle_1x1.png`, "Goblin idle sheet"),
+      frames: 1,
+      fps: 1
+    },
+    move: {
+      image: getCachedSpriteImage(goblinRegularSheetCache, `${base}_Move_10x1.png`, "Goblin move sheet"),
+      frames: 10,
+      fps: 14
+    },
+    attack: {
+      image: getCachedSpriteImage(goblinRegularSheetCache, `${base}_ATK_Full_10x1.png`, "Goblin attack sheet"),
+      frames: 10,
+      fps: 18
+    }
+  };
+}
+
+function getGoblinArcherSheets(variantId) {
+  const id = String(variantId || "01");
+  const base = `assets/Enemies/Goblin Archers/Orc_Archer_${id}`;
+  return {
+    idle: {
+      image: getCachedSpriteImage(goblinArcherSheetCache, `${base}_Idle_1x1.png`, "Goblin Archer idle sheet"),
+      frames: 1,
+      fps: 1
+    },
+    move: {
+      image: getCachedSpriteImage(goblinArcherSheetCache, `${base}_Move_6x1.png`, "Goblin Archer move sheet"),
+      frames: 6,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(goblinArcherSheetCache, `${base}_ATK_Full_18x1.png`, "Goblin Archer attack sheet"),
+      frames: 18,
+      fps: 22
+    }
+  };
+}
+
+function getGoblinBruteSheets(variantId) {
+  const id = String(variantId || "01");
+  const base = `assets/Enemies/Goblin Brutes/Goblin_Barrel_${id}`;
+  return {
+    idle: {
+      image: getCachedSpriteImage(goblinBruteSheetCache, `${base}_Idle_1x1.png`, "Goblin Brute idle sheet"),
+      frames: 1,
+      fps: 1
+    },
+    move: {
+      image: getCachedSpriteImage(goblinBruteSheetCache, `${base}_Move_10x1.png`, "Goblin Brute move sheet"),
+      frames: 10,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(goblinBruteSheetCache, `${base}_ATK_Full_10x1.png`, "Goblin Brute attack sheet"),
+      frames: 10,
+      fps: 16
+    }
+  };
+}
+
+function getGoblinMageSheets() {
+  const idleImage = getCachedSpriteImage(goblinMageSheetCache, "assets/Enemies/Goblin Mage/Idle_2x1.png", "Goblin Mage idle sheet");
+  const moveImage = getCachedSpriteImage(goblinMageSheetCache, "assets/Enemies/Goblin Mage/Move_24x1.png", "Goblin Mage move sheet");
+  return {
+    idle: {
+      image: idleImage,
+      frames: 2,
+      fps: 6
+    },
+    move: {
+      image: moveImage,
+      frames: 24,
+      fps: 16
+    },
+    // No dedicated attack strip in this asset set, so use movement strip for attack state.
+    attack: {
+      image: moveImage,
+      frames: 24,
+      fps: 20
+    }
+  };
+}
+
+function getOrcRegularSheets(variantId) {
+  const id = String(variantId || "01");
+  const base = `assets/Enemies/Orc/Orc_Barbare_${id}`;
+  return {
+    idle: {
+      image: getCachedSpriteImage(orcRegularSheetCache, `${base}_Idle_1x1.png`, "Orc idle sheet"),
+      frames: 1,
+      fps: 1
+    },
+    move: {
+      image: getCachedSpriteImage(orcRegularSheetCache, `${base}_Move_5x1.png`, "Orc move sheet"),
+      frames: 5,
+      fps: 10
+    },
+    attack: {
+      image: getCachedSpriteImage(orcRegularSheetCache, `${base}_ATK_Full_12x1.png`, "Orc attack sheet"),
+      frames: 12,
+      fps: 18
+    }
+  };
+}
+
+function getCultistSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(cultistSheetCache, "assets/Enemies/Cultist/Idle_8x1.png", "Cultist idle sheet"),
+      frames: 8,
+      fps: 10
+    },
+    move: {
+      image: getCachedSpriteImage(cultistSheetCache, "assets/Enemies/Cultist/Move_12x1.png", "Cultist move sheet"),
+      frames: 12,
+      fps: 14
+    },
+    attack: {
+      image: getCachedSpriteImage(cultistSheetCache, "assets/Enemies/Cultist/Attack_16x1.png", "Cultist attack sheet"),
+      frames: 16,
+      fps: 20
+    }
+  };
+}
+
+function getDeathKnightSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(deathKnightSheetCache, "assets/Enemies/Death Knight/Idle_2x1.png", "Death Knight idle sheet"),
+      frames: 2,
+      fps: 6
+    },
+    move: {
+      image: getCachedSpriteImage(deathKnightSheetCache, "assets/Enemies/Death Knight/Move_24x1.png", "Death Knight move sheet"),
+      frames: 24,
+      fps: 14
+    },
+    // No dedicated attack strip in this set; use charge strip for attack state visuals.
+    attack: {
+      image: getCachedSpriteImage(deathKnightSheetCache, "assets/Enemies/Death Knight/Charge_2x1.png", "Death Knight charge sheet"),
+      frames: 2,
+      fps: 10
+    }
+  };
+}
+
+function getLichSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(lichSheetCache, "assets/Enemies/Lich/Idle_2x1.png", "Lich idle sheet"),
+      frames: 2,
+      fps: 6
+    },
+    move: {
+      image: getCachedSpriteImage(lichSheetCache, "assets/Enemies/Lich/Move_24x1.png", "Lich move sheet"),
+      frames: 24,
+      fps: 14
+    },
+    attack: {
+      image: getCachedSpriteImage(lichSheetCache, "assets/Enemies/Lich/Attack_Full_10x1.png", "Lich attack sheet"),
+      frames: 10,
+      fps: 18
+    }
+  };
+}
+
+function getMinotaurSheets(variantId) {
+  const id = String(variantId || "1");
+  const base = `assets/Enemies/Minotaur/Variant ${id}`;
+  return {
+    idle: {
+      image: getCachedSpriteImage(minotaurSheetCache, `${base}/Idle_1x1.png`, "Minotaur idle sheet"),
+      frames: 1,
+      fps: 1
+    },
+    move: {
+      image: getCachedSpriteImage(minotaurSheetCache, `${base}/Move_8x1.png`, "Minotaur move sheet"),
+      frames: 8,
+      fps: 10
+    },
+    // No dedicated normal attack strip; use charge begin strip for attack state visuals.
+    attack: {
+      image: getCachedSpriteImage(minotaurSheetCache, `${base}/Charge_Begin_24x1.png`, "Minotaur charge-begin sheet"),
+      frames: 24,
+      fps: 16
+    }
+  };
+}
+
+function getForestSpiritSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(forestSpiritSheetCache, "assets/Enemies/Forest Spirit/Idle_34x1.png", "Forest Spirit idle sheet"),
+      frames: 34,
+      fps: 14
+    },
+    move: {
+      image: getCachedSpriteImage(forestSpiritSheetCache, "assets/Enemies/Forest Spirit/Move_26x1.png", "Forest Spirit move sheet"),
+      frames: 26,
+      fps: 14
+    },
+    attack: {
+      image: getCachedSpriteImage(forestSpiritSheetCache, "assets/Enemies/Forest Spirit/Move_26x1.png", "Forest Spirit move sheet"),
+      frames: 26,
+      fps: 14
+    },
+    specialHeal: {
+      image: getCachedSpriteImage(forestSpiritSheetCache, "assets/Enemies/Forest Spirit/SelfHeal_Full_54x1.png", "Forest Spirit self-heal sheet"),
+      frames: 54,
+      fps: 27
+    }
+  };
+}
+
+function getSmallMyconidSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(smallMyconidSheetCache, "assets/Enemies/Small Myconid/Idle_2x1.png", "Small Myconid idle sheet"),
+      frames: 2,
+      fps: 8
+    },
+    move: {
+      image: getCachedSpriteImage(smallMyconidSheetCache, "assets/Enemies/Small Myconid/Move_20x1.png", "Small Myconid move sheet"),
+      frames: 20,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(smallMyconidSheetCache, "assets/Enemies/Small Myconid/Attack_Full_60x1.png", "Small Myconid attack sheet"),
+      frames: 60,
+      // Attack window is ~1.05s (0.8 windup + 0.05 active + 0.2 recover).
+      // Tune fps so one attack sequence can traverse the full 60-frame strip.
+      fps: 57.142857,
+      loop: false
+    }
+  };
+}
+
+function getSmallDummySheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(smallDummySheetCache, "assets/Enemies/Small_Dummy/Idle_2x1.png", "Small Dummy idle sheet"),
+      frames: 2,
+      fps: 8
+    },
+    move: {
+      image: getCachedSpriteImage(smallDummySheetCache, "assets/Enemies/Small_Dummy/Move_12x1.png", "Small Dummy move sheet"),
+      frames: 12,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(smallDummySheetCache, "assets/Enemies/Small_Dummy/DashAttack_Full_14x1.png", "Small Dummy attack sheet"),
+      frames: 14,
+      fps: 16
+    }
+  };
+}
+
+function getMediumDummySheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(mediumDummySheetCache, "assets/Enemies/Medium Dummy/Idle_2x1.png", "Medium Dummy idle sheet"),
+      frames: 2,
+      fps: 8
+    },
+    move: {
+      image: getCachedSpriteImage(mediumDummySheetCache, "assets/Enemies/Medium Dummy/Move_12x1.png", "Medium Dummy move sheet"),
+      frames: 12,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(mediumDummySheetCache, "assets/Enemies/Medium Dummy/Spinning_8x1.png", "Medium Dummy spin sheet"),
+      frames: 8,
+      fps: 14
+    }
+  };
+}
+
+function getAdvancedDummySheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(advancedDummySheetCache, "assets/Enemies/Advanced Dummy/Idle_2x1.png", "Advanced Dummy idle sheet"),
+      frames: 2,
+      fps: 8
+    },
+    move: {
+      image: getCachedSpriteImage(advancedDummySheetCache, "assets/Enemies/Advanced Dummy/Move_12x1.png", "Advanced Dummy move sheet"),
+      frames: 12,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(advancedDummySheetCache, "assets/Enemies/Advanced Dummy/Spinning_12x1.png", "Advanced Dummy spinning sheet"),
+      frames: 12,
+      fps: 14
+    },
+    attackDash: {
+      image: getCachedSpriteImage(advancedDummySheetCache, "assets/Enemies/Advanced Dummy/Dash_Full_16x1.png", "Advanced Dummy dash sheet"),
+      frames: 16,
+      fps: 16
+    }
+  };
+}
+
+function getLargeDummySheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(largeDummySheetCache, "assets/Enemies/Large Dummy/Idle_2x1.png", "Large Dummy idle sheet"),
+      frames: 2,
+      fps: 8
+    },
+    move: {
+      image: getCachedSpriteImage(largeDummySheetCache, "assets/Enemies/Large Dummy/Move_12x1.png", "Large Dummy move sheet"),
+      frames: 12,
+      fps: 10
+    },
+    attack: {
+      image: getCachedSpriteImage(largeDummySheetCache, "assets/Enemies/Large Dummy/Charge_Full_14x1.png", "Large Dummy charge sheet"),
+      frames: 14,
+      fps: 12
+    }
+  };
+}
+
+function getSmallDwarfetteSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(smallDwarfetteSheetCache, "assets/Enemies/Small Dwarfette/Idle_12x1.png", "Small Dwarfette idle sheet"),
+      frames: 12,
+      fps: 10
+    },
+    move: {
+      image: getCachedSpriteImage(smallDwarfetteSheetCache, "assets/Enemies/Small Dwarfette/Move_8x1.png", "Small Dwarfette move sheet"),
+      frames: 8,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(smallDwarfetteSheetCache, "assets/Enemies/Small Dwarfette/Dash_Full_8x1.png", "Small Dwarfette dash sheet"),
+      frames: 8,
+      fps: 14
+    }
+  };
+}
+
+function getMediumDwarfetteSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(mediumDwarfetteSheetCache, "assets/Enemies/Medium Dwarfette/Idle_48x1.png", "Medium Dwarfette idle sheet"),
+      frames: 48,
+      fps: 16
+    },
+    move: {
+      image: getCachedSpriteImage(mediumDwarfetteSheetCache, "assets/Enemies/Medium Dwarfette/Move_10x1.png", "Medium Dwarfette move sheet"),
+      frames: 10,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(mediumDwarfetteSheetCache, "assets/Enemies/Medium Dwarfette/Dash_Loop_6x1.png", "Medium Dwarfette dash loop sheet"),
+      frames: 6,
+      fps: 14
+    },
+    attackRoll: {
+      image: getCachedSpriteImage(mediumDwarfetteSheetCache, "assets/Enemies/Medium Dwarfette/Dash_Loop_6x1.png", "Medium Dwarfette dash loop sheet"),
+      frames: 6,
+      fps: 16
+    },
+    attackRollEnd: {
+      image: getCachedSpriteImage(mediumDwarfetteSheetCache, "assets/Enemies/Medium Dwarfette/Dash_End_6x1.png", "Medium Dwarfette dash end sheet"),
+      frames: 6,
+      fps: 14,
+      loop: false
+    }
+  };
+}
+
+function getStrongDwarfetteSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(strongDwarfetteSheetCache, "assets/Enemies/Strong Dwarfette/Idle_10x1.png", "Strong Dwarfette idle sheet"),
+      frames: 10,
+      fps: 12
+    },
+    move: {
+      image: getCachedSpriteImage(strongDwarfetteSheetCache, "assets/Enemies/Strong Dwarfette/Move_16x1.png", "Strong Dwarfette move sheet"),
+      frames: 16,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(strongDwarfetteSheetCache, "assets/Enemies/Strong Dwarfette/Dash_Loop_24x1.png", "Strong Dwarfette dash loop sheet"),
+      frames: 24,
+      fps: 16
+    },
+    attackRoll: {
+      image: getCachedSpriteImage(strongDwarfetteSheetCache, "assets/Enemies/Strong Dwarfette/Dash_Loop_24x1.png", "Strong Dwarfette dash loop sheet"),
+      frames: 24,
+      fps: 18
+    },
+    attackRollEnd: {
+      image: getCachedSpriteImage(strongDwarfetteSheetCache, "assets/Enemies/Strong Dwarfette/Dash_End_6x1.png", "Strong Dwarfette dash end sheet"),
+      frames: 6,
+      fps: 14,
+      loop: false
+    }
+  };
+}
+
+function getLargeDwarfetteBallSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(largeDwarfetteBallSheetCache, "assets/Enemies/Large Dwarfette Ball/Idle_28x1.png", "Large Dwarfette Ball idle sheet"),
+      frames: 28,
+      fps: 12
+    },
+    move: {
+      image: getCachedSpriteImage(largeDwarfetteBallSheetCache, "assets/Enemies/Large Dwarfette Ball/Move_28x1.png", "Large Dwarfette Ball move sheet"),
+      frames: 28,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(largeDwarfetteBallSheetCache, "assets/Enemies/Large Dwarfette Ball/Dash_16x1.png", "Large Dwarfette Ball dash loop sheet"),
+      frames: 16,
+      fps: 14
+    },
+    attackRoll: {
+      image: getCachedSpriteImage(largeDwarfetteBallSheetCache, "assets/Enemies/Large Dwarfette Ball/Dash_16x1.png", "Large Dwarfette Ball dash loop sheet"),
+      frames: 16,
+      fps: 16
+    },
+    attackRollEnd: {
+      image: getCachedSpriteImage(largeDwarfetteBallSheetCache, "assets/Enemies/Large Dwarfette Ball/Dashend_6x1.png", "Large Dwarfette Ball dash end sheet"),
+      frames: 6,
+      fps: 12,
+      loop: false
+    }
+  };
+}
+
+function getSmallMimicSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(smallMimicSheetCache, "assets/Enemies/Small Mimic/Idle_2x1.png", "Small Mimic idle sheet"),
+      frames: 2,
+      fps: 8
+    },
+    move: {
+      image: getCachedSpriteImage(smallMimicSheetCache, "assets/Enemies/Small Mimic/Move_14x1.png", "Small Mimic move sheet"),
+      frames: 14,
+      fps: 16
+    },
+    attack: {
+      image: getCachedSpriteImage(smallMimicSheetCache, "assets/Enemies/Small Mimic/Dash_Full_14x1.png", "Small Mimic dash sheet"),
+      frames: 14,
+      fps: 16
+    }
+  };
+}
+
+function getMediumMimicSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(mediumMimicSheetCache, "assets/Enemies/Medium Mimic/Idle_2x1.png", "Medium Mimic idle sheet"),
+      frames: 2,
+      fps: 8
+    },
+    move: {
+      image: getCachedSpriteImage(mediumMimicSheetCache, "assets/Enemies/Medium Mimic/Move_24x1.png", "Medium Mimic move sheet"),
+      frames: 24,
+      fps: 16
+    },
+    attack: {
+      image: getCachedSpriteImage(mediumMimicSheetCache, "assets/Enemies/Medium Mimic/Dash_Full_10x1.png", "Medium Mimic dash sheet"),
+      frames: 10,
+      fps: 16
+    }
+  };
+}
+
+function getStrongMimicSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(strongMimicSheetCache, "assets/Enemies/Strong Mimic/Idle_2x1.png", "Strong Mimic idle sheet"),
+      frames: 2,
+      fps: 8
+    },
+    move: {
+      image: getCachedSpriteImage(strongMimicSheetCache, "assets/Enemies/Strong Mimic/Move_24x1.png", "Strong Mimic move sheet"),
+      frames: 24,
+      fps: 14
+    },
+    attack: {
+      image: getCachedSpriteImage(strongMimicSheetCache, "assets/Enemies/Strong Mimic/Attack_Begin_2x1.png", "Strong Mimic attack sheet"),
+      frames: 2,
+      fps: 10
+    }
+  };
+}
+
+function getLargeMimicSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(largeMimicSheetCache, "assets/Enemies/Large Mimic/Idle_16x1.png", "Large Mimic idle sheet"),
+      frames: 16,
+      fps: 10
+    },
+    move: {
+      image: getCachedSpriteImage(largeMimicSheetCache, "assets/Enemies/Large Mimic/Move_16x1.png", "Large Mimic move sheet"),
+      frames: 16,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(largeMimicSheetCache, "assets/Enemies/Large Mimic/Dash_Full_14x1.png", "Large Mimic dash sheet"),
+      frames: 14,
+      fps: 12
+    }
+  };
+}
+
+function getSmallFrogSheets() {
+  const moveImage = getCachedSpriteImage(smallFrogSheetCache, "assets/Enemies/Small Frog/Walk_Full_22x1.png", "Small Frog walk sheet");
+  return {
+    idle: {
+      image: getCachedSpriteImage(smallFrogSheetCache, "assets/Enemies/Small Frog/Idle_2x1.png", "Small Frog idle sheet"),
+      frames: 2,
+      fps: 8
+    },
+    move: {
+      image: moveImage,
+      frames: 22,
+      fps: 20
+    },
+    attack: {
+      // No dedicated attack strip; reuse move strip for any fallback attack visual.
+      image: moveImage,
+      frames: 22,
+      fps: 20
+    }
+  };
+}
+
+function getLargeFrogSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(largeFrogSheetCache, "assets/Enemies/Large Frog/Idle_2x1.png", "Large Frog idle sheet"),
+      frames: 2,
+      fps: 8
+    },
+    move: {
+      image: getCachedSpriteImage(largeFrogSheetCache, "assets/Enemies/Large Frog/Move_Full_22x1.png", "Large Frog move sheet"),
+      frames: 22,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(largeFrogSheetCache, "assets/Enemies/Large Frog/Jump_Full_40x1.png", "Large Frog jump sheet"),
+      frames: 40,
+      fps: 20
+    },
+    attackBurp: {
+      image: getCachedSpriteImage(largeFrogSheetCache, "assets/Enemies/Large Frog/Burp_4x1.png", "Large Frog burp sheet"),
+      frames: 4,
+      fps: 10
+    },
+    attackJump: {
+      image: getCachedSpriteImage(largeFrogSheetCache, "assets/Enemies/Large Frog/Jump_Full_40x1.png", "Large Frog jump sheet"),
+      frames: 40,
+      fps: 20
+    }
+  };
+}
+
+function getCyclopArcherSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(cyclopArcherSheetCache, "assets/Enemies/Cyclop_Archer/Idle_2x1.png", "Cyclop Archer idle sheet"),
+      frames: 2,
+      fps: 8
+    },
+    move: {
+      image: getCachedSpriteImage(cyclopArcherSheetCache, "assets/Enemies/Cyclop_Archer/Move_16x1.png", "Cyclop Archer move sheet"),
+      frames: 16,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(cyclopArcherSheetCache, "assets/Enemies/Cyclop_Archer/ATK_Full_22x1.png", "Cyclop Archer attack sheet"),
+      frames: 22,
+      fps: 18
+    }
+  };
+}
+
+function getMonsteryflySheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(monsteryflySheetCache, "assets/Enemies/Monsterfly/Idle_16x1.png", "Monsteryfly idle sheet"),
+      frames: 16,
+      fps: 12
+    },
+    move: {
+      image: getCachedSpriteImage(monsteryflySheetCache, "assets/Enemies/Monsterfly/Move_16x1.png", "Monsteryfly move sheet"),
+      frames: 16,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(monsteryflySheetCache, "assets/Enemies/Monsterfly/ATK_12x1.png", "Monsteryfly attack sheet"),
+      frames: 12,
+      fps: 16
+    },
+    attackPrepare: {
+      image: getCachedSpriteImage(monsteryflySheetCache, "assets/Enemies/Monsterfly/Prepare_38x1.png", "Monsteryfly prepare sheet"),
+      frames: 38,
+      fps: 22
+    },
+    attackRecover: {
+      image: getCachedSpriteImage(monsteryflySheetCache, "assets/Enemies/Monsterfly/Recover_34x1.png", "Monsteryfly recover sheet"),
+      frames: 34,
+      fps: 17,
+      loop: false
+    }
+  };
+}
+
+function getMonsterSlasherSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(monsterSlasherSheetCache, "assets/Enemies/MonsterSlasher/Idle_2x1.png", "MonsterSlasher idle sheet"),
+      frames: 2,
+      fps: 8
+    },
+    move: {
+      image: getCachedSpriteImage(monsterSlasherSheetCache, "assets/Enemies/MonsterSlasher/Move_20x1.png", "MonsterSlasher move sheet"),
+      frames: 20,
+      fps: 14
+    },
+    attack: {
+      image: getCachedSpriteImage(monsterSlasherSheetCache, "assets/Enemies/MonsterSlasher/ATK_Fullcombo_58x1.png", "MonsterSlasher attack combo sheet"),
+      frames: 58,
+      fps: 58,
+      loop: false
+    }
+  };
+}
+
+function getVampireArcherSheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(vampireArcherSheetCache, "assets/Enemies/Human Archer/Idle_2x1.png", "Vampire Archer idle sheet"),
+      frames: 2,
+      fps: 10
+    },
+    move: {
+      image: getCachedSpriteImage(vampireArcherSheetCache, "assets/Enemies/Human Archer/Move_20x1.png", "Vampire Archer move sheet"),
+      frames: 20,
+      fps: 13
+    },
+    attack: {
+      image: getCachedSpriteImage(vampireArcherSheetCache, "assets/Enemies/Human Archer/ATK_Full_24x1.png", "Vampire Archer attack sheet"),
+      frames: 24,
+      fps: 22
+    }
+  };
+}
+
+function getMercenarySheets() {
+  return {
+    idle: {
+      image: getCachedSpriteImage(mercenarySheetCache, "assets/Enemies/Human Warrior/Idle_2x1.png", "Mercenary idle sheet"),
+      frames: 2,
+      fps: 8
+    },
+    move: {
+      image: getCachedSpriteImage(mercenarySheetCache, "assets/Enemies/Human Warrior/Move_24x1.png", "Mercenary move sheet"),
+      frames: 24,
+      fps: 12
+    },
+    attack: {
+      image: getCachedSpriteImage(mercenarySheetCache, "assets/Enemies/Human Warrior/Attack_10x1.png", "Mercenary attack sheet"),
+      frames: 10,
+      fps: 14
+    },
+    attackCyclone: {
+      image: getCachedSpriteImage(mercenarySheetCache, "assets/Enemies/Human Warrior/Attack_10x1.png", "Mercenary cyclone loop sheet"),
+      frames: 10,
+      fps: 18
+    },
+    attackCycloneEnd: {
+      image: getCachedSpriteImage(mercenarySheetCache, "assets/Enemies/Human Warrior/After_Attack_6x1.png", "Mercenary cyclone end sheet"),
+      frames: 6,
+      fps: 12,
+      loop: false
+    }
+  };
+}
+
+function preloadGoblinRegularSheets() {
+  for (const variantId of GOBLIN_VARIANT_IDS) {
+    getGoblinRegularSheets(variantId);
+  }
+}
+
+function preloadGoblinArcherSheets() {
+  for (const variantId of GOBLIN_ARCHER_VARIANT_IDS) {
+    getGoblinArcherSheets(variantId);
+  }
+}
+
+function preloadGoblinBruteSheets() {
+  for (const variantId of GOBLIN_BRUTE_VARIANT_IDS) {
+    getGoblinBruteSheets(variantId);
+  }
+}
+
+function preloadGoblinMageSheets() {
+  getGoblinMageSheets();
+}
+
+function preloadOrcRegularSheets() {
+  for (const variantId of ORC_VARIANT_IDS) {
+    getOrcRegularSheets(variantId);
+  }
+}
+
+function preloadCultistSheets() {
+  getCultistSheets();
+}
+
+function preloadDeathKnightSheets() {
+  getDeathKnightSheets();
+}
+
+function preloadLichSheets() {
+  getLichSheets();
+}
+
+function preloadMinotaurSheets() {
+  for (const variantId of MINOTAUR_VARIANT_IDS) {
+    getMinotaurSheets(variantId);
+  }
+}
+
+function preloadForestSpiritSheets() {
+  getForestSpiritSheets();
+}
+
+function preloadSmallMyconidSheets() {
+  getSmallMyconidSheets();
+}
+
+function preloadSmallDummySheets() {
+  getSmallDummySheets();
+}
+
+function preloadMediumDummySheets() {
+  getMediumDummySheets();
+}
+
+function preloadAdvancedDummySheets() {
+  getAdvancedDummySheets();
+}
+
+function preloadLargeDummySheets() {
+  getLargeDummySheets();
+}
+
+function preloadSmallDwarfetteSheets() {
+  getSmallDwarfetteSheets();
+}
+
+function preloadMediumDwarfetteSheets() {
+  getMediumDwarfetteSheets();
+}
+
+function preloadStrongDwarfetteSheets() {
+  getStrongDwarfetteSheets();
+}
+
+function preloadLargeDwarfetteBallSheets() {
+  getLargeDwarfetteBallSheets();
+}
+
+function preloadSmallMimicSheets() {
+  getSmallMimicSheets();
+}
+
+function preloadMediumMimicSheets() {
+  getMediumMimicSheets();
+}
+
+function preloadStrongMimicSheets() {
+  getStrongMimicSheets();
+}
+
+function preloadLargeMimicSheets() {
+  getLargeMimicSheets();
+}
+
+function preloadSmallFrogSheets() {
+  getSmallFrogSheets();
+}
+
+function preloadLargeFrogSheets() {
+  getLargeFrogSheets();
+}
+
+function preloadCyclopArcherSheets() {
+  getCyclopArcherSheets();
+}
+
+function preloadMonsteryflySheets() {
+  getMonsteryflySheets();
+}
+
+function preloadMonsterSlasherSheets() {
+  getMonsterSlasherSheets();
+}
+
+function preloadVampireArcherSheets() {
+  getVampireArcherSheets();
+}
+
+function preloadMercenarySheets() {
+  getMercenarySheets();
+}
 
 // Load the enemy sprite atlas automatically when module loads
 function loadEnemySpriteAtlas() {
@@ -228,6 +1183,36 @@ function loadAffixIconAtlas() {
 // Start loading the sprite atlas immediately
 loadEnemySpriteAtlas();
 loadAffixIconAtlas();
+preloadGoblinRegularSheets();
+preloadGoblinArcherSheets();
+preloadGoblinBruteSheets();
+preloadGoblinMageSheets();
+preloadOrcRegularSheets();
+preloadCultistSheets();
+preloadDeathKnightSheets();
+preloadLichSheets();
+preloadMinotaurSheets();
+preloadForestSpiritSheets();
+preloadSmallMyconidSheets();
+preloadSmallDummySheets();
+preloadMediumDummySheets();
+preloadAdvancedDummySheets();
+preloadLargeDummySheets();
+preloadSmallDwarfetteSheets();
+preloadMediumDwarfetteSheets();
+preloadStrongDwarfetteSheets();
+preloadLargeDwarfetteBallSheets();
+preloadSmallMimicSheets();
+preloadMediumMimicSheets();
+preloadStrongMimicSheets();
+preloadLargeMimicSheets();
+preloadSmallFrogSheets();
+preloadLargeFrogSheets();
+preloadCyclopArcherSheets();
+preloadMonsteryflySheets();
+preloadMonsterSlasherSheets();
+preloadVampireArcherSheets();
+preloadMercenarySheets();
 
 function parseTileFrameKey(key) {
   const match = /^tile_\d+_r(\d+)_c(\d+)$/.exec(String(key || ""));
@@ -301,6 +1286,154 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function rectsOverlap(a, b) {
+  return (
+    a.x < b.x + b.w &&
+    a.x + a.w > b.x &&
+    a.y < b.y + b.h &&
+    a.y + a.h > b.y
+  );
+}
+
+function getEnemyCollisionRectAt(enemy, x = enemy.position.x, y = enemy.position.y) {
+  const hitboxSize = enemy.size * 0.25;
+  const hitW = Math.max(4, hitboxSize);
+  const hitH = Math.max(4, hitboxSize);
+  return {
+    x: x + (enemy.size - hitW) / 2,
+    y: y + (enemy.size - hitH) / 2,
+    w: hitW,
+    h: hitH
+  };
+}
+
+function getEnemyWorldBounds(enemy, game, fallbackMargin = 60) {
+  const worldWidth = enemy.worldBounds?.width ?? game?.world?.width ?? 3600;
+  const worldHeight = enemy.worldBounds?.height ?? game?.world?.height ?? 900;
+  const margin = game?.world?.wallCollisionThickness ?? game?.world?.wallThickness ?? fallbackMargin;
+  return {
+    margin,
+    maxX: worldWidth - margin - enemy.size,
+    maxY: worldHeight - margin - enemy.size
+  };
+}
+
+function clampEnemyToWorld(enemy, game, fallbackMargin = 60) {
+  const { margin, maxX, maxY } = getEnemyWorldBounds(enemy, game, fallbackMargin);
+  enemy.position.x = clamp(enemy.position.x, margin, maxX);
+  enemy.position.y = clamp(enemy.position.y, margin, maxY);
+}
+
+function enemyRectHitsBlockingWorld(game, rect, enemy = null) {
+  if (!game) return false;
+  if (enemy?.affixes?.includes("flying")) return false;
+  for (const obstacle of game.obstacles || []) {
+    if (obstacle?.destroyed || !obstacle?.blocksMovement) continue;
+    if (obstacleIntersectsRect(obstacle, rect)) return true;
+  }
+  for (const wall of game.world?.tileWallRects || []) {
+    const wallRect = getWallCollisionRect(wall);
+    if (rectsOverlap(rect, wallRect)) return true;
+  }
+  return false;
+}
+
+function pushEnemyOutOfBlockers(enemy, game, fallbackMargin = 60, maxIterations = 12) {
+  clampEnemyToWorld(enemy, game, fallbackMargin);
+  if (!game) return;
+
+  for (let iter = 0; iter < maxIterations; iter++) {
+    const enemyRect = getEnemyCollisionRectAt(enemy);
+    let blocker = null;
+
+    for (const obstacle of game.obstacles || []) {
+      if (obstacle?.destroyed || !obstacle?.blocksMovement) continue;
+      const obstacleRect = getObstacleCollisionRect(obstacle);
+      if (rectsOverlap(enemyRect, obstacleRect)) {
+        blocker = obstacleRect;
+        break;
+      }
+    }
+
+    if (!blocker) {
+      for (const wall of game.world?.tileWallRects || []) {
+        const wallRect = getWallCollisionRect(wall);
+        if (rectsOverlap(enemyRect, wallRect)) {
+          blocker = wallRect;
+          break;
+        }
+      }
+    }
+
+    if (!blocker) break;
+
+    const overlapL = (enemyRect.x + enemyRect.w) - blocker.x;
+    const overlapR = (blocker.x + blocker.w) - enemyRect.x;
+    const overlapT = (enemyRect.y + enemyRect.h) - blocker.y;
+    const overlapB = (blocker.y + blocker.h) - enemyRect.y;
+    const minX = Math.min(overlapL, overlapR);
+    const minY = Math.min(overlapT, overlapB);
+    const enemyCenterX = enemyRect.x + enemyRect.w * 0.5;
+    const enemyCenterY = enemyRect.y + enemyRect.h * 0.5;
+    const blockerCenterX = blocker.x + blocker.w * 0.5;
+    const blockerCenterY = blocker.y + blocker.h * 0.5;
+
+    if (minX <= minY) {
+      enemy.position.x += enemyCenterX < blockerCenterX ? -(minX + 0.5) : (minX + 0.5);
+    } else {
+      enemy.position.y += enemyCenterY < blockerCenterY ? -(minY + 0.5) : (minY + 0.5);
+    }
+
+    clampEnemyToWorld(enemy, game, fallbackMargin);
+  }
+}
+
+function moveEnemyWithCollision(enemy, moveX, moveY, game, fallbackMargin = 60) {
+  if (!Number.isFinite(moveX) || !Number.isFinite(moveY)) return;
+  if (!game) {
+    enemy.position.x += moveX;
+    enemy.position.y += moveY;
+    clampEnemyToWorld(enemy, game, fallbackMargin);
+    return;
+  }
+
+  if (enemy.affixes?.includes("flying")) {
+    enemy.position.x += moveX;
+    enemy.position.y += moveY;
+    clampEnemyToWorld(enemy, game, fallbackMargin);
+    return;
+  }
+
+  const totalMove = Math.max(Math.abs(moveX), Math.abs(moveY));
+  if (totalMove < 0.0001) {
+    pushEnemyOutOfBlockers(enemy, game, fallbackMargin);
+    return;
+  }
+
+  const baseRect = getEnemyCollisionRectAt(enemy);
+  const maxStep = Math.max(4, Math.min(baseRect.w, baseRect.h) * 0.5);
+  const steps = Math.max(1, Math.ceil(totalMove / maxStep));
+  const stepX = moveX / steps;
+  const stepY = moveY / steps;
+  const { margin, maxX, maxY } = getEnemyWorldBounds(enemy, game, fallbackMargin);
+
+  for (let step = 0; step < steps; step++) {
+    const candidateX = clamp(enemy.position.x + stepX, margin, maxX);
+    const testX = getEnemyCollisionRectAt(enemy, candidateX, enemy.position.y);
+    if (!enemyRectHitsBlockingWorld(game, testX, enemy)) {
+      enemy.position.x = candidateX;
+    }
+
+    const candidateY = clamp(enemy.position.y + stepY, margin, maxY);
+    const testY = getEnemyCollisionRectAt(enemy, enemy.position.x, candidateY);
+    if (!enemyRectHitsBlockingWorld(game, testY, enemy)) {
+      enemy.position.y = candidateY;
+    }
+  }
+
+  pushEnemyOutOfBlockers(enemy, game, fallbackMargin);
+}
+
 // Behavior assignment based on archetype
 function getBehaviorForArchetype(archetype) {
   switch (archetype) {
@@ -358,7 +1491,7 @@ export class Enemy {
   constructor(x, y, typeDef) {
     this.id = ++ENEMY_ID_COUNTER;
     this.position = new Vec2(x, y);
-    this.size = typeDef.size;
+    this.size = (typeDef.size || 0) * 0.4;
     this.name = typeDef.name;
     this.enemyTypeId = typeDef.id || null;
     this.color = typeDef.color;
@@ -371,6 +1504,275 @@ export class Enemy {
     this.humanSheets = typeDef.humanSheets || null;
     this.humanAnimState = this.humanSheets ? createHumanSquadAnimState(typeDef.id) : null;
     this.dropTableId = typeDef.dropTableId || null;
+    this.dropChanceMult = typeDef.dropChanceMult ?? 1;
+    this.dropBand = typeDef.dropBand ?? "mid";
+    this.spriteSheets = null;
+    this.spriteAnimState = null;
+    this.spriteSheetFlipInverted = false;
+    this._attackRollEndTimer = 0;
+    this._cycloneEndTimer = 0;
+
+    if (typeDef.spriteSet === "goblin_regular") {
+      const variantId = GOBLIN_VARIANT_IDS[Math.floor(Math.random() * GOBLIN_VARIANT_IDS.length)] || "01";
+      this.spriteVariantId = variantId;
+      this.spriteSheets = getGoblinRegularSheets(variantId);
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "goblin_archer_regular") {
+      const variantId = GOBLIN_ARCHER_VARIANT_IDS[Math.floor(Math.random() * GOBLIN_ARCHER_VARIANT_IDS.length)] || "01";
+      this.spriteVariantId = variantId;
+      this.spriteSheets = getGoblinArcherSheets(variantId);
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "goblin_brute_regular") {
+      const variantId = GOBLIN_BRUTE_VARIANT_IDS[Math.floor(Math.random() * GOBLIN_BRUTE_VARIANT_IDS.length)] || "01";
+      this.spriteVariantId = variantId;
+      this.spriteSheets = getGoblinBruteSheets(variantId);
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "goblin_mage_regular") {
+      this.spriteSheets = getGoblinMageSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "orc_regular") {
+      const variantId = ORC_VARIANT_IDS[Math.floor(Math.random() * ORC_VARIANT_IDS.length)] || "01";
+      this.spriteVariantId = variantId;
+      this.spriteSheets = getOrcRegularSheets(variantId);
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "cultist_regular") {
+      this.spriteSheets = getCultistSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "death_knight_regular") {
+      this.spriteSheets = getDeathKnightSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "lich_regular") {
+      this.spriteSheets = getLichSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "minotaur_regular") {
+      const variantId = MINOTAUR_VARIANT_IDS[Math.floor(Math.random() * MINOTAUR_VARIANT_IDS.length)] || "1";
+      this.spriteVariantId = variantId;
+      this.spriteSheets = getMinotaurSheets(variantId);
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "forest_spirit_regular") {
+      this.spriteSheets = getForestSpiritSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+      this.forestSpiritSpecial = {
+        active: false,
+        timer: 0,
+        duration: 2.0,
+        healAt: 1.0,
+        healApplied: false,
+        cooldown: 10.0,
+        cooldownTimer: 3.0 + Math.random() * 2.0
+      };
+    } else if (typeDef.spriteSet === "small_myconid_regular") {
+      this.spriteSheets = getSmallMyconidSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "small_dummy_regular") {
+      this.spriteSheets = getSmallDummySheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "medium_dummy_regular") {
+      this.spriteSheets = getMediumDummySheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "advanced_dummy_regular") {
+      this.spriteSheets = getAdvancedDummySheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "large_dummy_regular") {
+      this.spriteSheets = getLargeDummySheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "small_dwarfette_regular") {
+      this.spriteSheets = getSmallDwarfetteSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "medium_dwarfette_regular") {
+      this.spriteSheets = getMediumDwarfetteSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "strong_dwarfette_regular") {
+      this.spriteSheets = getStrongDwarfetteSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "large_dwarfette_ball_regular") {
+      this.spriteSheets = getLargeDwarfetteBallSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "small_mimic_regular") {
+      this.spriteSheets = getSmallMimicSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "medium_mimic_regular") {
+      this.spriteSheets = getMediumMimicSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "strong_mimic_regular") {
+      this.spriteSheets = getStrongMimicSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "large_mimic_regular") {
+      this.spriteSheets = getLargeMimicSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "small_frog_regular") {
+      this.spriteSheets = getSmallFrogSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "large_frog_regular") {
+      this.spriteSheets = getLargeFrogSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "cyclop_archer_regular") {
+      this.spriteSheets = getCyclopArcherSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "monsteryfly_regular") {
+      this.spriteSheets = getMonsteryflySheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+      this._monsterflyRecoverTimer = 0;
+    } else if (typeDef.spriteSet === "monster_slasher_regular") {
+      this.spriteSheets = getMonsterSlasherSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "vampire_archer_regular") {
+      this.spriteSheets = getVampireArcherSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "mercenary_regular") {
+      this.spriteSheets = getMercenarySheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    }
 
     // Store atlas coordinates for sprite rendering (unused when humanSheets)
     this.atlasRow = typeDef.atlas?.row || 1;
@@ -444,6 +1846,17 @@ export class Enemy {
     
     // Movement behavior system
     this.moveBehavior = typeDef.moveBehavior || getBehaviorForArchetype(typeDef.archetype || "Wisp");
+    if (this.enemyTypeId === "m_5o_small_mimic" || this.enemyTypeId === "m_5p_medium_mimic") {
+      this.moveBehavior = "FLEE";
+      this.mimicState = {
+        dashCooldown: 0,
+        dashDuration: 0,
+        dashTargetLootId: null,
+        stolenLoot: []
+      };
+    } else if (this.enemyTypeId === "m_5r_large_mimic") {
+      this.moveBehavior = "CHARGE";
+    }
     this.moveState = this.moveBehavior === "STRAFE_ORBIT" ? "orbit" : (this.moveBehavior === "WANDER_BURST" ? "wander" : "default");
     this.stateTimer = 0;
     this.stateCooldown = 0;
@@ -608,6 +2021,11 @@ export class Enemy {
           return this.wanderHeading;
         }
       }
+
+      case "FLEE": {
+        if (dist < 0.0001) return { x: 0, y: 0 };
+        return vecNormalize(-dx, -dy);
+      }
       
       default:
         // Fallback to CHARGE
@@ -625,6 +2043,27 @@ export class Enemy {
     if (this._undyingRespawnTime != null && gameTime >= this._undyingRespawnTime) {
       this._undyingRespawnTime = null;
     }
+
+    if (this.enemyTypeId === "m_8f_forest_spirit" && this.forestSpiritSpecial) {
+      const special = this.forestSpiritSpecial;
+      if (special.active) {
+        special.timer += dt;
+        if (!special.healApplied && special.timer >= special.healAt) {
+          const healAmount = Math.max(1, Math.round(this.maxHealth * 0.4));
+          this.health = Math.min(this.maxHealth, this.health + healAmount);
+          special.healApplied = true;
+        }
+        if (special.timer >= special.duration) {
+          special.active = false;
+          special.timer = 0;
+          special.healApplied = false;
+          special.cooldownTimer = special.cooldown;
+        }
+      } else if (special.cooldownTimer > 0) {
+        special.cooldownTimer = Math.max(0, special.cooldownTimer - dt);
+      }
+    }
+
     if (this.stunUntil != null && gameTime < this.stunUntil) {
       if (this.attackTimer > 0) this.attackTimer -= dt;
       if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
@@ -634,41 +2073,36 @@ export class Enemy {
     let speedMult = globalSlowMult;
     if (this.slowUntil != null && gameTime < this.slowUntil) speedMult *= (this.slowMult ?? 0.7);
     if (hasAffix("swift")) {
-      speedMult *= 1.2;
+      speedMult *= 1.25;
       this._swiftTrail = this._swiftTrail || [];
       this._swiftTrail.push({ x: this.position.x, y: this.position.y });
       if (this._swiftTrail.length > 8) this._swiftTrail.shift();
     } else this._swiftTrail = null;
+    if (hasAffix("hive")) speedMult *= 0.5;
     if (this._auraBuffed) speedMult *= 1.2;
+    if (this._totemSpeedMult != null) speedMult *= this._totemSpeedMult;
+    const margin = 60;
+    const rooted = this.rootUntil != null && gameTime < this.rootUntil;
+    if (!rooted) pushEnemyOutOfBlockers(this, game, margin);
     const cx = this.position.x + this.size / 2;
     const cy = this.position.y + this.size / 2;
-    const margin = 60;
 
-    if (hasAffix("erratic")) {
+    if (!rooted && hasAffix("erratic")) {
       this._erraticTimer = (this._erraticTimer ?? 0) + dt;
       if (this._erraticTimer >= 4) {
         this._erraticTimer = 0;
         this._erraticTrail = this._erraticTrail || [];
-        for (let i = 0; i < 4; i++) this._erraticTrail.push({ x: this.position.x, y: this.position.y });
+        for (let i = 0; i < 4; i++) this._erraticTrail.push({ x: this.position.x, y: this.position.y, t: gameTime });
+        const fadeDuration = 3;
+        this._erraticTrail = this._erraticTrail.filter((p) => p.t != null && (gameTime - p.t) <= fadeDuration);
         if (this._erraticTrail.length > 12) this._erraticTrail = this._erraticTrail.slice(-12);
         const angle = Math.random() * Math.PI * 2;
         const dashDist = 80;
-        this.position.x += Math.cos(angle) * dashDist;
-        this.position.y += Math.sin(angle) * dashDist;
+        moveEnemyWithCollision(this, Math.cos(angle) * dashDist, Math.sin(angle) * dashDist, game, margin);
       }
     }
 
-    if (hasAffix("rooted")) {
-      const px = player.position.x + player.size / 2;
-      const py = player.position.y + player.size / 2;
-      const dist = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
-      if (!this.activated && dist <= detectionRange) this.activated = true;
-      if (this.attackTimer > 0) this.attackTimer -= dt;
-      if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
-      return;
-    }
-
-    if (hasAffix("evasive") && this.activated) {
+    if (!rooted && hasAffix("evasive") && this.activated) {
       this._evasiveTrail = this._evasiveTrail || [];
       this._evasiveTrail.push({ x: this.position.x, y: this.position.y });
       if (this._evasiveTrail.length > 6) this._evasiveTrail.shift();
@@ -678,21 +2112,17 @@ export class Enemy {
       const dy = cy - py;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
       const fleeSpeed = Math.min(this.speed * 1.5, player.speed || 100);
-      const moveX = (dx / dist) * fleeSpeed * speedMult * dt;
-      const moveY = (dy / dist) * fleeSpeed * speedMult * dt;
-      this.position.x += moveX;
-      this.position.y += moveY;
+      const flyingMultEvasive = this.affixes?.includes("flying") ? 1.1 : 1;
+      const moveX = (dx / dist) * fleeSpeed * speedMult * flyingMultEvasive * dt;
+      const moveY = (dy / dist) * fleeSpeed * speedMult * flyingMultEvasive * dt;
+      moveEnemyWithCollision(this, moveX, moveY, game, margin);
       // Update facing direction for evasive movement
       if (Math.abs(moveX) > 0.1) {
         this.facingRight = moveX > 0;
       }
-      const w = this.worldBounds?.width ?? 3600;
-      const h = this.worldBounds?.height ?? 900;
-      this.position.x = Math.max(margin, Math.min(this.position.x, w - margin - this.size));
-      this.position.y = Math.max(margin, Math.min(this.position.y, h - margin - this.size));
     } else this._evasiveTrail = null;
     if (hasAffix("evasive") && !this.activated) this._evasiveTrail = null;
-    if (this.isFiery) {
+    if (!rooted && this.isFiery) {
       this.wanderTimer = (this.wanderTimer || 0) - dt;
       if (this.wanderTimer <= 0) {
         this.wanderDirection = this.wanderDirection || new Vec2(0, 0);
@@ -704,19 +2134,15 @@ export class Enemy {
       }
       let dx = this.wanderDirection.x;
       let dy = this.wanderDirection.y;
-      const moveX = dx * this.speed * speedMult * dt;
-      const moveY = dy * this.speed * speedMult * dt;
-      this.position.x += moveX;
-      this.position.y += moveY;
+      const flyingMult = this.affixes?.includes("flying") ? 1.1 : 1;
+      const moveX = dx * this.speed * speedMult * flyingMult * dt;
+      const moveY = dy * this.speed * speedMult * flyingMult * dt;
+      moveEnemyWithCollision(this, moveX, moveY, game, margin);
       // Update facing direction for fiery/wandering movement
       if (Math.abs(moveX) > 0.1) {
         this.facingRight = moveX > 0;
       }
-      const w = this.worldBounds?.width ?? 3600;
-      const h = this.worldBounds?.height ?? 900;
-      this.position.x = Math.max(margin, Math.min(this.position.x, w - margin - this.size));
-      this.position.y = Math.max(margin, Math.min(this.position.y, h - margin - this.size));
-    } else {
+    } else if (!rooted) {
       const px = player.position.x + player.size / 2;
       const py = player.position.y + player.size / 2;
       const dx = px - cx;
@@ -740,11 +2166,29 @@ export class Enemy {
       const inAttackState = this.attackCtrl && (
         this.attackCtrl.state === "windup" ||
         this._attackDashState ||
-        this._jumpSlamState
+        this._jumpSlamState ||
+        this._attackRollState ||
+        this._cycloneState ||
+        this._cycloneEndTimer > 0 ||
+        this._frogSpitFlight?.active ||
+        this._monsterflyRecoverTimer > 0
       );
+      let specialHealing = this.enemyTypeId === "m_8f_forest_spirit" && this.forestSpiritSpecial?.active;
+
+      if (!specialHealing && this.enemyTypeId === "m_8f_forest_spirit" && this.forestSpiritSpecial && this.activated) {
+        const special = this.forestSpiritSpecial;
+        const missingHp = this.maxHealth - this.health;
+        const canStart = special.cooldownTimer <= 0 && missingHp >= (this.maxHealth * 0.05);
+        if (canStart && !(this.attackCtrl && (this.attackCtrl.state === "windup" || this.attackCtrl.state === "active" || this.attackCtrl.state === "recover"))) {
+          special.active = true;
+          special.timer = 0;
+          special.healApplied = false;
+          specialHealing = true;
+        }
+      }
 
       // Move based on behavior (WANDER_BURST can move even when not alerted)
-      const shouldMove = !inAttackState && ((this.alerted || this.activated) || (this.moveBehavior === "WANDER_BURST"));
+      const shouldMove = !specialHealing && !inAttackState && ((this.alerted || this.activated) || (this.moveBehavior === "WANDER_BURST"));
       
       if (shouldMove) {
         // Use 0.4x speed if alerted but not activated, full speed if activated
@@ -753,7 +2197,7 @@ export class Enemy {
           ? 1.0 
           : (this.activated ? 1.0 : 0.4);
         
-        // Rooted-affix spawned minions: always chase player directly at full speed.
+        // Hive-affix spawned minions: always chase player directly at full speed.
         const forceDirectChase = !!this.forceDirectChase;
         const behaviorDir = forceDirectChase
           ? vecNormalize(dx, dy)
@@ -778,12 +2222,13 @@ export class Enemy {
         
         // Store normalized player direction for use in obstacle avoidance
         const playerDirNorm = dist > 0.0001 ? vecNormalize(dx, dy) : { x: 0, y: 0 };
+        const flyingSpeedMult = this.affixes?.includes("flying") ? 1.1 : 1;
         
-        let moveX = behaviorDir.x * this.speed * speedMult * behaviorSpeedMult * dt;
-        let moveY = behaviorDir.y * this.speed * speedMult * behaviorSpeedMult * dt;
+        let moveX = behaviorDir.x * this.speed * speedMult * behaviorSpeedMult * flyingSpeedMult * dt;
+        let moveY = behaviorDir.y * this.speed * speedMult * behaviorSpeedMult * flyingSpeedMult * dt;
         
-        // Simple obstacle avoidance: try to move around obstacles and sub-area walls
-        if (game && !forceDirectChase) {
+        // Simple obstacle avoidance: try to move around obstacles and sub-area walls (flying ignores these)
+        if (game && !forceDirectChase && !this.affixes?.includes("flying")) {
           const testX = this.position.x + moveX;
           const testY = this.position.y + moveY;
           const testRect = { x: testX, y: testY, w: this.size, h: this.size };
@@ -811,8 +2256,8 @@ export class Enemy {
                 const usePerpX = dot > 0 ? perpX : -perpX;
                 const usePerpY = dot > 0 ? perpY : -perpY;
                 
-                moveX = usePerpX * this.speed * speedMult * behaviorSpeedMult * dt;
-                moveY = usePerpY * this.speed * speedMult * behaviorSpeedMult * dt;
+                moveX = usePerpX * this.speed * speedMult * behaviorSpeedMult * flyingSpeedMult * dt;
+                moveY = usePerpY * this.speed * speedMult * behaviorSpeedMult * flyingSpeedMult * dt;
                 break;
               }
             }
@@ -873,67 +2318,20 @@ export class Enemy {
                 const usePerpX = dot > 0 ? perpX : -perpX;
                 const usePerpY = dot > 0 ? perpY : -perpY;
                 
-                moveX = usePerpX * this.speed * speedMult * behaviorSpeedMult * dt;
-                moveY = usePerpY * this.speed * speedMult * behaviorSpeedMult * dt;
+                moveX = usePerpX * this.speed * speedMult * behaviorSpeedMult * flyingSpeedMult * dt;
+                moveY = usePerpY * this.speed * speedMult * behaviorSpeedMult * flyingSpeedMult * dt;
               }
             }
           }
         }
         
-        // Hard block against obstacles/walls with axis-separated checks,
-        // so enemies cannot tunnel through colliders when avoidance fails.
         const prevX = this.position.x;
         const prevY = this.position.y;
-        let nx = this.position.x + moveX;
-        let ny = this.position.y + moveY;
-        const hitW = Math.max(4, this.size * 0.5);
-        const hitH = Math.max(4, this.size * 0.5);
-        const hitOffX = (this.size - hitW) / 2;
-        const hitOffY = (this.size - hitH) / 2;
-        const testX = { x: nx + hitOffX, y: this.position.y + hitOffY, w: hitW, h: hitH };
-        const testY = { x: this.position.x + hitOffX, y: ny + hitOffY, w: hitW, h: hitH };
-
-        let canMoveX = true;
-        let canMoveY = true;
-
-        if (game?.obstacles) {
-          for (const obstacle of game.obstacles) {
-            if (obstacle?.destroyed || !obstacle?.blocksMovement) continue;
-            if (obstacleIntersectsRect(obstacle, testX)) canMoveX = false;
-            if (obstacleIntersectsRect(obstacle, testY)) canMoveY = false;
-            if (!canMoveX && !canMoveY) break;
-          }
-        }
-
-        const tileWalls = game?.world?.tileWallRects || [];
-        if (tileWalls.length > 0) {
-          for (const wall of tileWalls) {
-            const wallRect = getWallCollisionRect(wall);
-            if (
-              testX.x < wallRect.x + wallRect.w &&
-              testX.x + testX.w > wallRect.x &&
-              testX.y < wallRect.y + wallRect.h &&
-              testX.y + testX.h > wallRect.y
-            ) canMoveX = false;
-            if (
-              testY.x < wallRect.x + wallRect.w &&
-              testY.x + testY.w > wallRect.x &&
-              testY.y < wallRect.y + wallRect.h &&
-              testY.y + testY.h > wallRect.y
-            ) canMoveY = false;
-            if (!canMoveX && !canMoveY) break;
-          }
-        }
-
-        if (!canMoveX) nx = this.position.x;
-        if (!canMoveY) ny = this.position.y;
-
-        this.position.x = nx;
-        this.position.y = ny;
+        moveEnemyWithCollision(this, moveX, moveY, game, margin);
         
         // Update facing direction from player position with 5px dead zone to avoid rapid left/right flipping when player is centered
-        const inAttackState = this.attackCtrl && (this.attackCtrl.state === "windup" || this.attackCtrl.state === "active" || this.attackCtrl.state === "recover");
-        if (!inAttackState) {
+        const inAttackState = this.attackCtrl && (this.attackCtrl.state === "windup" || this.attackCtrl.state === "active" || this.attackCtrl.state === "recover" || this._attackRollState || this._cycloneState || this._cycloneEndTimer > 0 || this._frogSpitFlight?.active);
+        if (!inAttackState && !(this.enemyTypeId === "m_8f_forest_spirit" && this.forestSpiritSpecial?.active)) {
           const ex = this.position.x + this.size / 2;
           if (px >= ex + 5) this.facingRight = true;
           else if (px <= ex - 5) this.facingRight = false;
@@ -983,16 +2381,93 @@ export class Enemy {
 
     if (this.attackTimer > 0) this.attackTimer -= dt;
     if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
+    if (this._attackRollEndTimer > 0) this._attackRollEndTimer = Math.max(0, this._attackRollEndTimer - dt);
+    if (this._cycloneEndTimer > 0) this._cycloneEndTimer = Math.max(0, this._cycloneEndTimer - dt);
+    if (this._monsterflyRecoverTimer > 0) this._monsterflyRecoverTimer = Math.max(0, this._monsterflyRecoverTimer - dt);
 
     if (this.humanSheets && this.humanAnimState) {
       updateHumanSquadAnim(this, dt);
     }
+    if (this.spriteSheets && this.spriteAnimState) {
+      const specialHealing = this.enemyTypeId === "m_8f_forest_spirit" && this.forestSpiritSpecial?.active;
+      const inAttack = this.attackCtrl && (
+        this.attackCtrl.state === "windup" ||
+        this.attackCtrl.state === "active" ||
+        this.attackCtrl.state === "recover"
+      );
+      const moved = Math.sqrt(
+        (this.position.x - this.lastPosition.x) ** 2 +
+        (this.position.y - this.lastPosition.y) ** 2
+      );
+      const isDashAttack = !!(inAttack && this.attackCtrl?.currentAttack?.kind === "dash" && this.spriteSheets?.attackDash);
+      const isFrogSpitFlight = !!this._frogSpitFlight?.active;
+      const isBurpAttack = !!(inAttack && this.attackCtrl?.currentAttack?.kind === "burp_summon" && this.spriteSheets?.attackBurp);
+      const isJumpAttack = !!(inAttack && this.attackCtrl?.currentAttack?.kind === "jump_slam" && this.spriteSheets?.attackJump);
+      const isMonsteryflyPrepare = !!(inAttack && this.enemyTypeId === "m_5v_monsteryfly" && this.attackCtrl?.currentAttack?.kind === "jump_slam" && this.spriteSheets?.attackPrepare && !(this._monsterflyRecoverTimer > 0));
+      const isMonsteryflyRecover = !!(this.enemyTypeId === "m_5v_monsteryfly" && this._monsterflyRecoverTimer > 0 && this.spriteSheets?.attackRecover);
+      const isCycloneAttack = !!this._cycloneState && !!this.spriteSheets?.attackCyclone;
+      const isCycloneEnd = !isCycloneAttack && (this._cycloneEndTimer > 0) && !!this.spriteSheets?.attackCycloneEnd;
+      const isRollAttack = !!this._attackRollState && !!this.spriteSheets?.attackRoll;
+      const isRollEnd = !isRollAttack && (this._attackRollEndTimer > 0) && !!this.spriteSheets?.attackRollEnd;
+      let nextState = "idle";
+      if (specialHealing) {
+        nextState = "specialHeal";
+      } else if (isFrogSpitFlight) {
+        nextState = "idle";
+      } else if (isMonsteryflyRecover) {
+        nextState = "attackRecover";
+      } else if (isMonsteryflyPrepare) {
+        nextState = "attackPrepare";
+      } else if (isCycloneAttack) {
+        nextState = "attackCyclone";
+      } else if (isCycloneEnd) {
+        nextState = "attackCycloneEnd";
+      } else if (isRollAttack) {
+        nextState = "attackRoll";
+      } else if (isRollEnd) {
+        nextState = "attackRollEnd";
+      } else if (inAttack) {
+        if (isBurpAttack) nextState = "attackBurp";
+        else if (isJumpAttack) nextState = "attackJump";
+        else if (isDashAttack) nextState = "attackDash";
+        else nextState = "attack";
+      } else {
+        nextState = moved > 0.1 ? "move" : "idle";
+      }
+      if (this.spriteAnimState.state !== nextState) {
+        this.spriteAnimState.state = nextState;
+        this.spriteAnimState.timer = 0;
+        this.spriteAnimState.frameIndex = 0;
+      }
+      const animDef = this.spriteSheets[nextState];
+      const frames = Math.max(1, animDef?.frames || 1);
+      const fps = Math.max(1, animDef?.fps || 1);
+      const shouldLoop = animDef?.loop !== false;
+      if (specialHealing && nextState === "specialHeal") {
+        const progress = Math.max(0, Math.min(1, this.forestSpiritSpecial.timer / this.forestSpiritSpecial.duration));
+        this.spriteAnimState.frameIndex = Math.min(frames - 1, Math.floor(progress * frames));
+      } else if (frames > 1) {
+        this.spriteAnimState.timer += dt;
+        const frameDuration = 1 / fps;
+        while (this.spriteAnimState.timer >= frameDuration) {
+          this.spriteAnimState.timer -= frameDuration;
+          if (shouldLoop) {
+            this.spriteAnimState.frameIndex = (this.spriteAnimState.frameIndex + 1) % frames;
+          } else {
+            this.spriteAnimState.frameIndex = Math.min(frames - 1, this.spriteAnimState.frameIndex + 1);
+          }
+        }
+      } else {
+        this.spriteAnimState.timer = 0;
+        this.spriteAnimState.frameIndex = 0;
+      }
+    }
+    this.lastPosition.set(this.position.x, this.position.y);
   }
 
   intersects(other) {
-    // Circular collision detection
-    // Use 70% of size for collision radius to better match sprite visuals
-    const collisionRadiusMultiplier = 0.7;
+    // Circular collision detection; hitbox is half of visual (35% of size radius)
+    const collisionRadiusMultiplier = 0.35;
     const aCenterX = this.position.x + this.size / 2;
     const aCenterY = this.position.y + this.size / 2;
     const aRadius = (this.size / 2) * collisionRadiusMultiplier;
@@ -1032,12 +2507,15 @@ export class Enemy {
 
     const isMiniBoss = this.enemyTier === "miniBoss" || this.isMiniBoss;
     const isElite = this.enemyTier === "elite" || this.isElite;
+    const isSpecial = this.enemyTier === "special" || this.isSpecial;
 
     if (hasAffix("phantom")) ctx.globalAlpha = 0.2;
 
     let fillColor = this.hitFlashTimer > 0 ? "#ffffff" : this.color;
     if (isMiniBoss) {
       fillColor = this.hitFlashTimer > 0 ? "#ffffff" : "#a855f7";
+    } else if (isSpecial) {
+      fillColor = this.hitFlashTimer > 0 ? "#ffffff" : "#0f766e";
     }
 
     // Determine which shadow/glow effect to use (priority: undying > weakening > elite/miniboss glow)
@@ -1054,6 +2532,10 @@ export class Enemy {
       // Blue glow for elites
       shadowColor = "#60a5fa";
       shadowBlur = 8;
+    } else if (isSpecial) {
+      // Teal glow for special-tier enemies.
+      shadowColor = "#22d3ee";
+      shadowBlur = 9;
     } else if (isMiniBoss) {
       // Yellow glow for minibosses
       shadowColor = "#facc15";
@@ -1092,8 +2574,78 @@ export class Enemy {
           ctx.fill();
           ctx.globalCompositeOperation = "source-over";
         }
+
         ctx.restore();
       }
+    } else if (this.spriteSheets && this.spriteAnimState) {
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+
+      if (shadowColor) {
+        ctx.shadowColor = shadowColor;
+        ctx.shadowBlur = shadowBlur;
+      }
+
+      const centerX = sx + this.size / 2;
+      const centerY = sy + this.size / 2;
+      const shouldFlip = this.spriteSheetFlipInverted ? !this.facingRight : this.facingRight;
+      if (shouldFlip) {
+        ctx.translate(centerX, centerY);
+        ctx.scale(-1, 1);
+        ctx.translate(-centerX, -centerY);
+      }
+
+      const animDef = this.spriteSheets[this.spriteAnimState.state] || this.spriteSheets.idle;
+      const image = animDef?.image || null;
+      const frames = Math.max(1, animDef?.frames || 1);
+      if (image && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+        const frameW = Math.max(1, Math.floor(image.naturalWidth / frames));
+        const frameH = Math.max(1, image.naturalHeight);
+        const frameIndex = Math.min(frames - 1, Math.max(0, this.spriteAnimState.frameIndex | 0));
+        const srcX = frameIndex * frameW;
+        ctx.drawImage(image, srcX, 0, frameW, frameH, sx, sy, this.size, this.size);
+      } else {
+        ctx.fillStyle = fillColor;
+        ctx.fillRect(sx, sy, this.size, this.size);
+      }
+
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = "transparent";
+
+      if (this.hitFlashTimer > 0) {
+        const cx = sx + this.size / 2;
+        const cy = sy + this.size / 2;
+        const r = this.size / 2;
+        const alpha = (this.hitFlashTimer / 0.12) * 0.5;
+        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+        grad.addColorStop(0.5, `rgba(255, 255, 255, ${alpha * 0.4})`);
+        grad.addColorStop(1, "rgba(255, 255, 255, 0)");
+        ctx.globalCompositeOperation = "screen";
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = "source-over";
+      }
+
+      // Optional hit-strip top overlay for enemies that provide dedicated hit sheets.
+      if (this.hitFlashTimer > 0 && this.spriteSheets?.hit) {
+        const hitDef = this.spriteSheets.hit;
+        const hitImage = hitDef.image;
+        const hitFrames = Math.max(1, hitDef.frames || 1);
+        if (hitImage && hitImage.complete && hitImage.naturalWidth > 0 && hitImage.naturalHeight > 0) {
+          const hitProgress = 1 - Math.max(0, Math.min(1, this.hitFlashTimer / 0.12));
+          const hitFrameIndex = Math.min(hitFrames - 1, Math.floor(hitProgress * hitFrames));
+          const hitFrameW = Math.max(1, Math.floor(hitImage.naturalWidth / hitFrames));
+          const hitFrameH = Math.max(1, hitImage.naturalHeight);
+          const hitSrcX = hitFrameIndex * hitFrameW;
+          ctx.drawImage(hitImage, hitSrcX, 0, hitFrameW, hitFrameH, sx, sy, this.size, this.size);
+        }
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.restore();
     } else if (enemySpriteAtlasLoaded && enemySpriteAtlas && enemySpriteAtlas.complete) {
       ctx.save();
       ctx.imageSmoothingEnabled = false; // Pixel-perfect rendering
@@ -1177,7 +2729,7 @@ export class Enemy {
         ctx.stroke();
       }
     }
-    if (hasAffix("rooted")) {
+    if (hasAffix("hive")) {
       ctx.strokeStyle = "#64748b";
       ctx.lineWidth = 2;
       const cx = sx + this.size / 2;
@@ -1191,64 +2743,82 @@ export class Enemy {
       ctx.lineTo(cx, cy + 18);
       ctx.stroke();
     }
-    if (hasAffix("regenerating")) {
-      this._regenParticles = this._regenParticles || [];
-      if (Math.random() < 0.3) this._regenParticles.push({ x: sx + this.size / 2 + (Math.random() - 0.5) * this.size, y: sy + this.size, life: 0.5 });
-      this._regenParticles = this._regenParticles.filter((p) => {
-        p.life -= 0.016;
-        if (p.life <= 0) return false;
-        ctx.fillStyle = `rgba(34,197,94,${p.life * 2})`;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y - p.life * 20, 3, 0, Math.PI * 2);
-        ctx.fill();
-        return true;
-      });
-    }
-    if (hasAffix("swift") && this._swiftTrail) {
-      // Draw trail, but skip the last position (current position) to avoid yellow square on enemy
-      for (let i = 0; i < this._swiftTrail.length - 1; i++) {
-        const t = this._swiftTrail[i];
-        const tsx = Math.floor(t.x - camera.position.x);
-        const tsy = Math.floor(t.y - camera.position.y);
-        const trailLength = this._swiftTrail.length - 1;
-        ctx.fillStyle = `rgba(251,191,36,${0.15 * (i / trailLength)})`;
-        ctx.fillRect(tsx, tsy, this.size, this.size);
-      }
-    }
+    // Swift keeps gameplay behavior; visual trail overlay intentionally removed.
     if (hasAffix("erratic") && this._erraticTrail) {
+      const fadeDuration = 3;
+      const now = gameTime != null ? gameTime : 0;
       for (let i = 0; i < this._erraticTrail.length; i++) {
         const t = this._erraticTrail[i];
         const tsx = Math.floor(t.x - camera.position.x);
         const tsy = Math.floor(t.y - camera.position.y);
-        const alpha = 0.2 * (1 - i / this._erraticTrail.length);
-        
+        const age = t.t != null ? now - t.t : 0;
+        const alpha = 0.5 * Math.max(0, 1 - age / fadeDuration);
+        if (alpha <= 0) continue;
+
         ctx.save();
         ctx.globalAlpha = alpha;
-        
-        // Draw sprite from atlas if available, otherwise fallback to colored rectangle
-        if (enemySpriteAtlasLoaded && enemySpriteAtlas && enemySpriteAtlas.complete) {
+
+        let drewSprite = false;
+        if (this.humanSheets && this.humanAnimState) {
+          const frame = getHumanSquadAnimFrame(this);
+          if (frame && frame.image && frame.image.complete) {
+            const centerX = tsx + this.size / 2;
+            const centerY = tsy + this.size / 2;
+            if (!this.facingRight) {
+              ctx.translate(centerX, centerY);
+              ctx.scale(-1, 1);
+              ctx.translate(-centerX, -centerY);
+            }
+            const fw = frame.frameW;
+            const fh = frame.frameH;
+            const srcX = frame.frameIndex * fw;
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(frame.image, srcX, 0, fw, fh, tsx, tsy, this.size, this.size);
+            drewSprite = true;
+          }
+        } else if (this.spriteSheets && this.spriteAnimState) {
+          const centerX = tsx + this.size / 2;
+          const centerY = tsy + this.size / 2;
+          const shouldFlip = this.spriteSheetFlipInverted ? !this.facingRight : this.facingRight;
+          if (shouldFlip) {
+            ctx.translate(centerX, centerY);
+            ctx.scale(-1, 1);
+            ctx.translate(-centerX, -centerY);
+          }
+          const animDef = this.spriteSheets[this.spriteAnimState.state] || this.spriteSheets.idle;
+          const image = animDef?.image || null;
+          const frames = Math.max(1, animDef?.frames || 1);
+          if (image && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+            const frameW = Math.max(1, Math.floor(image.naturalWidth / frames));
+            const frameH = Math.max(1, image.naturalHeight);
+            const frameIndex = Math.min(frames - 1, Math.max(0, this.spriteAnimState.frameIndex | 0));
+            const srcX = frameIndex * frameW;
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(image, srcX, 0, frameW, frameH, tsx, tsy, this.size, this.size);
+            drewSprite = true;
+          }
+        } else if (enemySpriteAtlasLoaded && enemySpriteAtlas && enemySpriteAtlas.complete) {
           ctx.imageSmoothingEnabled = false;
-          
-          // Draw the sprite
           ctx.drawImage(
             enemySpriteAtlas,
             this.spriteX, this.spriteY, this.spriteWidth, this.spriteHeight,
             tsx, tsy, this.size, this.size
           );
-          
-          // Apply purple tint overlay
+          drewSprite = true;
+        }
+
+        if (drewSprite) {
           ctx.globalCompositeOperation = "multiply";
           ctx.fillStyle = "rgba(232,121,249,0.7)";
           ctx.fillRect(tsx, tsy, this.size, this.size);
           ctx.globalCompositeOperation = "source-over";
-          
           ctx.imageSmoothingEnabled = true;
         } else {
-          // Fallback to purple rectangle if sprite atlas not loaded
+          // Last-resort fallback when no sprite source is available.
           ctx.fillStyle = `rgba(232,121,249,${alpha})`;
           ctx.fillRect(tsx, tsy, this.size, this.size);
         }
-        
+
         ctx.restore();
       }
     }
@@ -1273,9 +2843,8 @@ export class Enemy {
     if (hasAffix("orbiting") && this._orbitingAngle != null) {
       const cx = sx + this.size / 2;
       const cy = sy + this.size / 2;
-      // Scale orb radius with enemy size: base radius + size-based offset
-      // Ensures orbs orbit outside the enemy's collision radius
-      const orbRadius = this.size / 2 + 15;
+      // Orbiting modifier: orbs orbit at 3x base radius (matches game.js logic)
+      const orbRadius = (this.size / 2 + 15) * 3;
       const vfx = this.vfxState.orbiting;
       
       // Aura ring: faint dashed ring with slow rotation
@@ -1331,6 +2900,7 @@ export class Enemy {
         ctx.restore();
       }
     }
+    // Deflecting: orbiting Orc is drawn as a separate enemy (no shield visual here)
     if (hasAffix("lasering")) {
       const cx = sx + this.size / 2;
       const cy = sy + this.size / 2;
@@ -1424,8 +2994,8 @@ export class Enemy {
     const hpColor = pct > 0.5 ? "#4ade80" : pct > 0.25 ? "#facc15" : "#ef4444";
     ctx.fillStyle = hpColor;
     ctx.fillRect(sx, barY, Math.round(barW * pct), barH);
-    if (isMiniBoss) {
-      ctx.strokeStyle = "#facc15";
+    if (isMiniBoss || isSpecial) {
+      ctx.strokeStyle = isSpecial ? "#22d3ee" : "#facc15";
       ctx.lineWidth = 1;
       ctx.strokeRect(sx, barY, barW, barH);
     }

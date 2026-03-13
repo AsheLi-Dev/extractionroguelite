@@ -26,11 +26,11 @@ export const FRIENDS_CATALOG = {
     colorTheme: "#22c55e",
     theme: "Defense / Sustain / Stability"
   },
-  snow_owl: {
-    id: "snow_owl",
-    displayName: "Snow Owl",
-    iconKey: "spr_friend_snow_owl",
-    spritePath: "assets/images/Snow-Owl-Sprite.png",
+  axolotl: {
+    id: "axolotl",
+    displayName: "Axolotl",
+    iconKey: "spr_friend_axolotl",
+    spritePath: "assets/images/Axolotl-Sprite.png",
     colorTheme: "#e0e7ff",
     theme: "Skill Damage / Precision / Control"
   },
@@ -49,6 +49,17 @@ export const FRIENDS_CATALOG = {
     spritePath: "assets/images/Ferret-Sprite.png",
     colorTheme: "#a855f7",
     theme: "Luck / Chaos / Duplication"
+  },
+  red_panda: {
+    id: "red_panda",
+    displayName: "Red Panda",
+    iconKey: "spr_friend_red_panda",
+    spritePath: "assets/Hub;Base/Companions/Red Panda Sprite Sheet.png",
+    spriteSheetJson: "assets/Hub;Base/Companions/Red Panda Sprite Sheet.json",
+    spriteRect: { x: 0, y: 0, w: 32, h: 32 },
+    spriteSheetSize: { w: 256, h: 224 },
+    colorTheme: "#dc2626",
+    theme: "Balance / Versatility / Charm"
   }
 };
 
@@ -89,7 +100,7 @@ export const COMPANION_BUFFS = {
     4: { damageReduction: 0.10, hpRegen: 0.01 },
     5: { damageReduction: 0.12, hpRegen: 0.02 }
   },
-  snow_owl: {
+  axolotl: {
     2: { skillDamage: 0.10 },
     3: { skillDamage: 0.15 },
     4: { skillDamage: 0.20, skillCooldownReduction: 0.05 },
@@ -106,6 +117,12 @@ export const COMPANION_BUFFS = {
     3: { dropDuplicateChance: 0.08 },
     4: { dropDuplicateChance: 0.10, shopDiscount: 0.05 },
     5: { dropDuplicateChance: 0.15, shopDiscount: 0.10 }
+  },
+  red_panda: {
+    2: { critChance: 0.04, damageReduction: 0.03 },
+    3: { critChance: 0.06, damageReduction: 0.05 },
+    4: { critChance: 0.08, damageReduction: 0.06, moveSpeed: 0.05 },
+    5: { critChance: 0.10, damageReduction: 0.08, moveSpeed: 0.08 }
   }
 };
 
@@ -140,7 +157,7 @@ export const FRIEND_GIFT_PREFERENCES = {
       { type: "Cube" } // Craft cubes
     ]
   },
-  snow_owl: {
+  axolotl: {
     loves: [
       { type: "Weapon" },
       { type: "Body Armour", weight: "light" }
@@ -169,6 +186,16 @@ export const FRIEND_GIFT_PREFERENCES = {
     likes: [
       { type: "Helmet", weight: "light" },
       { type: "Helmet", weight: "medium" }
+    ]
+  },
+  red_panda: {
+    loves: [
+      { type: "Weapon" },
+      { type: "Body Armour", weight: "medium" }
+    ],
+    likes: [
+      { type: "Helmet", weight: "medium" },
+      { type: "Boots" }
     ]
   }
 };
@@ -218,7 +245,7 @@ export const FRIEND_GIFT_POOLS = {
       { type: "Helmet", weight: "heavy", rarity: "rare" }
     ]
   },
-  snow_owl: {
+  axolotl: {
     common: [
       { type: "Weapon", rarity: "common" },
       { type: "Weapon", rarity: "magic" }
@@ -258,6 +285,20 @@ export const FRIEND_GIFT_POOLS = {
     rare: [
       { type: "Cube", cubeKey: "reforgeCube" },
       { type: "Cube", cubeKey: "vesselCube" }
+    ]
+  },
+  red_panda: {
+    common: [
+      { type: "Weapon", rarity: "common" },
+      { type: "Boots", weight: "light", rarity: "common" }
+    ],
+    uncommon: [
+      { type: "Weapon", rarity: "magic" },
+      { type: "Body Armour", weight: "medium", rarity: "magic" }
+    ],
+    rare: [
+      { type: "Weapon", rarity: "rare" },
+      { type: "Cube", cubeKey: "rareCube" }
     ]
   }
 };

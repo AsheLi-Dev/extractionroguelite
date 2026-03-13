@@ -1,9 +1,22 @@
 import { Vec2, clamp, lerp, obstacleIntersectsRect } from '../utils.js';
+import { drawMagicProjectile, getMagicProjectileDrawOptions } from '../vfx/magic-projectile-renderer.js';
 
 export const PLAYER_PROJECTILE_SPEED = 520;
 export const PLAYER_PROJECTILE_SIZE = 8;
 export const PLAYER_PROJECTILE_MAX_DIST = 1400;
 export const PLAYER_PROJECTILE_TRAIL_LEN = 8; // Increased for better trail effect
+
+const enemyProjectileSpriteCache = new Map();
+
+function getEnemyProjectileSprite(path) {
+  const key = String(path || "").trim();
+  if (!key) return null;
+  if (enemyProjectileSpriteCache.has(key)) return enemyProjectileSpriteCache.get(key);
+  const img = new Image();
+  img.src = key;
+  enemyProjectileSpriteCache.set(key, img);
+  return img;
+}
 
 export class PlayerProjectile {
   constructor(x, y, targetX, targetY, damage, options = {}) {
@@ -40,6 +53,17 @@ export class PlayerProjectile {
     this.sniperPierceFalloff = options.sniperPierceFalloff || null;
     this.currentDamageMult = 1;
     this._spawn = null;
+    this.magicStyle = options.magicStyle ?? null;
+    this.elementalState = options.elementalState ?? "fire";
+    this.bounceOffWalls = !!options.bounceOffWalls;
+    if (options.rectWidth != null && options.rectHeight != null) {
+      this.rectWidth = options.rectWidth;
+      this.rectHeight = options.rectHeight;
+      this.size = Math.max(this.rectWidth, this.rectHeight);
+    } else {
+      this.rectWidth = null;
+      this.rectHeight = null;
+    }
   }
 
   update(dt, game = null) {
@@ -158,7 +182,9 @@ export class PlayerProjectile {
   }
 
   intersects(other) {
-    const a = { x: this.position.x, y: this.position.y, w: this.size, h: this.size };
+    const w = this.rectWidth ?? this.size;
+    const h = this.rectHeight ?? this.size;
+    const a = { x: this.position.x, y: this.position.y, w, h };
     const isObstacle = other && typeof other?.size?.w === "number" && (other.typeDef || other.type || other.blocksMovement || other.blocksProjectiles);
     if (isObstacle) return obstacleIntersectsRect(other, a);
     const b = { x: other.position.x, y: other.position.y, w: other.size, h: other.size };
@@ -171,77 +197,103 @@ export class PlayerProjectile {
   }
 
   draw(ctx, camera) {
+    const w = this.rectWidth ?? this.size;
+    const h = this.rectHeight ?? this.size;
     const sx = Math.floor(this.position.x - camera.position.x);
     const sy = Math.floor(this.position.y - camera.position.y);
-    
+    const angle = Math.atan2(this.velocity.y, this.velocity.x);
+    const cx = sx + w / 2;
+    const cy = sy + h / 2;
+
+    if (this.magicStyle) {
+      const opts = getMagicProjectileDrawOptions(this.magicStyle, {
+        sx,
+        sy,
+        angle,
+        size: this.size,
+        trailPositions: this.trailPositions,
+        camera,
+        time: this.flightTime,
+      });
+      drawMagicProjectile(ctx, opts);
+      return;
+    }
+
+    const el = this.elementalState || "fire";
+    const colors = el === "wind"
+      ? { trail: "100, 239, 172", glow: "134, 239, 172", core: "255, 255, 255", spark: "134, 239, 172" }
+      : el === "lightning"
+        ? { trail: "254, 240, 138", glow: "250, 204, 21", core: "254, 249, 195", spark: "250, 204, 21" }
+        : { trail: "255, 180, 100", glow: "251, 146, 60", core: "255, 220, 180", spark: "255, 150, 50" };
+
     // Calculate speed and stretch factor
     const speed = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2);
     const stretch = clamp(speed * 0.015, 0.0, 1.2);
     const scaleX = 1.0 + stretch;
     const scaleY = 1.0;
     
-    // Calculate angle from velocity
-    const angle = Math.atan2(this.velocity.y, this.velocity.x);
-    
     // Draw trail afterimages (oldest to newest)
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.imageSmoothingEnabled = false;
     
+    const isRect = this.rectWidth != null && this.rectHeight != null;
     const trailN = this.trailPositions.length;
     for (let i = 0; i < trailN; i++) {
       const t = this.trailPositions[i];
       const trailSx = Math.floor(t.x - camera.position.x);
       const trailSy = Math.floor(t.y - camera.position.y);
-      
-      // Decreasing alpha and size from oldest to newest
       const progress = (i + 1) / trailN;
       const alpha = progress * 0.35;
       const sizeMul = lerp(0.6, 1.0, progress);
-      const trailSize = this.size * sizeMul;
-      const trailScaleX = scaleX * sizeMul;
-      const trailScaleY = scaleY * sizeMul;
-      
+      const trailW = (isRect ? this.rectWidth : this.size) * sizeMul;
+      const trailH = (isRect ? this.rectHeight : this.size) * sizeMul;
+      const trailCx = trailSx + (isRect ? this.rectWidth : this.size) / 2;
+      const trailCy = trailSy + (isRect ? this.rectHeight : this.size) / 2;
       ctx.save();
-      ctx.translate(trailSx + this.size / 2, trailSy + this.size / 2);
+      ctx.translate(trailCx, trailCy);
       ctx.rotate(angle);
-      ctx.scale(trailScaleX, trailScaleY);
-      
-      // Draw trail segment as stretched ellipse
-      ctx.fillStyle = `rgba(100, 200, 255, ${alpha})`;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, trailSize / 2, trailSize / 2, 0, 0, Math.PI * 2);
-      ctx.fill();
-      
+      if (isRect) {
+        ctx.scale(scaleX * sizeMul, scaleY * sizeMul);
+        ctx.fillStyle = `rgba(${colors.trail}, ${alpha})`;
+        ctx.fillRect(-trailW / 2, -trailH / 2, trailW, trailH);
+      } else {
+        const trailSize = this.size * sizeMul;
+        ctx.scale(scaleX * sizeMul, scaleY * sizeMul);
+        ctx.fillStyle = `rgba(${colors.trail}, ${alpha})`;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, trailSize / 2, trailSize / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     }
-    
+
     // Draw main projectile core with glow
     ctx.save();
-    ctx.translate(sx + this.size / 2, sy + this.size / 2);
+    ctx.translate(cx, cy);
     ctx.rotate(angle);
     ctx.scale(scaleX, scaleY);
-    
-    // Outer glow (cyan)
-    ctx.fillStyle = `rgba(100, 220, 255, 0.6)`;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, this.size / 2 * 1.2, this.size / 2 * 1.2, 0, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Inner bright core (white)
-    ctx.fillStyle = `rgba(255, 255, 255, 0.9)`;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, this.size / 2 * 0.7, this.size / 2 * 0.7, 0, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Optional subtle orange embers
-    if (Math.random() < 0.3) {
-      ctx.fillStyle = `rgba(255, 150, 50, 0.4)`;
+    if (isRect) {
+      ctx.fillStyle = `rgba(${colors.glow}, 0.6)`;
+      ctx.fillRect(-w / 2 * 1.2, -h / 2 * 1.2, w * 1.2, h * 1.2);
+      ctx.fillStyle = `rgba(${colors.core}, 0.9)`;
+      ctx.fillRect(-w / 2 * 0.7, -h / 2 * 0.7, w * 0.7, h * 0.7);
+    } else {
+      ctx.fillStyle = `rgba(${colors.glow}, 0.6)`;
       ctx.beginPath();
-      ctx.ellipse(0, 0, this.size / 2 * 0.4, this.size / 2 * 0.4, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, this.size / 2 * 1.2, this.size / 2 * 1.2, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = `rgba(${colors.core}, 0.9)`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, this.size / 2 * 0.7, this.size / 2 * 0.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (el === "fire" && Math.random() < 0.3) {
+        ctx.fillStyle = `rgba(255, 150, 50, 0.4)`;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, this.size / 2 * 0.4, this.size / 2 * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
-    
     ctx.restore();
     ctx.restore();
     
@@ -254,7 +306,7 @@ export class PlayerProjectile {
       const sparkAlpha = spark.lifetime / spark.maxLifetime;
       const sparkSize = 1.5 * sparkAlpha;
       
-      ctx.fillStyle = `rgba(150, 220, 255, ${sparkAlpha * 0.8})`;
+      ctx.fillStyle = `rgba(${colors.spark}, ${sparkAlpha * 0.8})`;
       ctx.beginPath();
       ctx.arc(sparkSx, sparkSy, sparkSize, 0, Math.PI * 2);
       ctx.fill();
@@ -281,15 +333,89 @@ export class EnemyProjectile {
     this.slowZone = options.slowZone ?? false;
     this.slowRadius = options.slowRadius ?? 50;
     this.slowDuration = options.slowDuration ?? 1.5;
+    this.slowMult = options.slowMult ?? 0.65;
     this.lifetime = options.lifetime ?? 4;
     this.age = 0;
+    this.spritePath = options.spritePath || null;
+    this.spriteImage = this.spritePath ? getEnemyProjectileSprite(this.spritePath) : null;
+    this.magicStyle = options.magicStyle ?? null;
+    this.movementType = options.movementType ?? null;
+    this.spiralDirection = options.spiralDirection ?? 1;
+    this.homingTurnRate = options.homingTurnRate ?? 0;
+    this.speedRampDuration = options.speedRampDuration ?? 0;
+    this.speedRampEnd = options.speedRampEnd ?? null;
+    this.poisonOnHit = options.poisonOnHit ?? false;
+    this.poisonDuration = options.poisonDuration ?? null;
+    this.poisonDmgPerSec = options.poisonDmgPerSec ?? null;
+    this.lichOrbBurst = options.lichOrbBurst ?? null;
+    if (this.speedRampDuration > 0 && this.speedRampEnd != null) {
+      const speed = Math.sqrt(vx * vx + vy * vy) || 1;
+      this._speedRampDir = { x: vx / speed, y: vy / speed };
+      this._speedRampStart = speed;
+    }
+    if (this.movementType === "zigzag") {
+      const speed = Math.sqrt(vx * vx + vy * vy) || 1;
+      this._zigzagSpeed = speed;
+      this._zigzagBaseDir = { x: vx / speed, y: vy / speed };
+      this._zigzagSeed = Math.random() * 1000;
+      this._zigzagAmplitude = options.zigzagAmplitude ?? 0.6;
+    }
+    if (this.movementType === "spiral") {
+      const speed = Math.sqrt(vx * vx + vy * vy) || 1;
+      this._spiralSpeed = speed;
+      this._spiralBaseAngle = Math.atan2(vy, vx);
+      this._spiralDirection = Number(this.spiralDirection) || 1;
+    }
   }
 
-  update(dt) {
+  update(dt, game = null) {
     this.prevPosition.x = this.position.x;
     this.prevPosition.y = this.position.y;
     this.trailPositions.push({ x: this.position.x, y: this.position.y });
     if (this.trailPositions.length > 6) this.trailPositions.shift();
+    if (this.movementType === "zigzag") {
+      const base = this._zigzagBaseDir;
+      const perp = { x: -base.y, y: base.x };
+      const freq = 8;
+      const amp = this._zigzagAmplitude ?? 0.6;
+      const phase = this.age * freq + this._zigzagSeed;
+      const oscillation = Math.sin(phase) * amp;
+      let dx = base.x + perp.x * oscillation;
+      let dy = base.y + perp.y * oscillation;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      dx /= len;
+      dy /= len;
+      this.velocity.x = dx * this._zigzagSpeed;
+      this.velocity.y = dy * this._zigzagSpeed;
+    } else if (this.movementType === "spiral") {
+      const turnRate = 2.5 * this._spiralDirection;
+      const angle = this._spiralBaseAngle + this.age * turnRate;
+      this.velocity.x = Math.cos(angle) * this._spiralSpeed;
+      this.velocity.y = Math.sin(angle) * this._spiralSpeed;
+    } else if (this.homingTurnRate > 0 && game?.player) {
+      const px = this.position.x + this.size / 2;
+      const py = this.position.y + this.size / 2;
+      const tx = game.player.position.x + game.player.size / 2;
+      const ty = game.player.position.y + game.player.size / 2;
+      const dx = tx - px;
+      const dy = ty - py;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const wantAngle = Math.atan2(dy, dx);
+      const curAngle = Math.atan2(this.velocity.y, this.velocity.x);
+      let diff = wantAngle - curAngle;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      const turn = clamp(diff, -this.homingTurnRate * dt, this.homingTurnRate * dt);
+      const newAngle = curAngle + turn;
+      const speed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y) || 1;
+      this.velocity.x = Math.cos(newAngle) * speed;
+      this.velocity.y = Math.sin(newAngle) * speed;
+    } else if (this._speedRampDir && this.speedRampDuration > 0 && this.speedRampEnd != null) {
+      const t = Math.min(this.age, this.speedRampDuration);
+      const speed = lerp(this._speedRampStart, this.speedRampEnd, t / this.speedRampDuration);
+      this.velocity.x = this._speedRampDir.x * speed;
+      this.velocity.y = this._speedRampDir.y * speed;
+    }
     this.position.x += this.velocity.x * dt;
     this.position.y += this.velocity.y * dt;
     this.age += dt;
@@ -310,6 +436,38 @@ export class EnemyProjectile {
   draw(ctx, camera) {
     const sx = Math.floor(this.position.x - camera.position.x);
     const sy = Math.floor(this.position.y - camera.position.y);
+    const angle = Math.atan2(this.velocity.y, this.velocity.x);
+
+    if (this.spriteImage && this.spriteImage.complete && this.spriteImage.naturalWidth > 0 && this.spriteImage.naturalHeight > 0) {
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.translate(sx + this.size / 2, sy + this.size / 2);
+      ctx.rotate(angle);
+      ctx.drawImage(this.spriteImage, -this.size / 2, -this.size / 2, this.size, this.size);
+      ctx.restore();
+      return;
+    }
+
+    if (this.magicStyle) {
+      const base = this.magicStyle.preset != null
+        ? this.magicStyle.preset
+        : this.magicStyle;
+      const opts = getMagicProjectileDrawOptions(base, {
+        sx,
+        sy,
+        angle,
+        size: this.size,
+        primaryColor: this.magicStyle.primaryColor ?? this.color,
+        secondaryColor: this.magicStyle.secondaryColor,
+        trailPositions: this.trailPositions,
+        camera,
+        time: this.age,
+        ...this.magicStyle,
+      });
+      drawMagicProjectile(ctx, opts);
+      return;
+    }
+
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     const trailN = this.trailPositions.length;

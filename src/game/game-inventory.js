@@ -6,6 +6,17 @@ import { escapeHtml } from '../utils.js';
 import { EQUIPMENT_BASE_STAT, EQUIPMENT_SECONDARY_BASE, MODIFIER_POOL, LOCAL_STAT_SCALE_MOD_IDS, NAME_PREFIXES, NAME_SUFFIXES, getModifierPoolForType, rollLocalStatScaleValueForDifficulty, getEquipmentSpriteCell } from '../data/loot-data.js';
 import { getRingDefById, getRingSpriteCell } from '../data/rings-data.js';
 import { MODIFIER_CUBES, UPGRADE_CUBES, LEGENDARY_CUBES, LEGENDARY_MODIFIER_IDS, rollModifierForTier, getModifierRollRangeForTier, getCubeDifficultyForTier } from '../data/cubes-data.js';
+import {
+  MAX_WEAPON_UPGRADE_LEVEL,
+  WEAPON_UPGRADE_STAT_KEYS,
+  EQUIPMENT_UPGRADE_STAT_KEYS,
+  getEffectiveWeaponStat,
+  getEffectiveEquipmentStat,
+  getUpgradeCostForLevel,
+  getTotalCubeValue,
+  spendCubesToPay
+} from '../data/weapon-upgrade-config.js';
+import { buildLegacyVault, loadLegacyCubeStash, saveLegacyCubeStash, updateLegacyVaultEntry } from '../ui/save-system.js';
 import { showItemTooltip, hideItemTooltip, buildItemTooltipContent, getItemRarityColor } from '../ui/tooltips.js';
 import { hasTalent } from '../data/talents.js';
 import { addLegacyVaultItem } from '../ui/save-system.js';
@@ -45,6 +56,8 @@ const EQUIPPED_SLOT_DEFS = [
   { key: "Ring2", label: "Ring Slot B" }
 ];
 const EQUIPPED_SLOT_LABEL_BY_KEY = Object.fromEntries(EQUIPPED_SLOT_DEFS.map((s) => [s.key, s.label]));
+const EXTRACTION_EQUIPMENT_TYPES = ["Helmet", "Boots", "Body Armour", "Weapon", "Ring"];
+const EXTRACTION_EQUIPMENT_LIMIT = 10;
 const EQUIPPED_GRID_SLOTS = [
   null, "Helmet", null,
   "Weapon", "Body Armour", null,
@@ -131,11 +144,44 @@ function applyInventoryGridLayout(listEl) {
 
 function applyEquippedGridLayout(listEl) {
   if (!listEl) return;
+  const slotCount = Number(listEl.dataset.slotCount) || 0;
+  const columns = Math.max(2, Math.min(6, Math.ceil(Math.sqrt(Math.max(1, slotCount)))));
   listEl.style.display = "grid";
-  listEl.style.gridTemplateColumns = "repeat(3, minmax(0, 1fr))";
+  listEl.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
   listEl.style.gap = "8px";
   listEl.style.padding = "0";
   listEl.style.listStyle = "none";
+}
+
+function getEffectiveEquippedSlots(game, source = "inventory_ui") {
+  if (typeof game?.getEffectiveEquipmentSlots === "function") {
+    const slots = game.getEffectiveEquipmentSlots({ source });
+    if (Array.isArray(slots) && slots.length > 0) {
+      return slots.map((slot) => ({
+        key: String(slot?.key || ""),
+        label: String(slot?.label || slot?.key || "Slot"),
+        enabled: slot?.enabled !== false,
+        capacity: Math.max(0, Number(slot?.capacity) || 0),
+        allowedItemTypes: Array.isArray(slot?.allowedItemTypes) ? [...slot.allowedItemTypes] : [],
+        transformedBy: slot?.transformedBy || null,
+        disabledReason: slot?.disabledReason || null
+      })).filter((slot) => !!slot.key);
+    }
+  }
+  return EQUIPPED_SLOT_DEFS.map((slot) => ({
+    key: slot.key,
+    label: slot.label,
+    enabled: true,
+    capacity: 1,
+    allowedItemTypes: slot.key.startsWith("Ring") ? ["Ring"] : [slot.key],
+    transformedBy: null,
+    disabledReason: null
+  }));
+}
+
+function getAllowedTypesText(slotDef) {
+  const allowed = Array.isArray(slotDef?.allowedItemTypes) ? slotDef.allowedItemTypes.filter(Boolean) : [];
+  return allowed.length > 0 ? allowed.join(", ") : "Any";
 }
 
 function styleGridHeaderItem(li) {
@@ -246,7 +292,7 @@ export function applyGameInventoryMixin(Game) {
     },
 
     toggleVaultMasterSecureItem(item) {
-      if (!hasTalent("vaultMaster")) return false;
+      if (!this.hasCharacterTalent("vaultMaster")) return false;
       if (!item || !this.isItemEquippable(item)) return false;
       const set = this.getVaultMasterSecureSet();
       const key = String(item.id);
@@ -258,6 +304,7 @@ export function applyGameInventoryMixin(Game) {
         this.showNotification("Vault Master", "You can secure up to 3 items.");
         return false;
       }
+      if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("vaultMaster", "Item secured (kept on death)");
       set.add(key);
       return true;
     },
@@ -268,7 +315,7 @@ export function applyGameInventoryMixin(Game) {
     },
 
     transferVaultMasterSecuredItemsOnDeath() {
-      if (!hasTalent("vaultMaster")) return;
+      if (!this.hasCharacterTalent("vaultMaster")) return;
       if (this.vaultMasterSecureTransferred) return;
       const secured = this.getVaultMasterSecureSet();
       if (!secured || secured.size === 0) return;
@@ -294,13 +341,14 @@ export function applyGameInventoryMixin(Game) {
     },
 
     getInventorySectionedItems() {
-      const sectionOrder = ["Weapon", "Ring", "Helmet", "Body Armour", "Boots"];
+      const sectionOrder = ["Weapon", "Ring", "Helmet", "Body Armour", "Boots", "Precious"];
       const sections = sectionOrder.map((title) => ({ title, items: [] }));
       const other = { title: "Other", items: [] };
       const byType = new Map(sections.map((s) => [s.title, s]));
 
       for (const item of this.inventory) {
-        const bucket = byType.get(item.type) || other;
+        const key = item?.category || item?.type;
+        const bucket = byType.get(key) || other;
         bucket.items.push(item);
       }
 
@@ -384,6 +432,8 @@ export function applyGameInventoryMixin(Game) {
         if (typeof this.closeEventOverlay === "function") this.closeEventOverlay();
       }
       this.inventoryOverlayOpen = false;
+      this.extractionSelectionMode = false;
+      if (this.extractionSelectedIds) this.extractionSelectedIds.clear();
       this.paused = false;
       playSfx("inventoryClose");
       if (this._craftingPreviewFadeTimer) {
@@ -399,31 +449,76 @@ export function applyGameInventoryMixin(Game) {
       hideItemTooltip();
     },
 
+    isEquipmentTypeForExtraction(item) {
+      return item && EXTRACTION_EQUIPMENT_TYPES.includes(item.type);
+    },
+
     populateInventoryOverlay() {
       const equippedList = document.getElementById("inventory-overlay-equipped-list");
       const invList = document.getElementById("inventory-overlay-inventory-list");
       if (!equippedList || !invList) return;
       ensureRunInventoryState(this);
 
-      equippedList.innerHTML = "";
-      applyEquippedGridLayout(equippedList);
-      for (const slot of EQUIPPED_GRID_SLOTS) {
-        const li = document.createElement("li");
-        const slotLabelText = slot ? (EQUIPPED_SLOT_LABEL_BY_KEY[slot] || slot) : "Empty";
-        if (!slot) {
-          li.style.listStyle = "none";
-          li.style.width = "64px";
-          li.style.height = "64px";
-          li.style.padding = "0";
-          li.style.margin = "0";
-          li.style.background = "transparent";
-          li.style.border = "none";
-          li.style.boxShadow = "none";
-          li.style.pointerEvents = "none";
-          li.style.opacity = "0";
-          equippedList.appendChild(li);
-          continue;
+      const extractionBannerEl = document.getElementById("inventory-overlay-extraction-banner");
+      const overlayTitleEl = document.querySelector("#inventory-overlay .inventory-overlay-title");
+      const overlayCloseBtn = document.getElementById("inventory-overlay-close");
+      if (this.extractionSelectionMode) {
+        if (!extractionBannerEl) {
+          const banner = document.createElement("div");
+          banner.id = "inventory-overlay-extraction-banner";
+          banner.className = "inventory-overlay-extraction-banner";
+          banner.style.cssText = "padding:10px 14px;background:linear-gradient(135deg,#4c1d95 0%,#5b21b6 100%);color:#e9d5ff;margin:0 0 12px 0;border-radius:8px;font-size:13px;";
+          const header = document.querySelector("#inventory-overlay .inventory-overlay-header");
+          if (header && header.nextElementSibling) header.parentNode.insertBefore(banner, header.nextElementSibling);
+          else document.querySelector("#inventory-overlay .inventory-overlay-box")?.appendChild(banner);
         }
+        const banner = document.getElementById("inventory-overlay-extraction-banner");
+        if (banner) {
+          let equipmentCount = 0;
+          for (const item of this.inventory || []) {
+            if (this.isEquipmentTypeForExtraction(item)) equipmentCount++;
+          }
+          const selected = (this.extractionSelectedIds && this.extractionSelectedIds.size) || 0;
+          const limit = Math.min(EXTRACTION_EQUIPMENT_LIMIT, equipmentCount);
+          banner.innerHTML = "";
+          banner.appendChild(document.createTextNode("Choose up to 10 equipment items to extract. Other items have no limit. "));
+          const countSpan = document.createElement("span");
+          countSpan.style.fontWeight = "700";
+          countSpan.textContent = `Selected: ${selected}/${limit}`;
+          countSpan.id = "inventory-extraction-count";
+          banner.appendChild(countSpan);
+          const confirmBtn = document.createElement("button");
+          confirmBtn.type = "button";
+          confirmBtn.textContent = "Confirm extraction";
+          confirmBtn.style.cssText = "margin-left:14px;padding:6px 14px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;";
+          confirmBtn.addEventListener("click", () => {
+            if (typeof this.applyExtractionSelectionAndVictory === "function") this.applyExtractionSelectionAndVictory();
+          });
+          banner.appendChild(confirmBtn);
+          banner.style.display = "block";
+        }
+        if (overlayTitleEl) overlayTitleEl.textContent = "Extraction — Choose items";
+        if (overlayCloseBtn) overlayCloseBtn.textContent = "Close (I)";
+        this._extractionIdGen = this._extractionIdGen || 0;
+        for (const item of this.inventory || []) {
+          if (item.id == null) item.id = "ext_" + (++this._extractionIdGen);
+        }
+      } else {
+        if (extractionBannerEl) extractionBannerEl.style.display = "none";
+        if (overlayTitleEl) overlayTitleEl.textContent = "Inventory";
+        if (overlayCloseBtn) overlayCloseBtn.textContent = "Close (I)";
+      }
+
+      equippedList.innerHTML = "";
+      const slotDefs = getEffectiveEquippedSlots(this, "inventory_overlay");
+      equippedList.dataset.slotCount = String(slotDefs.length || 0);
+      applyEquippedGridLayout(equippedList);
+      for (const slotDef of slotDefs) {
+        const li = document.createElement("li");
+        const slot = slotDef.key;
+        const slotLabelText = slotDef.label || EQUIPPED_SLOT_LABEL_BY_KEY[slot] || slot;
+        const allowedText = getAllowedTypesText(slotDef);
+        const slotHint = `${slotLabelText} | Allowed: ${allowedText}`;
         const item = this.equipment[slot];
         if (item) {
           ensureItemVessels(item);
@@ -431,10 +526,17 @@ export function applyGameInventoryMixin(Game) {
           if (iconEl) li.appendChild(iconEl);
           styleSquareInventoryItem(li, item);
           attachSlotFrameHover(li, item);
-          li.title = `${slotLabelText}: ${item.name}`;
+          li.title = `${slotLabelText}: ${item.name} (${allowedText})`;
         } else {
           styleEmptyEquippedSlot(li);
-          li.title = `${slotLabelText}: Empty`;
+          li.title = `${slotLabelText}: Empty (${allowedText})`;
+        }
+        if (slotDef.enabled === false || slotDef.capacity <= 0) {
+          li.style.opacity = "0.4";
+          li.style.filter = "grayscale(0.8)";
+          li.title = `${slotHint} [Disabled${slotDef.disabledReason ? `: ${slotDef.disabledReason}` : ""}]`;
+        } else if (slotDef.transformedBy) {
+          li.title = `${li.title} [Transformed]`;
         }
         if (item) {
           li.dataset.hasItem = "1";
@@ -519,6 +621,20 @@ export function applyGameInventoryMixin(Game) {
         } else {
           li.classList.add("inventory-overlay-empty");
         }
+        if (slotDef.transformedBy) {
+          const badge = document.createElement("div");
+          badge.textContent = "Transformed";
+          badge.style.position = "absolute";
+          badge.style.bottom = "2px";
+          badge.style.right = "2px";
+          badge.style.fontSize = "9px";
+          badge.style.padding = "1px 4px";
+          badge.style.borderRadius = "3px";
+          badge.style.background = "rgba(15, 23, 42, 0.75)";
+          badge.style.color = "#cbd5e1";
+          li.style.position = "relative";
+          li.appendChild(badge);
+        }
         equippedList.appendChild(li);
       }
 
@@ -549,7 +665,7 @@ export function applyGameInventoryMixin(Game) {
             const sellLabel = sellPrice != null ? ` <span class="inventory-item-sell-price" style="color:#facc15">[Sell ${sellPrice}g]</span>` : "";
             const selectedSellLabel = this.inventorySellState?.selectedItemKey === this.getInventorySellKey(item) ? ` <span style="color:#86efac">[Selected]</span>` : "";
             const sendLabel = this.rogueVaultState?.active ? ` <span style="color:#86efac">[Send 150g]</span>` : "";
-            const secureLabel = hasTalent("vaultMaster")
+            const secureLabel = this.hasCharacterTalent("vaultMaster")
               ? (this.isVaultMasterSecured(item)
                   ? ` <span style="color:#93c5fd">[Secured]</span>`
                   : ` <span style="color:#94a3b8">[Right-click: Secure]</span>`)
@@ -562,7 +678,7 @@ export function applyGameInventoryMixin(Game) {
             if (this.inventorySellState?.active && sellPrice != null) li.title += ` [Sell ${sellPrice}g]`;
             if (this.inventorySellState?.selectedItemKey === this.getInventorySellKey(item)) li.title += " [Selected]";
             if (this.rogueVaultState?.active) li.title += " [Send 150g]";
-            if (hasTalent("vaultMaster") && this.isVaultMasterSecured(item)) li.title += " [Secured]";
+            if (this.hasCharacterTalent("vaultMaster") && this.isVaultMasterSecured(item)) li.title += " [Secured]";
             void color; void forgedTag; void sellLabel; void selectedSellLabel; void sendLabel; void secureLabel;
           } else {
             li.textContent = this.rogueVaultState?.active ? `${item.name} [Send 150g]` : item.name;
@@ -574,13 +690,33 @@ export function applyGameInventoryMixin(Game) {
           }
           li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
           li.addEventListener("mouseleave", hideItemTooltip);
-          if (hasTalent("vaultMaster") && !this.inventorySellState?.active && !this.rogueVaultState?.active) {
-            li.addEventListener("contextmenu", (e) => {
-              e.preventDefault();
-              if (this.toggleVaultMasterSecureItem(item) && this.inventoryOverlayOpen) this.populateInventoryOverlay();
+          if (this.extractionSelectionMode && this.isEquipmentTypeForExtraction(item)) {
+            const selected = this.extractionSelectedIds && this.extractionSelectedIds.has(item.id);
+            if (selected) {
+              li.style.outline = "3px solid #86efac";
+              li.style.outlineOffset = "2px";
+              li.title = (li.title || "") + " [Selected for extraction — click to deselect]";
+            } else {
+              li.title = (li.title || "") + " [Click to select for extraction]";
+            }
+            li.addEventListener("click", () => {
+              if (!this.extractionSelectedIds) this.extractionSelectedIds = new Set();
+              if (this.extractionSelectedIds.has(item.id)) {
+                this.extractionSelectedIds.delete(item.id);
+              } else if (this.extractionSelectedIds.size < EXTRACTION_EQUIPMENT_LIMIT) {
+                this.extractionSelectedIds.add(item.id);
+              }
+              this.populateInventoryOverlay();
             });
+          } else {
+            if (this.hasCharacterTalent("vaultMaster") && !this.inventorySellState?.active && !this.rogueVaultState?.active) {
+              li.addEventListener("contextmenu", (e) => {
+                e.preventDefault();
+                if (this.toggleVaultMasterSecureItem(item) && this.inventoryOverlayOpen) this.populateInventoryOverlay();
+              });
+            }
+            li.addEventListener("click", () => this.handleInventoryItemClick(item));
           }
-          li.addEventListener("click", () => this.handleInventoryItemClick(item));
           invList.appendChild(li);
         }
       }
@@ -664,8 +800,7 @@ export function applyGameInventoryMixin(Game) {
     },
 
     getLivingItem() {
-      for (const slotDef of EQUIPPED_SLOT_DEFS) {
-        const slot = slotDef.key;
+      for (const slot of Object.keys(this.equipment || {})) {
         const item = this.equipment[slot];
         if (item?.livingItem) return item;
       }
@@ -674,8 +809,7 @@ export function applyGameInventoryMixin(Game) {
 
     getCraftableEquipmentItems() {
       const items = [];
-      for (const slotDef of EQUIPPED_SLOT_DEFS) {
-        const slot = slotDef.key;
+      for (const slot of Object.keys(this.equipment || {})) {
         const item = this.equipment[slot];
         if (isItemCraftable(item)) {
           ensureItemVessels(item);
@@ -690,6 +824,33 @@ export function applyGameInventoryMixin(Game) {
         }
       }
       return items;
+    },
+
+    /** Equipment from current run + legacy vault for Ironsmith (Weapon, Helmet, Body Armour, Boots). */
+    getIronsmithEquipmentEntries() {
+      const equipmentTypes = ["Weapon", "Helmet", "Body Armour", "Boots"];
+      const run = (this.getCraftableEquipmentItems?.() || []).filter((e) => equipmentTypes.includes(e.item?.type));
+      const vault = buildLegacyVault();
+      const legacy = [];
+      for (let i = 0; i < vault.length; i++) {
+        const entry = vault[i];
+        const item = entry?.item;
+        if (!item || !equipmentTypes.includes(item.type)) continue;
+        ensureItemVessels(item);
+        legacy.push({ item, source: "legacy", legacyEntry: entry, legacyEntryIndex: i });
+      }
+      return [...run, ...legacy];
+    },
+
+    /** Merged cube inventory (run + legacy stash) for upgrade cost display and spending. */
+    getMergedCubeInventoryForUpgrade() {
+      const run = this.cubeInventory || {};
+      const stash = loadLegacyCubeStash();
+      const merged = { ...run };
+      for (const [key, count] of Object.entries(stash)) {
+        merged[key] = (merged[key] || 0) + (count || 0);
+      }
+      return merged;
     },
 
     populateCraftingTab() {
@@ -752,7 +913,8 @@ export function applyGameInventoryMixin(Game) {
         const loc = source === "equipped" ? `${slot}` : "Inventory";
         if (item.rarity === "legendary") li.classList.add("item-legendary");
         const statText = item.type === "Ring" ? "Unique Effect" : `+${baseVal}`;
-        li.innerHTML = `<span style="color:${color}">${escapeHtml(item.name)}</span> (${statText}) [${loc}]`;
+        const weaponUpgradeSuffix = (item.weaponUpgradeLevel ?? 0) > 0 ? ` (+${item.weaponUpgradeLevel})` : "";
+        li.innerHTML = `<span style="color:${color}">${escapeHtml(item.name)}${escapeHtml(weaponUpgradeSuffix)}</span> (${statText}) [${loc}]`;
         li.classList.toggle("selected", this.craftingSelectedItem === item && this.craftingItemSource?.source === source && (source === "inventory" ? this.craftingItemSource.index === index : this.craftingItemSource.slot === slot));
         li.addEventListener("click", () => this.selectCraftingItem(item, source, slot, index));
         li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
@@ -902,6 +1064,145 @@ export function applyGameInventoryMixin(Game) {
       previewEl.textContent = preview;
       previewEl.classList.toggle("hidden", !preview);
       confirmBtn.disabled = !canCraft;
+
+      this.updateWeaponUpgradeUI();
+    },
+
+    updateWeaponUpgradeUI() {
+      const detailsEl = document.getElementById("weapon-upgrade-details");
+      const maxMsgEl = document.getElementById("weapon-upgrade-max-msg");
+      const levelLine = document.getElementById("weapon-upgrade-level-line");
+      const costLine = document.getElementById("weapon-upgrade-cost-line");
+      const cubesLine = document.getElementById("weapon-upgrade-cubes-line");
+      const previewLine = document.getElementById("weapon-upgrade-preview-line");
+      const upgradeBtn = document.getElementById("weapon-upgrade-btn");
+      if (!detailsEl || !maxMsgEl || !upgradeBtn) return;
+
+      const item = this.craftingSelectedItem;
+      const equipmentTypes = ["Weapon", "Helmet", "Body Armour", "Boots"];
+      if (!item || !equipmentTypes.includes(item.type)) {
+        detailsEl.classList.add("hidden");
+        maxMsgEl.classList.add("hidden");
+        return;
+      }
+
+      const level = Math.min(MAX_WEAPON_UPGRADE_LEVEL, Math.max(0, item.weaponUpgradeLevel ?? 0));
+      const atMax = level >= MAX_WEAPON_UPGRADE_LEVEL;
+      const mergedCubes = this.getMergedCubeInventoryForUpgrade?.() || this.cubeInventory || {};
+      const totalCubeValue = getTotalCubeValue(mergedCubes);
+      const nextCost = getUpgradeCostForLevel(level);
+      const canAfford = !atMax && totalCubeValue >= nextCost;
+
+      if (atMax) {
+        detailsEl.classList.add("hidden");
+        maxMsgEl.classList.remove("hidden");
+        maxMsgEl.textContent = `This ${item.type.toLowerCase()} is at max upgrade (+5).`;
+        return;
+      }
+
+      maxMsgEl.classList.add("hidden");
+      detailsEl.classList.remove("hidden");
+      if (levelLine) levelLine.textContent = `Upgrade level: +${level} (max +${MAX_WEAPON_UPGRADE_LEVEL})`;
+      if (costLine) costLine.textContent = `Next upgrade cost: ${nextCost} cube value`;
+      if (cubesLine) cubesLine.textContent = `Cube value (run + vault): ${totalCubeValue}`;
+      const keys = EQUIPMENT_UPGRADE_STAT_KEYS[item.type];
+      if (previewLine && item.baseStat && keys && keys.length > 0) {
+        const parts = keys.map((k) => {
+          const cur = getEffectiveEquipmentStat(item.baseStat[k] || 0, level, k !== "attackSpeed");
+          const next = getEffectiveEquipmentStat(item.baseStat[k] || 0, level + 1, k !== "attackSpeed");
+          return `${k} ${cur} → ${next}`;
+        });
+        previewLine.textContent = `Next level: ${parts.join(", ")}`;
+      }
+      upgradeBtn.disabled = !canAfford;
+    },
+
+    populateIronsmithWeaponList() {
+      const listEl = document.getElementById("ironsmith-weapon-list");
+      if (!listEl) return;
+      const entries = this.getIronsmithEquipmentEntries?.() || [];
+      const sel = this.craftingSelectedItem;
+      const src = this.craftingItemSource;
+      if (sel && !entries.some((e) => e.item === sel)) {
+        this.craftingSelectedItem = null;
+        this.craftingItemSource = null;
+      }
+      listEl.innerHTML = "";
+      for (const entry of entries) {
+        const { item, source, slot, index, legacyEntry } = entry;
+        const li = document.createElement("li");
+        const color = getItemRarityColor(item);
+        const baseKey = EQUIPMENT_BASE_STAT[item.type];
+        const baseVal = item.stats?.[baseKey] ?? 0;
+        const loc = source === "equipped" ? `${slot}` : source === "legacy" ? "Vault" : "Inventory";
+        if (item.rarity === "legendary") li.classList.add("item-legendary");
+        const statText = baseKey ? `+${baseVal}` : "";
+        const upgradeSuffix = (item.weaponUpgradeLevel ?? 0) > 0 ? ` (+${item.weaponUpgradeLevel})` : "";
+        li.innerHTML = `<span style="color:${color}">${escapeHtml(item.name)}${escapeHtml(upgradeSuffix)}</span> (${statText}) [${loc}]`;
+        const isSelected = sel === item && (source === "legacy" ? src?.legacyEntry === legacyEntry : (source === "inventory" ? src?.index === index : src?.slot === slot));
+        li.classList.toggle("selected", isSelected);
+        li.addEventListener("click", () => {
+          this.craftingSelectedItem = item;
+          this.craftingItemSource = source === "legacy" ? { source, legacyEntry: entry.legacyEntry, legacyEntryIndex: entry.legacyEntryIndex } : { source, slot, index };
+          this.populateIronsmithWeaponList();
+          this.updateWeaponUpgradeUI();
+        });
+        li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
+        li.addEventListener("mouseleave", hideItemTooltip);
+        listEl.appendChild(li);
+      }
+      this.updateWeaponUpgradeUI();
+    },
+
+    executeWeaponUpgrade() {
+      const item = this.craftingSelectedItem;
+      const equipmentTypes = ["Weapon", "Helmet", "Body Armour", "Boots"];
+      if (!item || !equipmentTypes.includes(item.type)) return;
+      const level = Math.max(0, item.weaponUpgradeLevel ?? 0);
+      if (level >= MAX_WEAPON_UPGRADE_LEVEL) return;
+
+      const cost = getUpgradeCostForLevel(level);
+      const merged = this.getMergedCubeInventoryForUpgrade?.() || {};
+      const result = spendCubesToPay(merged, cost);
+      if (!result.success || !result.toDeduct) return;
+
+      const runInv = this.cubeInventory || {};
+      const stash = loadLegacyCubeStash();
+      for (const [key, count] of Object.entries(result.toDeduct)) {
+        let remaining = count;
+        const runHas = runInv[key] || 0;
+        const fromRun = Math.min(remaining, runHas);
+        if (fromRun > 0) {
+          remaining -= fromRun;
+          const current = runInv[key] - fromRun;
+          if (current <= 0) delete this.cubeInventory[key];
+          else this.cubeInventory[key] = current;
+        }
+        if (remaining > 0 && stash[key] != null) {
+          const fromStash = Math.min(remaining, stash[key] || 0);
+          if (fromStash > 0) {
+            stash[key] = (stash[key] || 0) - fromStash;
+            if (stash[key] <= 0) delete stash[key];
+          }
+        }
+      }
+      saveLegacyCubeStash(stash);
+
+      item.weaponUpgradeLevel = level + 1;
+      this.rebuildItemStats(item);
+
+      const src = this.craftingItemSource;
+      if (src?.source === "legacy" && src.legacyEntry) {
+        updateLegacyVaultEntry(src.legacyEntry, item);
+      }
+
+      this.recalculateStats?.();
+      this.updateEquippedUI?.();
+      this.populateInventoryOverlay?.();
+      this.populateCraftingTab?.();
+      this.updateWeaponUpgradeUI();
+      if (document.getElementById("ironsmith-weapon-list")) this.populateIronsmithWeaponList();
+      if (typeof playSfx === "function") playSfx("inventoryOpen");
     },
 
     executeCraft() {
@@ -938,7 +1239,8 @@ export function applyGameInventoryMixin(Game) {
       }
       if (!crafted) return;
 
-      const cascadeSave = hasTalent("cubeCascade") && Math.random() < 0.1;
+      const cascadeSave = this.hasCharacterTalent("cubeCascade") && Math.random() < 0.1;
+      if (cascadeSave && typeof this.logTalentTrigger === "function") this.logTalentTrigger("cubeCascade", "Cube used: 10% proc, cube not consumed (duplicate)");
       if (!cascadeSave) {
         this.cubeInventory[cubeKey] = count - 1;
         if (this.cubeInventory[cubeKey] === 0) delete this.cubeInventory[cubeKey];
@@ -1056,7 +1358,9 @@ export function applyGameInventoryMixin(Game) {
         item.rarity = "rare";
         item.modifiers = item.modifiers || [];
         const pool = getCraftModifierPoolForItem(item).filter((p) => !item.modifiers.some((m) => m.id === p.id));
-        const extraMods = hasTalent("transmutation") && Math.random() < 0.05 ? 3 : 2;
+        const transmutationProc = this.hasCharacterTalent("transmutation") && Math.random() < 0.05;
+        if (transmutationProc && typeof this.logTalentTrigger === "function") this.logTalentTrigger("transmutation", "Rare item from cube: 5% T1 modifier as base stat");
+        const extraMods = transmutationProc ? 3 : 2;
         for (let i = 0; i < extraMods; i++) {
           if (pool.length === 0) break;
           const idx = Math.floor(Math.random() * pool.length);
@@ -1096,6 +1400,15 @@ export function applyGameInventoryMixin(Game) {
         }
       }
       const stats = { ...(item.baseStat || {}) };
+      const upgradeKeys = EQUIPMENT_UPGRADE_STAT_KEYS[item.type];
+      if (upgradeKeys && item.baseStat) {
+        const level = Math.min(MAX_WEAPON_UPGRADE_LEVEL, Math.max(0, item.weaponUpgradeLevel ?? 0));
+        for (const k of upgradeKeys) {
+          if (item.baseStat[k] != null) {
+            stats[k] = getEffectiveEquipmentStat(item.baseStat[k], level, k !== "attackSpeed");
+          }
+        }
+      }
       for (const m of item.modifiers || []) {
         if (LEGENDARY_MODIFIER_IDS.includes(m.id)) continue;
         if (m.id === "defenseStatScale") {
@@ -1117,6 +1430,7 @@ export function applyGameInventoryMixin(Game) {
     handleInventoryItemClick(item) {
       const index = this.inventory.indexOf(item);
       if (index === -1) return;
+      if (this.extractionSelectionMode && this.isEquipmentTypeForExtraction(item)) return;
       if (this.inventorySellState?.active) {
         this.selectInventoryItemForSale(index, item);
         return;
@@ -1131,21 +1445,30 @@ export function applyGameInventoryMixin(Game) {
       } else if (this.isItemEquippable(item)) {
         this.clearVaultMasterSecureForItem(item);
         ensureItemVessels(item);
-        if (item.type === "Ring" && item.ringId) {
-          const ring1Id = this.equipment.Ring1?.ringId || null;
-          const ring2Id = this.equipment.Ring2?.ringId || null;
-          if (ring1Id === item.ringId || ring2Id === item.ringId) {
+        let slot = null;
+        if (typeof this.findBestEquipSlotForItem === "function") {
+          slot = this.findBestEquipSlotForItem(item, { source: "inventory_click" });
+        }
+        if (!slot) {
+          slot = item.type;
+          if (item.type === "Ring") {
+            const ringSlotKeys = getEffectiveEquippedSlots(this, "inventory_click_fallback")
+              .filter((entry) => Array.isArray(entry.allowedItemTypes) && entry.allowedItemTypes.includes("Ring"))
+              .map((entry) => entry.key);
+            slot = ringSlotKeys.find((key) => !this.equipment[key]) || ringSlotKeys[0] || "Ring1";
+          }
+        }
+        if (typeof this.canEquipItemInSlot === "function") {
+          const check = this.canEquipItemInSlot(item, slot, { source: "inventory_click" });
+          if (!check?.allowed) {
             if (typeof this.showNotification === "function") {
-              this.showNotification("Rings", "You cannot equip two of the same ring.");
+              const reason = check?.reason === "duplicate_ring_id"
+                ? "You cannot equip two of the same ring."
+                : "That item cannot be equipped in the selected slot.";
+              this.showNotification("Equipment", reason);
             }
             return;
           }
-        }
-        let slot = item.type;
-        if (item.type === "Ring") {
-          if (!this.equipment.Ring1) slot = "Ring1";
-          else if (!this.equipment.Ring2) slot = "Ring2";
-          else slot = "Ring1";
         }
         const currentlyEquipped = this.equipment[slot];
         if (currentlyEquipped) this.inventory.push(currentlyEquipped);
@@ -1159,6 +1482,13 @@ export function applyGameInventoryMixin(Game) {
     },
 
     isItemEquippable(item) {
+      if (!item || !item.type) return false;
+      if (typeof this.resolvePillarEquipmentLayout === "function") {
+        const layout = this.resolvePillarEquipmentLayout({ source: "isItemEquippable" });
+        return layout.slots.some(
+          (slot) => slot.enabled !== false && slot.capacity > 0 && slot.allowedItemTypes.includes(String(item.type))
+        );
+      }
       return (
         item.type === "Helmet" ||
         item.type === "Boots" ||
@@ -1206,7 +1536,7 @@ export function applyGameInventoryMixin(Game) {
           nameSpan.className = "inventory-item-name" + (item.rarity === "legendary" ? " inventory-item-legendary" : "");
           nameSpan.style.color = getItemRarityColor(item);
           nameSpan.textContent = item.blacksmithUpgraded ? `${item.name} (Forged)` : item.name;
-          if (hasTalent("vaultMaster") && this.isVaultMasterSecured(item)) {
+          if (this.hasCharacterTalent("vaultMaster") && this.isVaultMasterSecured(item)) {
             nameSpan.textContent += " [Secured]";
           }
 
@@ -1232,7 +1562,7 @@ export function applyGameInventoryMixin(Game) {
 
           li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
           li.addEventListener("mouseleave", hideItemTooltip);
-          if ((canAnytimeSell || hasTalent("vaultMaster")) && !this.inventorySellState?.active && !this.rogueVaultState?.active) {
+          if ((canAnytimeSell || this.hasCharacterTalent("vaultMaster")) && !this.inventorySellState?.active && !this.rogueVaultState?.active) {
             li.addEventListener("contextmenu", (e) => {
               e.preventDefault();
               if (canAnytimeSell && this.isItemEquippable(item)) {
@@ -1242,7 +1572,7 @@ export function applyGameInventoryMixin(Game) {
                 }
                 return;
               }
-              if (hasTalent("vaultMaster") && this.toggleVaultMasterSecureItem(item)) this.updateInventoryUI();
+              if (this.hasCharacterTalent("vaultMaster") && this.toggleVaultMasterSecureItem(item)) this.updateInventoryUI();
             });
           }
           li.addEventListener("click", () => this.handleInventoryItemClick(item));
@@ -1395,29 +1725,19 @@ export function applyGameInventoryMixin(Game) {
     updateEquippedUI() {
       if (!this.equippedListEl) return;
       this.equippedListEl.innerHTML = "";
+      const slotDefs = getEffectiveEquippedSlots(this, "equipped_panel");
+      this.equippedListEl.dataset.slotCount = String(slotDefs.length || 0);
       applyEquippedGridLayout(this.equippedListEl);
-      for (const slot of EQUIPPED_GRID_SLOTS) {
+      for (const slotDef of slotDefs) {
         const li = document.createElement("li");
-        if (!slot) {
-          li.style.listStyle = "none";
-          li.style.width = "64px";
-          li.style.height = "64px";
-          li.style.padding = "0";
-          li.style.margin = "0";
-          li.style.background = "transparent";
-          li.style.border = "none";
-          li.style.boxShadow = "none";
-          li.style.pointerEvents = "none";
-          li.style.opacity = "0";
-          this.equippedListEl.appendChild(li);
-          continue;
-        }
-        const slotLabelText = EQUIPPED_SLOT_LABEL_BY_KEY[slot] || slot;
+        const slot = slotDef.key;
+        const slotLabelText = slotDef.label || EQUIPPED_SLOT_LABEL_BY_KEY[slot] || slot;
         li.className = "equipped-item";
 
         const slotLabel = document.createElement("div");
         slotLabel.className = "equipped-slot-label";
-        slotLabel.textContent = slotLabelText;
+        const allowedText = getAllowedTypesText(slotDef);
+        slotLabel.textContent = `${slotLabelText} (${allowedText})`;
 
         const nameDiv = document.createElement("div");
         nameDiv.className = "equipped-item-name";
@@ -1433,6 +1753,17 @@ export function applyGameInventoryMixin(Game) {
         if (item) {
           li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
           li.addEventListener("mouseleave", hideItemTooltip);
+        }
+
+        if (slotDef.enabled === false || slotDef.capacity <= 0) {
+          li.style.opacity = "0.45";
+          li.style.filter = "grayscale(0.85)";
+          li.title = slotDef.disabledReason
+            ? `Disabled: ${slotDef.disabledReason}`
+            : "Disabled by runtime equipment layout.";
+        } else if (slotDef.transformedBy) {
+          li.style.borderColor = "rgba(148,163,184,0.85)";
+          li.title = "Transformed by active pillar effect.";
         }
 
         li.appendChild(slotLabel);

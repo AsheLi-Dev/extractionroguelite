@@ -126,6 +126,20 @@ export function applyGameDevMixin(Game) {
         });
       }
 
+      const devCreateDummyBtn = document.getElementById("dev-create-dummy");
+      if (devCreateDummyBtn) {
+        this.addManagedListener(devCreateDummyBtn, "click", () => {
+          const px = this.player.position.x + this.player.size / 2;
+          const py = this.player.position.y + this.player.size / 2;
+          const enemy = this.enemySystem.spawnOne("minion", null, { x: px, y: py }, this, "m_5h_medium_dummy", false);
+          if (enemy) {
+            enemy.maxHealth = 999;
+            enemy.health = 999;
+            enemy._devCreateDummy = true;
+          }
+        });
+      }
+
       if (this.devCardListEl) {
         this.devCardListEl.innerHTML = "";
       }
@@ -185,11 +199,11 @@ export function applyGameDevMixin(Game) {
       }
       this.buildLogRefresh = () => {
         const upgradesEl = document.getElementById("build-log-upgrades");
-        const penaltiesEl = document.getElementById("build-log-penalties");
-        if (!upgradesEl || !penaltiesEl) return;
+        const evolutionEl = document.getElementById("build-log-evolution");
+        if (!upgradesEl || !evolutionEl) return;
         upgradesEl.innerHTML = "";
-        penaltiesEl.innerHTML = "";
-        
+        evolutionEl.innerHTML = "";
+
         // Add shrine interactions to upgrades list
         if (this.shrineInteractions && this.shrineInteractions.length > 0) {
           this.shrineInteractions.forEach(interaction => {
@@ -199,9 +213,8 @@ export function applyGameDevMixin(Game) {
             upgradesEl.appendChild(li);
           });
         }
-        
+
         const ups = this.runAttackUpgrades || [];
-        const pens = this.runAttackPenalties || [];
         const aggUp = new Map();
         for (const u of ups) {
           if (!aggUp.has(u.id)) {
@@ -219,23 +232,18 @@ export function applyGameDevMixin(Game) {
           li.innerHTML = `<span class="build-log-name"> ${a.name} *${a.count}</span><span class="build-log-effect">${effect}</span>`;
           upgradesEl.appendChild(li);
         }
-        const aggPen = new Map();
-        for (const p of pens) {
-          if (!aggPen.has(p.id)) {
-            aggPen.set(p.id, { id: p.id, name: p.name, description: p.description, value: 0, percent: p.percent, count: 0 });
-          }
-          const a = aggPen.get(p.id);
-          a.count++;
-          if (p.value !== undefined && p.value !== null) a.value += p.value;
-        }
-        for (const a of aggPen.values()) {
-          if (a.value === 0) a.value = undefined;
-          const li = document.createElement("li");
-          li.className = "build-log-penalty";
-          const effect = getAggregatedPenaltyEffect(a);
-          li.innerHTML = `<span class="build-log-name"> ${a.name} *${a.count}</span><span class="build-log-effect">${effect}</span>`;
-          penaltiesEl.appendChild(li);
-        }
+
+        const formatCategory = (cat) => (cat ? cat.charAt(0).toUpperCase() + (cat.slice(1) || "") : "—");
+        const first = this.attackType === "projectile" ? (this.elementalShotEvolutionFirst || null) : null;
+        const second = this.attackType === "projectile" ? (this.elementalShotEvolutionSecond || null) : null;
+        const li1 = document.createElement("li");
+        li1.className = "build-log-evolution";
+        li1.innerHTML = `<span class="build-log-name">First evolution</span><span class="build-log-effect">${formatCategory(first)}</span>`;
+        evolutionEl.appendChild(li1);
+        const li2 = document.createElement("li");
+        li2.className = "build-log-evolution";
+        li2.innerHTML = `<span class="build-log-name">Second evolution</span><span class="build-log-effect">${formatCategory(second)}</span>`;
+        evolutionEl.appendChild(li2);
       };
 
       const devForceUpgrade = document.getElementById("dev-force-upgrade");

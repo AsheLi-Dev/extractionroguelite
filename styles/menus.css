@@ -87,10 +87,22 @@
   color: #a78bfa;
 }
 
-.talent-tree-lp {
-  font-size: 16px;
+.talent-tree-crystals {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
   font-weight: 600;
-  color: #fbbf24;
+}
+
+.talent-tree-crystals.hidden {
+  display: none;
+}
+
+.talent-tree-crystal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .talent-tree-btn {
@@ -115,6 +127,7 @@
   padding: 24px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .talent-tree-branches {
@@ -122,6 +135,60 @@
   flex-direction: column;
   gap: 24px;
   width: 100%;
+}
+
+.talent-tree-branch-body {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.talent-tree-branch-grid-wrap {
+  flex: 0 0 auto;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.talent-tree-details-panel {
+  width: 280px;
+  flex-shrink: 0;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.8);
+  align-self: flex-start;
+  min-height: 120px;
+}
+
+.talent-tree-details-placeholder {
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.talent-tree-details-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.talent-tree-details-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #a78bfa;
+}
+
+.talent-tree-details-desc {
+  font-size: 14px;
+  color: #e2e8f0;
+  line-height: 1.5;
+}
+
+.talent-tree-details-cost {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fbbf24;
 }
 
 .talent-tree-branch {
@@ -243,6 +310,22 @@
   color: #fbbf24;
 }
 
+.talent-tree-node-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 6px auto;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+}
+
+/* Icon-grid nodes: center the icon */
+.talent-icon-tree .talent-tree-node-icon {
+  width: 44px;
+  height: 44px;
+  margin: 0;
+}
+
 @keyframes talent-glow {
   from {
     box-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
@@ -252,65 +335,8 @@
   }
 }
 
-/* Warrior branching tree */
-.warrior-branch .warrior-tree-grid {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  grid-template-rows: minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto);
-  row-gap: 24px;
-  column-gap: 16px;
-  padding-top: 8px;
-  min-width: 0;
-  width: 100%;
-}
-
-.warrior-branch .warrior-node {
-  position: relative;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-}
-
-.warrior-branch .warrior-node .talent-tree-node-name,
-.warrior-branch .warrior-node .talent-tree-node-desc,
-.warrior-branch .warrior-node .talent-tree-node-cost {
-  overflow-wrap: break-word;
-  word-wrap: break-word;
-  word-break: break-word;
-}
-
-.warrior-branch .warrior-node .talent-tree-node-desc {
-  line-height: 1.3;
-}
-
-.warrior-branch .warrior-connection {
-  position: relative;
-  height: 32px;
-}
-
-.warrior-branch .warrior-connection::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  border-top: 2px solid rgba(148, 163, 184, 0.7);
-}
-
-.warrior-branch .warrior-connection::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  border-left: 2px solid rgba(148, 163, 184, 0.7);
-  transform: translateX(-50%);
-}
-
-/* Survivalist branching tree (4x4 grid matching sprite sheet) */
-.survivalist-branch .warrior-tree-grid,
-.survivalist-branch .survivalist-tree-grid {
+/* Brutality branching tree (no prerequisites; 4x4 grid) */
+.brutality-branch .brutality-tree-grid {
   position: relative;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -322,83 +348,31 @@
   width: 100%;
 }
 
-.survivalist-branch .survivalist-node,
-.survivalist-branch .warrior-node {
+.brutality-branch .brutality-node {
   position: relative;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
 }
 
-/* Sprite sheet support for survivalist nodes */
-.survivalist-branch .survivalist-node[data-sprite-row][data-sprite-col] {
-  position: relative;
-  padding-left: 80px; /* Space for sprite icon */
-  min-height: 64px;
-}
-
-.survivalist-branch .survivalist-node[data-sprite-row][data-sprite-col]::before {
-  content: "";
-  position: absolute;
-  left: 12px;
-  top: 12px;
-  width: 64px;
-  height: 64px;
-  background-image: url('../assets/UI/Survivalist-Talent-Sprite-Sheet.png');
-  background-repeat: no-repeat;
-  background-size: 400% 400%; /* 4x4 grid = 400% */
-  background-position: 0 0;
-  image-rendering: pixelated;
-  image-rendering: -moz-crisp-edges;
-  image-rendering: crisp-edges;
-  opacity: 1;
-  transition: opacity 0.15s ease;
-}
-
-.survivalist-branch .survivalist-node.locked[data-sprite-row][data-sprite-col]::before {
-  opacity: 0.4;
-}
-
-/* Pixel-based sprite positions (same as Warrior – exact cell boundaries, no rounding) */
-.survivalist-branch .survivalist-node[data-sprite-row="0"][data-sprite-col="0"]::before { background-position: 0 0; }
-.survivalist-branch .survivalist-node[data-sprite-row="0"][data-sprite-col="1"]::before { background-position: -64px 0; }
-.survivalist-branch .survivalist-node[data-sprite-row="0"][data-sprite-col="2"]::before { background-position: -128px 0; }
-.survivalist-branch .survivalist-node[data-sprite-row="0"][data-sprite-col="3"]::before { background-position: -192px 0; }
-.survivalist-branch .survivalist-node[data-sprite-row="1"][data-sprite-col="0"]::before { background-position: 0 -64px; }
-.survivalist-branch .survivalist-node[data-sprite-row="1"][data-sprite-col="1"]::before { background-position: -64px -64px; }
-.survivalist-branch .survivalist-node[data-sprite-row="1"][data-sprite-col="2"]::before { background-position: -128px -64px; }
-.survivalist-branch .survivalist-node[data-sprite-row="1"][data-sprite-col="3"]::before { background-position: -192px -64px; }
-.survivalist-branch .survivalist-node[data-sprite-row="2"][data-sprite-col="0"]::before { background-position: 0 -128px; }
-.survivalist-branch .survivalist-node[data-sprite-row="2"][data-sprite-col="1"]::before { background-position: -64px -128px; }
-.survivalist-branch .survivalist-node[data-sprite-row="2"][data-sprite-col="2"]::before { background-position: -128px -128px; }
-.survivalist-branch .survivalist-node[data-sprite-row="2"][data-sprite-col="3"]::before { background-position: -192px -128px; }
-.survivalist-branch .survivalist-node[data-sprite-row="3"][data-sprite-col="0"]::before { background-position: 0 -192px; }
-.survivalist-branch .survivalist-node[data-sprite-row="3"][data-sprite-col="1"]::before { background-position: -64px -192px; }
-.survivalist-branch .survivalist-node[data-sprite-row="3"][data-sprite-col="2"]::before { background-position: -128px -192px; }
-.survivalist-branch .survivalist-node[data-sprite-row="3"][data-sprite-col="3"]::before { background-position: -192px -192px; }
-
-.survivalist-branch .survivalist-node .talent-tree-node-name,
-.survivalist-branch .survivalist-node .talent-tree-node-desc,
-.survivalist-branch .survivalist-node .talent-tree-node-cost,
-.survivalist-branch .warrior-node .talent-tree-node-name,
-.survivalist-branch .warrior-node .talent-tree-node-desc,
-.survivalist-branch .warrior-node .talent-tree-node-cost {
+.brutality-branch .brutality-node .talent-tree-node-name,
+.brutality-branch .brutality-node .talent-tree-node-desc,
+.brutality-branch .brutality-node .talent-tree-node-cost {
   overflow-wrap: break-word;
   word-wrap: break-word;
   word-break: break-word;
 }
 
-.survivalist-branch .survivalist-node .talent-tree-node-desc,
-.survivalist-branch .warrior-node .talent-tree-node-desc {
+.brutality-branch .brutality-node .talent-tree-node-desc {
   line-height: 1.3;
 }
 
-.survivalist-branch .warrior-connection {
+.brutality-branch .brutality-connection {
   position: relative;
   height: 32px;
 }
 
-.survivalist-branch .warrior-connection::before {
+.brutality-branch .brutality-connection::before {
   content: "";
   position: absolute;
   left: 0;
@@ -407,7 +381,7 @@
   border-top: 2px solid rgba(148, 163, 184, 0.7);
 }
 
-.survivalist-branch .warrior-connection::after {
+.brutality-branch .brutality-connection::after {
   content: "";
   position: absolute;
   top: 0;
@@ -417,7 +391,233 @@
   transform: translateX(-50%);
 }
 
-/* -------- Icon-only Talent Trees (Warrior, Survivalist) -------- */
+/* Agility branching tree (no prerequisites; 4x4 grid) */
+.agility-branch .agility-tree-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto);
+  row-gap: 24px;
+  column-gap: 16px;
+  padding-top: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.agility-branch .agility-node {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.agility-branch .agility-node .talent-tree-node-name,
+.agility-branch .agility-node .talent-tree-node-desc,
+.agility-branch .agility-node .talent-tree-node-cost {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+.agility-branch .agility-node .talent-tree-node-desc {
+  line-height: 1.3;
+}
+
+.agility-branch .agility-connection {
+  position: relative;
+  height: 32px;
+}
+
+.agility-branch .agility-connection::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 2px solid rgba(148, 163, 184, 0.7);
+}
+
+.agility-branch .agility-connection::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  border-left: 2px solid rgba(148, 163, 184, 0.7);
+  transform: translateX(-50%);
+}
+
+/* Agility icon-tree nodes: placeholder (no atlas); optional sprite sheet can be added later */
+.agility-branch .agility-node[data-sprite-row][data-sprite-col]::before {
+  content: "";
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(22, 163, 74, 0.25);
+  border-radius: 8px;
+  border: 2px solid rgba(22, 163, 74, 0.5);
+}
+
+.agility-branch .agility-node.locked[data-sprite-row][data-sprite-col]::before {
+  opacity: 0.4;
+}
+
+/* Vitality branching tree (no prerequisites; 4x4 grid; Red crystal) */
+.vitality-branch .vitality-tree-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto);
+  row-gap: 24px;
+  column-gap: 16px;
+  padding-top: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.vitality-branch .vitality-node {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.vitality-branch .vitality-node .talent-tree-node-name,
+.vitality-branch .vitality-node .talent-tree-node-desc,
+.vitality-branch .vitality-node .talent-tree-node-cost {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+.vitality-branch .vitality-node .talent-tree-node-desc {
+  line-height: 1.3;
+}
+
+.vitality-branch .vitality-connection {
+  position: relative;
+  height: 32px;
+}
+
+.vitality-branch .vitality-connection::before,
+.vitality-branch .vitality-connection::after {
+  content: "";
+  position: absolute;
+  border-color: rgba(148, 163, 184, 0.7);
+}
+
+.vitality-branch .vitality-connection::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 2px solid;
+}
+
+.vitality-branch .vitality-connection::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  border-left: 2px solid;
+  transform: translateX(-50%);
+}
+
+.vitality-branch .vitality-node[data-sprite-row][data-sprite-col]::before {
+  content: "";
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(220, 38, 38, 0.25);
+  border-radius: 8px;
+  border: 2px solid rgba(220, 38, 38, 0.5);
+}
+
+.vitality-branch .vitality-node.locked[data-sprite-row][data-sprite-col]::before {
+  opacity: 0.4;
+}
+
+/* Luck branching tree (no prerequisites; 4x4 grid; Yellow crystal) */
+.luck-branch .luck-tree-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto);
+  row-gap: 24px;
+  column-gap: 16px;
+  padding-top: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.luck-branch .luck-node {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.luck-branch .luck-node .talent-tree-node-name,
+.luck-branch .luck-node .talent-tree-node-desc,
+.luck-branch .luck-node .talent-tree-node-cost {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+.luck-branch .luck-node .talent-tree-node-desc {
+  line-height: 1.3;
+}
+
+.luck-branch .luck-connection {
+  position: relative;
+  height: 32px;
+}
+
+.luck-branch .luck-connection::before,
+.luck-branch .luck-connection::after {
+  content: "";
+  position: absolute;
+  border-color: rgba(148, 163, 184, 0.7);
+}
+
+.luck-branch .luck-connection::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 2px solid;
+}
+
+.luck-branch .luck-connection::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  border-left: 2px solid;
+  transform: translateX(-50%);
+}
+
+.luck-branch .luck-node[data-sprite-row][data-sprite-col]::before {
+  content: "";
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(202, 138, 4, 0.25);
+  border-radius: 8px;
+  border: 2px solid rgba(202, 138, 4, 0.55);
+}
+
+.luck-branch .luck-node.locked[data-sprite-row][data-sprite-col]::before {
+  opacity: 0.4;
+}
+
+/* -------- Icon-only Talent Trees (Brutality, Agility, Vitality, Luck) -------- */
 .talent-icon-tree-grid {
   position: relative;
   display: grid;
@@ -449,8 +649,11 @@
   max-width: none;
 }
 
-.talent-icon-tree .survivalist-icon-node,
-.talent-icon-tree .warrior-icon-node {
+.talent-icon-tree .warrior-icon-node,
+.talent-icon-tree .brutality-icon-node,
+.talent-icon-tree .agility-icon-node,
+.talent-icon-tree .vitality-icon-node,
+.talent-icon-tree .luck-icon-node {
   position: relative;
   width: 72px;
   height: 72px;
@@ -462,20 +665,19 @@
   aspect-ratio: 1;
 }
 
-/* Override Survivalist card rule so icon outline stays square (same as Warrior) */
-.talent-icon-tree .survivalist-icon-node[data-sprite-row][data-sprite-col] {
+.talent-icon-tree .agility-icon-node[data-sprite-row][data-sprite-col],
+.talent-icon-tree .vitality-icon-node[data-sprite-row][data-sprite-col],
+.talent-icon-tree .luck-icon-node[data-sprite-row][data-sprite-col] {
   padding-left: 0;
   min-height: 0;
   padding: 0;
 }
 
-/* Nudge Survivalist sprite up 7px and left 7px (icon-tree only; Warrior unchanged) */
-.talent-icon-tree .survivalist-icon-node[data-sprite-row][data-sprite-col]::before {
-  transform: translate(-7px, -7px);
-}
-
-.talent-icon-tree .survivalist-icon-node .talent-icon-tooltip,
-.talent-icon-tree .warrior-icon-node .talent-icon-tooltip {
+.talent-icon-tree .warrior-icon-node .talent-icon-tooltip,
+.talent-icon-tree .brutality-icon-node .talent-icon-tooltip,
+.talent-icon-tree .agility-icon-node .talent-icon-tooltip,
+.talent-icon-tree .vitality-icon-node .talent-icon-tooltip,
+.talent-icon-tree .luck-icon-node .talent-icon-tooltip {
   position: absolute;
   left: 50%;
   bottom: calc(100% + 10px);
@@ -492,8 +694,11 @@
   z-index: 20;
 }
 
-.talent-icon-tree .survivalist-icon-node:hover .talent-icon-tooltip,
-.talent-icon-tree .warrior-icon-node:hover .talent-icon-tooltip {
+.talent-icon-tree .warrior-icon-node:hover .talent-icon-tooltip,
+.talent-icon-tree .brutality-icon-node:hover .talent-icon-tooltip,
+.talent-icon-tree .agility-icon-node:hover .talent-icon-tooltip,
+.talent-icon-tree .vitality-icon-node:hover .talent-icon-tooltip,
+.talent-icon-tree .luck-icon-node:hover .talent-icon-tooltip {
   opacity: 1;
 }
 
@@ -524,18 +729,28 @@
   font-style: italic;
 }
 
-/* Warrior icon-tree grid wrapper */
-.warrior-icon-tree-grid {
+/* Brutality icon-tree grid wrapper */
+.brutality-icon-tree-grid {
   /* uses .talent-icon-tree-grid */
 }
 
-/* Survivalist icon-tree grid wrapper */
-.survivalist-icon-tree-grid {
+/* Agility icon-tree grid wrapper */
+.agility-icon-tree-grid {
   /* uses .talent-icon-tree-grid */
 }
 
-/* Warrior sprite atlas support */
-.warrior-branch .warrior-node[data-sprite-row][data-sprite-col]::before {
+/* Vitality icon-tree grid wrapper */
+.vitality-icon-tree-grid {
+  /* uses .talent-icon-tree-grid */
+}
+
+/* Luck icon-tree grid wrapper */
+.luck-icon-tree-grid {
+  /* uses .talent-icon-tree-grid */
+}
+
+/* Brutality icon-tree nodes: text-only by default (no atlas); optional sprite sheet can be added later */
+.brutality-branch .brutality-node[data-sprite-row][data-sprite-col]::before {
   content: "";
   position: absolute;
   width: 64px;
@@ -543,35 +758,32 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  background-image: url('../assets/UI/Warrior-Talent-Sprite-Atlas.png');
-  background-repeat: no-repeat;
-  background-size: 400% 400%;
-  image-rendering: pixelated;
-  image-rendering: -moz-crisp-edges;
-  image-rendering: crisp-edges;
+  background: rgba(234, 88, 12, 0.25);
+  border-radius: 8px;
+  border: 2px solid rgba(234, 88, 12, 0.5);
 }
 
-.warrior-branch .warrior-node.locked[data-sprite-row][data-sprite-col]::before {
+.brutality-branch .brutality-node.locked[data-sprite-row][data-sprite-col]::before {
   opacity: 0.4;
 }
 
-/* 4x4 atlas positions (64px cells in the scaled background) */
-.warrior-branch .warrior-node[data-sprite-row="0"][data-sprite-col="0"]::before { background-position: 0 0; }
-.warrior-branch .warrior-node[data-sprite-row="0"][data-sprite-col="1"]::before { background-position: -64px 0; }
-.warrior-branch .warrior-node[data-sprite-row="0"][data-sprite-col="2"]::before { background-position: -128px 0; }
-.warrior-branch .warrior-node[data-sprite-row="0"][data-sprite-col="3"]::before { background-position: -192px 0; }
-.warrior-branch .warrior-node[data-sprite-row="1"][data-sprite-col="0"]::before { background-position: 0 -64px; }
-.warrior-branch .warrior-node[data-sprite-row="1"][data-sprite-col="1"]::before { background-position: -64px -64px; }
-.warrior-branch .warrior-node[data-sprite-row="1"][data-sprite-col="2"]::before { background-position: -128px -64px; }
-.warrior-branch .warrior-node[data-sprite-row="1"][data-sprite-col="3"]::before { background-position: -192px -64px; }
-.warrior-branch .warrior-node[data-sprite-row="2"][data-sprite-col="0"]::before { background-position: 0 -128px; }
-.warrior-branch .warrior-node[data-sprite-row="2"][data-sprite-col="1"]::before { background-position: -64px -128px; }
-.warrior-branch .warrior-node[data-sprite-row="2"][data-sprite-col="2"]::before { background-position: -128px -128px; }
-.warrior-branch .warrior-node[data-sprite-row="2"][data-sprite-col="3"]::before { background-position: -192px -128px; }
-.warrior-branch .warrior-node[data-sprite-row="3"][data-sprite-col="0"]::before { background-position: 0 -192px; }
-.warrior-branch .warrior-node[data-sprite-row="3"][data-sprite-col="1"]::before { background-position: -64px -192px; }
-.warrior-branch .warrior-node[data-sprite-row="3"][data-sprite-col="2"]::before { background-position: -128px -192px; }
-.warrior-branch .warrior-node[data-sprite-row="3"][data-sprite-col="3"]::before { background-position: -192px -192px; }
+/* 4x4 cell positions (for consistent layout; no sprite atlas yet) */
+.brutality-branch .brutality-node[data-sprite-row="0"][data-sprite-col="0"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="0"][data-sprite-col="1"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="0"][data-sprite-col="2"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="0"][data-sprite-col="3"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="1"][data-sprite-col="0"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="1"][data-sprite-col="1"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="1"][data-sprite-col="2"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="1"][data-sprite-col="3"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="2"][data-sprite-col="0"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="2"][data-sprite-col="1"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="2"][data-sprite-col="2"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="2"][data-sprite-col="3"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="3"][data-sprite-col="0"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="3"][data-sprite-col="1"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="3"][data-sprite-col="2"]::before { }
+.brutality-branch .brutality-node[data-sprite-row="3"][data-sprite-col="3"]::before { }
 
 /* Scavenger branching tree (8 columns) */
 .scavenger-branch .scavenger-tree-grid {

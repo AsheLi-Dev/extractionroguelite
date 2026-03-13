@@ -83,7 +83,23 @@ export class HazardSystem {
         const rr = pr + b.r;
         if (dx * dx + dy * dy <= rr * rr && b.hitCooldown <= 0) {
           b.hitCooldown = 0.85;
-          game.onPlayerDamaged?.(40, false);
+          if (typeof game.applyDamage === "function") {
+            game.applyDamage({
+              targetType: "player",
+              sourceType: "hazard_falling_rock",
+              amount: 40,
+              reason: "hazard_falling_rock_collision",
+              damageClass: "hazard",
+              bypassMitigation: false,
+              canKill: true
+            });
+          } else {
+            game.onPlayerDamaged?.(40, false, {
+              sourceType: "hazard_falling_rock",
+              reason: "hazard_falling_rock_collision",
+              damageClass: "hazard"
+            });
+          }
         }
       }
     }

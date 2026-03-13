@@ -103,6 +103,24 @@ export function loadSavedCharacters() {
   }
 }
 
+/**
+ * Update a saved character by index (e.g. attribute allocation). Persists to localStorage.
+ * @param {number} index - Index in the saved characters array.
+ * @param {object} updates - Partial character object to merge (e.g. { attributes: { brutality: 1 } }).
+ * @returns {boolean} True if updated and saved.
+ */
+export function updateSavedCharacter(index, updates) {
+  const saved = loadSavedCharacters();
+  if (index < 0 || index >= saved.length || !updates || typeof updates !== "object") return false;
+  saved[index] = { ...saved[index], ...updates };
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(saved));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function buildLegacyVault() {
   const saved = loadSavedCharacters();
   const conquerorItems = loadConquerorVault();
@@ -152,4 +170,36 @@ export function buildLegacyVault() {
   }
 
   return vault;
+}
+
+/**
+ * Persist an updated item back into the legacy vault (conqueror or saved character).
+ * @param {object} entry - Vault entry from buildLegacyVault() with source, conquerorIndex or charIndex/slot or charIndex/invIndex.
+ * @param {object} updatedItem - The modified item to save.
+ * @returns {boolean} True if saved.
+ */
+export function updateLegacyVaultEntry(entry, updatedItem) {
+  if (!entry) return false;
+  const item = { ...updatedItem };
+  if (entry.source === "conqueror" && typeof entry.conquerorIndex === "number") {
+    const vault = loadConquerorVault();
+    if (!vault[entry.conquerorIndex]) return false;
+    vault[entry.conquerorIndex].item = item;
+    localStorage.setItem(CONQUEROR_VAULT_KEY, JSON.stringify(vault));
+    return true;
+  }
+  const saved = loadSavedCharacters();
+  const char = saved[entry.charIndex];
+  if (!char) return false;
+  if (entry.source === "character-equipment" && entry.slot && char.equipment && Object.prototype.hasOwnProperty.call(char.equipment, entry.slot)) {
+    char.equipment[entry.slot] = item;
+    localStorage.setItem(SAVE_KEY, JSON.stringify(saved));
+    return true;
+  }
+  if (entry.source === "character-inventory" && typeof entry.invIndex === "number" && Array.isArray(char.inventory) && char.inventory[entry.invIndex]) {
+    char.inventory[entry.invIndex] = item;
+    localStorage.setItem(SAVE_KEY, JSON.stringify(saved));
+    return true;
+  }
+  return false;
 }

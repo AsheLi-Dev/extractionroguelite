@@ -46,4 +46,7 @@ Fill this section with final credits text to include in game menu, store page, o
 
 ```text
 TODO: Add final art credits text.
+
+This project includes content licensed under Creative Commons Attribution 3.0 Unported (CC BY 3.0):
+https://creativecommons.org/licenses/by/3.0/
 ```

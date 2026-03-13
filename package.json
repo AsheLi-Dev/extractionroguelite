@@ -4,7 +4,11 @@
   "description": "A small extensible top-down browser game with loot and equipment.",
   "private": true,
   "scripts": {
-    "start": "npx serve ."
+    "start": "npx serve .",
+    "test": "node --test tests/*.test.js",
+    "test:soul-siphon": "node --test tests/soul-siphon.test.js",
+    "test:progression": "node --test tests/progression-report.test.js",
+    "report:progression": "node --test tests/progression-report.test.js"
   },
   "devDependencies": {
     "playwright": "^1.58.2"

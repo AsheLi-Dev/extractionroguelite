@@ -10,12 +10,38 @@ const ANCESTOR_CLAN_SPRITES = {
   hoarder: "assets/images/Hoarder Clan.png"
 };
 const ancestorClanSpriteCache = {};
+
+const GOLD_ITEMS_ATLAS_SRC = "assets/Environments/items.png";
+const GOLD_ATLAS_TILE = 32;
+const GOLD_SPRITE_SMALL = { row: 24, col: 1 };
+const GOLD_SPRITE_LARGE = { row: 24, col: 2 };
+const goldItemsAtlasCache = {};
+function getGoldItemsAtlasImage() {
+  if (!goldItemsAtlasCache[GOLD_ITEMS_ATLAS_SRC]) {
+    const img = new Image();
+    img.src = GOLD_ITEMS_ATLAS_SRC;
+    goldItemsAtlasCache[GOLD_ITEMS_ATLAS_SRC] = img;
+  }
+  return goldItemsAtlasCache[GOLD_ITEMS_ATLAS_SRC];
+}
 const FLOOR_LABEL_STYLE = {
   common: { text: "#ffffff", bg: "#000000" },
   magic: { text: "#ffffff", bg: ["#0b1f52", "#1e3a8a"] },
   rare: { text: "#000000", bg: "#facc15" },
   legendary: { text: "#000000", bg: "#f59e0b" }
 };
+const FLOOR_LABEL_FONT_SIZE = 12;
+const FLOOR_LABEL_FONT_FAMILY = "\"Trebuchet MS\", Arial, sans-serif";
+const FLOOR_LABEL_SUPERSAMPLE = 2;
+
+function setFloorLabelFont(ctx, pixelSize = FLOOR_LABEL_FONT_SIZE) {
+  ctx.font = `700 ${pixelSize}px ${FLOOR_LABEL_FONT_FAMILY}`;
+}
+
+function measureFloorLabelWidth(ctx, label) {
+  setFloorLabelFont(ctx, FLOOR_LABEL_FONT_SIZE * FLOOR_LABEL_SUPERSAMPLE);
+  return Math.ceil(ctx.measureText(label).width / FLOOR_LABEL_SUPERSAMPLE);
+}
 
 function getCubeTier(cubeKey) {
   const m = /T(\d+)$/i.exec(String(cubeKey || ""));
@@ -31,6 +57,8 @@ function getFloorLootTier(item) {
     // Non-tier cube keys are legendary/special cubes.
     return "legendary";
   }
+  if (item?.type === "LifeOrb" || item?.type === "LifeFlask") return "magic";
+  if (item?.type === "XpOrb") return "common";
   const rarity = String(item?.rarity || "common").toLowerCase();
   if (rarity === "legendary") return "legendary";
   if (rarity === "rare") return "rare";
@@ -68,6 +96,8 @@ export class LootItem {
     this.size = 20;
     this.type = definition.type;
     this.name = definition.name;
+    this.category = definition.category ?? null;
+    this.preciousId = definition.preciousId ?? null;
     this.ringId = definition.ringId ?? null;
     this.ringSpriteKey = definition.ringSpriteKey ?? null;
     this.consumedOnTrigger = !!definition.consumedOnTrigger;
@@ -87,6 +117,10 @@ export class LootItem {
     this.spiritDefId = definition.spiritDefId ?? null;
     this.clans = Array.isArray(definition.clans) ? definition.clans : [];
     this.goldAmount = definition.goldAmount ?? 0;
+    this.xpAmount = definition.xpAmount ?? 0;
+    this.xpOrbSize = definition.xpOrbSize ?? "small"; // "small" | "medium" | "large"
+    this.healFraction = Number(definition.healFraction) || 0;
+    this.healFlat = Number(definition.healFlat) || 0;
     this.burstFrom = burstFromX != null && burstFromY != null ? { x: burstFromX, y: burstFromY } : null;
     this.burstProgress = 0;
     this.pickupDelay = 1.0;
@@ -111,8 +145,37 @@ export class LootItem {
   }
 
   draw(ctx, camera, timeSeconds) {
-    // Floor loot is intentionally label-only; see drawLabel().
-    void ctx; void camera; void timeSeconds;
+    if (this.type === "Gold" && this.goldAmount > 0) {
+      const img = getGoldItemsAtlasImage();
+      if (img.complete && img.naturalWidth) {
+        const cell = this.goldAmount > 20 ? GOLD_SPRITE_LARGE : GOLD_SPRITE_SMALL;
+        const sx = cell.col * GOLD_ATLAS_TILE;
+        const sy = cell.row * GOLD_ATLAS_TILE;
+        const pos = this.displayPosition;
+        const dx = Math.floor(pos.x - camera.position.x);
+        const dy = Math.floor(pos.y - camera.position.y);
+        const drawSize = this.size;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, sx, sy, GOLD_ATLAS_TILE, GOLD_ATLAS_TILE, dx, dy, drawSize, drawSize);
+        ctx.imageSmoothingEnabled = true;
+      }
+    }
+    if (this.type === "XpOrb" && this.xpAmount > 0) {
+      const pos = this.displayPosition;
+      const dx = pos.x - camera.position.x;
+      const dy = pos.y - camera.position.y;
+      const radius = this.size / 2;
+      ctx.save();
+      ctx.fillStyle = "#22c55e";
+      ctx.beginPath();
+      ctx.arc(dx, dy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#16a34a";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
+    void timeSeconds;
   }
 
   drawLabel(ctx, camera, yOffset = 0) {
@@ -128,10 +191,9 @@ export class LootItem {
     const bgColor = colors.bg;
 
     ctx.save();
-    ctx.font = "12px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const textW = Math.ceil(ctx.measureText(label).width);
+    const textW = measureFloorLabelWidth(ctx, label);
     const boxW = textW + 8;
     const boxH = 16;
     const boxX = Math.floor(labelX - boxW / 2);
@@ -146,11 +208,20 @@ export class LootItem {
     }
     ctx.fillRect(boxX, boxY, boxW, boxH);
     ctx.fillStyle = textColor;
-    ctx.fillText(label, labelX, boxY + boxH / 2);
+    ctx.save();
+    ctx.translate(labelX, boxY + boxH / 2);
+    ctx.scale(1 / FLOOR_LABEL_SUPERSAMPLE, 1 / FLOOR_LABEL_SUPERSAMPLE);
+    setFloorLabelFont(ctx, FLOOR_LABEL_FONT_SIZE * FLOOR_LABEL_SUPERSAMPLE);
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
     ctx.restore();
   }
 
-  intersectsPlayer(player) {
+  /**
+   * @param {object} player - Player entity with position and size.
+   * @param {number} [pickupRadiusMult=1] - Multiplier for pickup range (e.g. 1.5 = +50% range).
+   */
+  intersectsPlayer(player, pickupRadiusMult = 1) {
     if (this.age < this.pickupDelay) return false;
     if (this.burstFrom && this.burstProgress < 1) return false;
     const pos = this.displayPosition;
@@ -160,11 +231,14 @@ export class LootItem {
       w: this.size,
       h: this.size
     };
+    const half = (player.size / 2) * pickupRadiusMult;
+    const cx = player.position.x + player.size / 2;
+    const cy = player.position.y + player.size / 2;
     const r2 = {
-      x: player.position.x,
-      y: player.position.y,
-      w: player.size,
-      h: player.size
+      x: cx - half,
+      y: cy - half,
+      w: half * 2,
+      h: half * 2
     };
 
     return (
@@ -273,6 +347,49 @@ export class LootSystem {
     this.items.push(item);
   }
 
+  spawnLifeOrbAt(centerX, centerY) {
+    const size = 20;
+    const margin = this.world.wallThickness + 15;
+    const landX = centerX - size / 2 + (Math.random() - 0.5) * 20;
+    const landY = centerY - size / 2 + (Math.random() - 0.5) * 20;
+    const clampedX = Math.max(margin, Math.min(landX, this.world.width - margin - size));
+    const clampedY = Math.max(margin, Math.min(landY, this.world.height - margin - size));
+    const def = { type: "LifeOrb", name: "Life Orb", healFraction: 0.1 };
+    const item = new LootItem(this.nextId++, clampedX, clampedY, def, centerX, centerY);
+    item.size = size;
+    this.items.push(item);
+  }
+
+  /** @param {"small"|"medium"|"large"} sizeVariant */
+  spawnXpOrbAt(centerX, centerY, sizeVariant) {
+    const xpBySize = { small: 15, medium: 50, large: 180 };
+    const sizeByVariant = { small: 12, medium: 20, large: 28 };
+    const xpAmount = xpBySize[sizeVariant] ?? 15;
+    const size = sizeByVariant[sizeVariant] ?? 12;
+    const margin = this.world.wallThickness + 15;
+    const landX = centerX - size / 2 + (Math.random() - 0.5) * 20;
+    const landY = centerY - size / 2 + (Math.random() - 0.5) * 20;
+    const clampedX = Math.max(margin, Math.min(landX, this.world.width - margin - size));
+    const clampedY = Math.max(margin, Math.min(landY, this.world.height - margin - size));
+    const def = { type: "XpOrb", name: `${xpAmount} XP`, xpAmount, xpOrbSize: sizeVariant };
+    const item = new LootItem(this.nextId++, clampedX, clampedY, def, centerX, centerY);
+    item.size = size;
+    this.items.push(item);
+  }
+
+  spawnLifeFlaskAt(centerX, centerY) {
+    const size = 20;
+    const margin = this.world.wallThickness + 15;
+    const landX = centerX - size / 2 + (Math.random() - 0.5) * 20;
+    const landY = centerY - size / 2 + (Math.random() - 0.5) * 20;
+    const clampedX = Math.max(margin, Math.min(landX, this.world.width - margin - size));
+    const clampedY = Math.max(margin, Math.min(landY, this.world.height - margin - size));
+    const def = { type: "LifeFlask", name: "Life Flask", healFraction: 0.15 };
+    const item = new LootItem(this.nextId++, clampedX, clampedY, def, centerX, centerY);
+    item.size = size;
+    this.items.push(item);
+  }
+
   spawnAncestorSpiritAt(centerX, centerY, def) {
     if (!def) return;
     const size = 20;
@@ -286,15 +403,17 @@ export class LootSystem {
     this.items.push(item);
   }
 
-  update(dt, player, onLootPicked) {
+  update(dt, player, onLootPicked, pickupRadiusMult = 1) {
     for (const item of this.items) {
       item.updateBurst(dt);
     }
 
     const remaining = [];
     for (const item of this.items) {
-      if (item.intersectsPlayer(player)) {
-        if (onLootPicked) onLootPicked(item);
+      if (item.intersectsPlayer(player, pickupRadiusMult)) {
+        // Auto-pickup gold and XP orbs; other items require click
+        if ((item.type === "Gold" || item.type === "XpOrb") && onLootPicked) onLootPicked(item);
+        else remaining.push(item);
       } else {
         remaining.push(item);
       }
@@ -316,7 +435,6 @@ export class LootSystem {
       return ay - by;
     });
     ctx.save();
-    ctx.font = "12px sans-serif";
     for (const item of sorted) {
       const label = item.name || item.type;
       if (!label) continue;
@@ -324,7 +442,7 @@ export class LootSystem {
       const sx = Math.floor(pos.x - camera.position.x);
       const sy = Math.floor(pos.y - camera.position.y);
       const centerX = sx + item.size / 2;
-      const textWidth = Math.ceil(ctx.measureText(label).width);
+      const textWidth = measureFloorLabelWidth(ctx, label);
       const boxW = textWidth + 8;
 
       let chosenOffset = 0;

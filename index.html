@@ -3,32 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Top-Down Room Game</title>
+    <title>Extract Da Panda</title>
     <link rel="stylesheet" href="styles/main.css" />
   </head>
   <body>
     <div id="main-menu" class="main-menu">
       <div class="main-menu-inner">
-        <h1 class="main-menu-title">Space Shooter</h1>
-        <p class="main-menu-subtitle">Defeat the Wasteland Tyrant and save your character!</p>
-        <div class="main-menu-lp">Legacy Points: <span id="main-menu-lp-value">0</span></div>
+        <h1 class="main-menu-title">Extract Da Panda</h1>
+        <p class="main-menu-subtitle">Fight through shifting biomes, grow stronger, and escape alive.</p>
         <button id="main-menu-new-game" class="main-menu-btn">New Game</button>
         <button id="main-menu-tutorial" class="main-menu-btn main-menu-btn-secondary">Tutorial</button>
         <button id="main-menu-instructions" class="main-menu-btn main-menu-btn-secondary">Instructions</button>
         <button id="main-menu-options" class="main-menu-btn main-menu-btn-secondary">Options</button>
         <button id="main-menu-dev-mode" class="main-menu-btn main-menu-btn-secondary">Dev Mode</button>
         <button id="main-menu-legacy-vault" class="main-menu-btn main-menu-btn-secondary">Legacy Vault</button>
-        <button id="main-menu-talent-tree" class="main-menu-btn main-menu-btn-secondary">Talent Tree</button>
         <button id="main-menu-skill-library" class="main-menu-btn main-menu-btn-secondary">Skill Library</button>
         <button id="main-menu-pillars" class="main-menu-btn main-menu-btn-secondary">Pillars</button>
         <button id="main-menu-friends" class="main-menu-btn main-menu-btn-secondary">Friends</button>
         <div id="main-menu-dev-panel" class="main-menu-dev-panel">
           <span class="main-menu-dev-panel-title">DEV</span>
-          <label class="main-menu-dev-panel-row">
-            <span>Add LP:</span>
-            <input type="number" id="main-menu-dev-lp-amount" class="main-menu-dev-input" value="10" min="1" />
-            <button id="main-menu-dev-add-lp" class="main-menu-dev-btn">Add</button>
-          </label>
+          <div class="main-menu-dev-panel-row">
+            <button id="main-menu-dev-999-crystals" class="main-menu-dev-btn" type="button">Give all characters 999 crystals</button>
+          </div>
         </div>
         <section class="hall-of-champions-section">
           <h2>Hall of Champions</h2>
@@ -40,6 +36,7 @@
     <div class="game-root">
       <div class="canvas-wrapper">
         <canvas id="game-canvas"></canvas>
+        <canvas id="minimap-canvas" class="minimap-canvas"></canvas>
         <div id="skill-bar" class="skill-bar">
           <div class="skill-slot" data-slot="0"><span class="skill-key">1</span><div class="skill-icon" id="skill-icon-0">-</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-0">Empty</div><div class="skill-cd-ring" id="skill-cd-0"></div></div>
           <div class="skill-slot" data-slot="1"><span class="skill-key">2</span><div class="skill-icon" id="skill-icon-1">-</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-1">Empty</div><div class="skill-cd-ring" id="skill-cd-1"></div></div>
@@ -53,10 +50,22 @@
           <div id="map-name" class="map-name">Dungeon (Map 1)</div>
           <div id="gold-display" class="gold-display">Gold: 0</div>
           <div id="enemy-count" class="enemy-count">Enemies: 0</div>
+          <div id="souls-display" class="souls-display hidden">Souls: 0</div>
           <div id="escort-quest-indicator" class="escort-quest-indicator hidden">
             <span class="escort-quest-icon">Q</span>
             <span class="escort-quest-text">Escort Quest Active</span>
           </div>
+        </section>
+        <section class="health-bar-section">
+          <div id="player-shield-bar-wrap" class="player-shield-bar-wrap hidden">
+            <div class="player-shield-bar-track">
+              <div id="player-shield-fill" class="player-shield-bar-fill"></div>
+            </div>
+          </div>
+          <div class="player-health-bar-track">
+            <div id="player-health-fill" class="player-health-bar-fill"></div>
+          </div>
+          <div id="player-health-label" class="player-health-label">0 / 0</div>
         </section>
         <section class="xp-section">
           <div class="xp-level-row">
@@ -84,8 +93,6 @@
         <h1>Victory!</h1>
         <p class="victory-message">Your character has been saved!</p>
         <p class="victory-gold" id="victory-gold">Gold: 0</p>
-        <p class="victory-lp" id="victory-lp-earned">Convert gold to Legacy Points below</p>
-        <div id="victory-lp-section" class="victory-lp-section"></div>
         <div class="victory-summary">
           <div class="victory-summary-section">
             <h3>Equipped Items</h3>
@@ -121,8 +128,15 @@
           <label class="skill-select-attack-label">Basic Attack</label>
           <div id="skill-select-attack-type" class="skill-select-attack-type"></div>
         </div>
+        <div class="skill-select-upgrade-section">
+          <label class="skill-select-attack-label">Build Upgrades</label>
+          <p id="skill-select-upgrade-help" class="skill-select-upgrade-help">Choose 4 upgrades for this run. Each level-up randomly improves one of your picks.</p>
+          <div id="skill-select-upgrade-slots" class="skill-select-upgrade-slots"></div>
+          <div id="skill-select-upgrade-pool" class="skill-select-upgrade-pool"></div>
+        </div>
         <div class="skill-select-actions">
           <button id="skill-select-back" class="skill-select-back">Back</button>
+          <button id="skill-select-clear-upgrades" class="skill-select-clear-upgrades" type="button">Clear upgrades</button>
           <button id="skill-select-confirm" class="skill-select-confirm">Start Run</button>
         </div>
       </div>
@@ -131,6 +145,10 @@
     <div id="pre-run-overlay" class="pre-run-overlay hidden">
       <div class="pre-run-box">
         <h1 class="pre-run-title">Prepare for Run</h1>
+        <div class="pre-run-character">
+          <label>Character</label>
+          <div id="pre-run-character-list" class="pre-run-character-btns"></div>
+        </div>
         <div class="pre-run-difficulty">
           <label>Difficulty</label>
           <div class="pre-run-difficulty-btns">
@@ -149,8 +167,8 @@
           <div id="pre-run-conditions-list" class="pre-run-conditions-list"></div>
         </div>
         <div class="pre-run-companion">
-          <h3>Companion</h3>
-          <div id="pre-run-companion" class="pre-run-companion-list"></div>
+          <label>Companion</label>
+          <div id="pre-run-companion" class="pre-run-companion-btns"></div>
         </div>
         <div class="pre-run-actions">
           <button id="pre-run-back" class="pre-run-btn pre-run-back">Back</button>
@@ -164,7 +182,12 @@
       <div class="talent-tree-box">
         <header class="talent-tree-header">
           <h1 class="talent-tree-title">Talent Tree</h1>
-          <div class="talent-tree-lp">Legacy Points: <span id="talent-tree-lp-value">0</span></div>
+          <div id="talent-tree-crystals" class="talent-tree-crystals" aria-label="Crystals from attributes">
+            <span class="talent-tree-crystal" data-crystal="orange" title="Orange (Brutality)">🟠 <span id="talent-tree-crystal-orange">0</span></span>
+            <span class="talent-tree-crystal" data-crystal="green" title="Green (Agility)">🟢 <span id="talent-tree-crystal-green">0</span></span>
+            <span class="talent-tree-crystal" data-crystal="red" title="Red (Vitality)">🔴 <span id="talent-tree-crystal-red">0</span></span>
+            <span class="talent-tree-crystal" data-crystal="yellow" title="Yellow (Luck)">🟡 <span id="talent-tree-crystal-yellow">0</span></span>
+          </div>
           <button id="talent-tree-close" class="talent-tree-btn">Back</button>
         </header>
         <div id="talent-tree-content" class="talent-tree-content"></div>
@@ -207,13 +230,13 @@
     <div id="instructions-overlay" class="instructions-overlay hidden">
       <div class="instructions-box">
         <header class="instructions-header">
-          <h1 class="instructions-title">Game Instructions</h1>
+          <h1 class="instructions-title">How To Play</h1>
           <button id="instructions-close" class="instructions-btn">Back</button>
         </header>
         <div id="instructions-content" class="instructions-content">
           <div class="instructions-section">
             <h2>Objective</h2>
-            <p>Navigate through 5 maps, defeat enemies, collect loot, and defeat the final boss to save your character!</p>
+            <p>Fight through dangerous maps, collect loot, build your run, and survive long enough to extract stronger than you entered.</p>
           </div>
           
           <div class="instructions-section">
@@ -225,6 +248,7 @@
               <li><strong>E</strong> - Interact with objects (shrines, doors)</li>
               <li><strong>I</strong> - Open inventory</li>
               <li><strong>Esc</strong> or <strong>P</strong> - Pause game</li>
+              <li><strong>N</strong> - Start a new run (from Main Menu)</li>
             </ul>
           </div>
           
@@ -285,50 +309,68 @@
     </div>
 
     <div id="legacy-vault-overlay" class="legacy-vault-overlay hidden">
-      <div class="legacy-vault-box">
+      <div id="legacy-vault-box" class="legacy-vault-box">
         <header class="legacy-vault-header">
-          <h1 class="legacy-vault-title">Legacy Vault</h1>
-          <p class="legacy-vault-subtitle">Items collected by your champions. Pick up to <span id="legacy-vault-max-count">3</span> to start your new run.</p>
-          <div class="legacy-vault-actions">
+          <h1 id="legacy-vault-title" class="legacy-vault-title">Legacy Vault</h1>
+          <p id="legacy-vault-subtitle" class="legacy-vault-subtitle">Items collected by your champions. Pick up to <span id="legacy-vault-max-count">3</span> to start your new run.</p>
+          <div id="legacy-vault-actions" class="legacy-vault-actions">
             <span id="legacy-selection-count" class="legacy-selection-count">0 / 3 selected</span>
             <button id="legacy-delete-selected" class="legacy-vault-btn">Delete Selected</button>
             <button id="legacy-vault-close" class="legacy-vault-btn">Back</button>
             <button id="legacy-start-run" class="legacy-vault-btn legacy-vault-btn-primary" disabled>Start New Run</button>
           </div>
         </header>
-        <div class="legacy-vault-tabs">
-          <button id="legacy-vault-tab-items" class="inventory-tab active">Items</button>
-          <button id="legacy-vault-tab-ancestors" class="inventory-tab">Ancestors</button>
-          <button id="legacy-vault-tab-crafting" class="inventory-tab">Crafting</button>
-        </div>
-        <div id="legacy-vault-items-content" class="inventory-overlay-tab-content">
-          <div id="legacy-vault-grid" class="legacy-vault-grid"></div>
-        </div>
-        <div id="legacy-vault-ancestors-content" class="inventory-overlay-tab-content hidden">
-          <div id="legacy-vault-ancestor-grid" class="legacy-vault-grid"></div>
-        </div>
-        <div id="legacy-vault-crafting-content" class="inventory-overlay-tab-content hidden">
-          <section class="inventory-overlay-section">
-            <h2>Cube Inventory</h2>
-            <div id="legacy-cube-inventory-grid" class="cube-inventory-grid"></div>
-          </section>
-          <section class="inventory-overlay-section">
-            <h2>Select Vault Item to Craft</h2>
-            <ul id="legacy-crafting-item-list" class="crafting-item-list"></ul>
-          </section>
-          <section class="inventory-overlay-section">
-            <h2>Craft</h2>
-            <p class="crafting-hint">Select an equipment item above, then select a cube.</p>
-            <div class="crafting-selection-row">
-              <div class="crafting-selection-col">
-                <div id="legacy-crafting-selected-item" class="crafting-selected">No item selected</div>
-                <div id="legacy-crafting-selected-cube" class="crafting-selected">No cube selected</div>
-              </div>
-              <div id="legacy-crafting-item-stats" class="crafting-item-stats hidden"></div>
+        <div class="legacy-vault-body">
+          <div class="legacy-vault-main">
+            <div class="legacy-vault-tabs">
+              <button id="legacy-vault-tab-items" class="inventory-tab active">Items</button>
+              <button id="legacy-vault-tab-ancestors" class="inventory-tab">Ancestors</button>
+              <button id="legacy-vault-tab-crafting" class="inventory-tab">Crafting</button>
             </div>
-            <div id="legacy-crafting-preview" class="crafting-preview hidden"></div>
-            <button id="legacy-crafting-confirm" class="crafting-confirm-btn" disabled>Craft</button>
-          </section>
+            <div id="legacy-vault-items-content" class="inventory-overlay-tab-content">
+              <div id="legacy-vault-grid" class="legacy-vault-grid"></div>
+            </div>
+            <div id="legacy-vault-ancestors-content" class="inventory-overlay-tab-content hidden">
+              <div id="legacy-vault-ancestor-grid" class="legacy-vault-grid"></div>
+            </div>
+            <div id="legacy-vault-crafting-content" class="inventory-overlay-tab-content hidden">
+              <section class="inventory-overlay-section">
+                <h2>Cube Inventory</h2>
+                <div id="legacy-cube-inventory-grid" class="cube-inventory-grid"></div>
+              </section>
+              <section class="inventory-overlay-section">
+                <h2>Select Vault Item to Craft</h2>
+                <ul id="legacy-crafting-item-list" class="crafting-item-list"></ul>
+              </section>
+              <section class="inventory-overlay-section">
+                <h2>Craft</h2>
+                <p class="crafting-hint">Select an equipment item above, then select a cube.</p>
+                <div class="crafting-selection-row">
+                  <div class="crafting-selection-col">
+                    <div id="legacy-crafting-selected-item" class="crafting-selected">No item selected</div>
+                    <div id="legacy-crafting-selected-cube" class="crafting-selected">No cube selected</div>
+                  </div>
+                  <div id="legacy-crafting-item-stats" class="crafting-item-stats hidden"></div>
+                </div>
+                <div id="legacy-crafting-preview" class="crafting-preview hidden"></div>
+                <button id="legacy-crafting-confirm" class="crafting-confirm-btn" disabled>Craft</button>
+              </section>
+            </div>
+          </div>
+          <div id="legacy-vault-ironsmith-panel" class="legacy-vault-ironsmith-panel hidden">
+            <h2 class="legacy-vault-ironsmith-title">Upgrade</h2>
+            <div id="ironsmith-chosen-item" class="ironsmith-chosen-item">
+              <p class="ironsmith-no-item">Select an item from the vault (Weapon, Helmet, Body Armour, Boots).</p>
+            </div>
+            <div id="ironsmith-required-value" class="ironsmith-required-value hidden">Required: <span id="ironsmith-required-value-num">0</span> cube value</div>
+            <div id="ironsmith-cubes-section" class="ironsmith-cubes-section">
+              <h3>Choose cubes to consume</h3>
+              <p class="ironsmith-cube-hint">T1=1, T2=2, T3=5 value each. Select enough to meet the required value.</p>
+              <ul id="ironsmith-cube-list" class="ironsmith-cube-list"></ul>
+              <p id="ironsmith-selected-value" class="ironsmith-selected-value">Selected value: 0</p>
+              <button id="ironsmith-upgrade-btn" class="crafting-confirm-btn" disabled>Upgrade</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -481,11 +523,20 @@
     <div id="affix-tooltip" class="item-tooltip affix-tooltip hidden"></div>
 
       <button id="inventory-button" class="inventory-button">Inventory (I)</button>
-      <button id="pause-toggle" class="pause-toggle">Pause</button>
       <button id="build-log-toggle" class="build-log-toggle" title="Build log">Build</button>
+      <button id="pause-toggle" class="pause-toggle">Pause</button>
+      <div id="pause-enemy-panel" class="pause-enemy-panel hidden">
+        <div class="pause-enemy-panel-title">Enemy Test Spawn</div>
+        <div class="pause-enemy-panel-row">
+          <select id="pause-enemy-select" class="pause-enemy-select">
+            <option value="">-- Select enemy --</option>
+          </select>
+          <button id="pause-enemy-spawn" class="pause-enemy-spawn-btn">Spawn</button>
+        </div>
+      </div>
     <div id="build-log-panel" class="build-log-panel hidden">
       <div class="build-log-header">
-        <span>Upgrades &amp; Penalties</span>
+        <span>Upgrades &amp; Evolution</span>
           <button id="build-log-close" class="build-log-close" aria-label="Close">X</button>
       </div>
       <div class="build-log-content">
@@ -494,8 +545,8 @@
           <ul id="build-log-upgrades" class="build-log-list"></ul>
         </div>
         <div class="build-log-section">
-          <div class="build-log-section-title">Penalties</div>
-          <ul id="build-log-penalties" class="build-log-list"></ul>
+          <div class="build-log-section-title">Evolution</div>
+          <ul id="build-log-evolution" class="build-log-list"></ul>
         </div>
       </div>
     </div>
@@ -533,6 +584,7 @@
             </select>
             <button id="dev-spawn-miniboss" class="dev-button">Spawn Miniboss</button>
           </div>
+          <button id="dev-create-dummy" class="dev-button">Create Dummy</button>
         </div>
         <div class="dev-panel-section">
           <h3>Skill Mod Overrides (per slot)</h3>
@@ -591,6 +643,25 @@
               <option value="">-- Select NPC --</option>
             </select>
             <button id="dev-spawn-npc" class="dev-button">Spawn NPC</button>
+          </div>
+        </div>
+        <div class="dev-panel-section">
+          <h3>Spawn Sub Area</h3>
+          <p class="dev-mod-hint">Spawn a sub area (Totem, Ambush, or Hazard) near the player. For Hazard, pick type: Avalanche (orbs/stun), Earthquake (circles/damage), Swamp (patches/poison), Volcano (fireballs/burn), Hurricane (wind push). Dev mode shows zone outline.</p>
+          <div class="dev-spawn-elite-row">
+            <select id="dev-subarea-select" class="dev-affix-select">
+              <option value="totem">Totem</option>
+              <option value="ambush">Ambush</option>
+              <option value="hazard">Hazard</option>
+            </select>
+            <select id="dev-hazard-type-select" class="dev-affix-select" title="Hazard type (when Hazard is selected)">
+              <option value="avalanche">Avalanche</option>
+              <option value="earthquake">Earthquake</option>
+              <option value="swamp">Swamp</option>
+              <option value="volcano">Volcano</option>
+              <option value="hurricane">Hurricane</option>
+            </select>
+            <button id="dev-spawn-subarea" class="dev-button">Spawn Near Player</button>
           </div>
         </div>
         <div class="dev-panel-section">

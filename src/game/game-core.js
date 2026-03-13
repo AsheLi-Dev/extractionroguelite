@@ -79,6 +79,9 @@ export function applyGameCoreMixin(Game) {
       this.lastTime = timestamp;
 
       if (!this.paused) {
+        if (typeof this.updateRiteRuntime === "function") {
+          this.updateRiteRuntime(dt);
+        }
         this.update(dt);
       }
       this.render();
@@ -104,12 +107,26 @@ export function applyGameCoreMixin(Game) {
     },
 
     returnToMainMenu() {
+      const onReturnToHomeBase = this.runConfig?.onReturnToHomeBase;
+      if (typeof onReturnToHomeBase === "function") {
+        this.destroy();
+        stopBgm();
+        this.gameOverEl?.classList.add("hidden");
+        this.paused = false;
+        if (this.pauseToggleEl) {
+          this.pauseToggleEl.textContent = "Pause";
+          this.pauseToggleEl.classList.remove("paused");
+        }
+        onReturnToHomeBase({ reason: "defeat" });
+        return;
+      }
+
       this.destroy();
       stopBgm();
       // Hide game elements
-      document.getElementById("main-menu").classList.remove("hidden");
-      document.querySelector(".game-root").classList.add("hidden");
-      document.getElementById("pause-toggle").classList.add("hidden");
+      document.getElementById("main-menu")?.classList.remove("hidden");
+      document.querySelector(".game-root")?.classList.add("hidden");
+      document.getElementById("pause-toggle")?.classList.add("hidden");
       document.getElementById("dev-toggle")?.classList.add("hidden");
       document.getElementById("inventory-button")?.classList.add("hidden");
       

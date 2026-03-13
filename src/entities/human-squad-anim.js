@@ -6,6 +6,15 @@ import { HUMAN_SQUAD_SHEET_PATHS, HUMAN_SQUAD_ANIM_DEFAULTS } from "../data/huma
 const sheetCache = {};
 let loadCallbacks = [];
 
+function parseFrameCountFromPath(path) {
+  const m = /_(\d+)x(\d+)\.png$/i.exec(String(path || ""));
+  if (!m) return 0;
+  const cols = Number(m[1]) || 0;
+  const rows = Number(m[2]) || 0;
+  if (cols <= 0 || rows <= 0) return 0;
+  return cols * rows;
+}
+
 function inferFrameCount(img, frameW) {
   if (!img || !img.naturalWidth) return 0;
   const w = img.naturalWidth;
@@ -53,6 +62,8 @@ export function getSheet(path) {
 export function getSheetFrameCount(path, frameW) {
   const img = sheetCache[path];
   if (!img) return 0;
+  const parsedCount = parseFrameCountFromPath(path);
+  if (parsedCount > 0) return parsedCount;
   const h = img.naturalHeight || 32;
   const fw = frameW || h;
   return inferFrameCount(img, fw);
@@ -97,10 +108,10 @@ function measureSheet(animState, sheetKey) {
   const path = resolveSheetPath(animState, sheetKey);
   const img = path ? getSheet(path) : null;
   if (!img || !img.naturalWidth) return { frameW: 32, frameH: 32, frameCount: 1 };
-  const h = img.naturalHeight || 32;
-  const frameW = h;
-  const frameH = h;
-  const frameCount = inferFrameCount(img, frameW);
+  const frameH = img.naturalHeight || 32;
+  const parsedCount = parseFrameCountFromPath(path);
+  const frameCount = parsedCount > 0 ? parsedCount : inferFrameCount(img, frameH);
+  const frameW = Math.max(1, Math.floor(img.naturalWidth / Math.max(1, frameCount)));
   return { frameW, frameH, frameCount };
 }
 

@@ -231,6 +231,12 @@ export function buildItemTooltipContent(item, game = null) {
     }
     html += `<div class="tooltip-stats">${escapeHtml(wText)}</div>`;
   }
+  const equipmentWithUpgrade = ["Weapon", "Helmet", "Body Armour", "Boots"];
+  if (equipmentWithUpgrade.includes(item.type)) {
+    const upgradeLevel = Math.min(5, Math.max(0, item.weaponUpgradeLevel ?? 0));
+    const upgradeText = upgradeLevel >= 5 ? "Upgrade: +5 (max)" : `Upgrade: +${upgradeLevel}`;
+    html += `<div class="tooltip-stats">${escapeHtml(upgradeText)}</div>`;
+  }
   if ((item.vesselsMax || 0) > 0) {
     const vessels = Array.isArray(item.vessels) ? item.vessels : [];
     const filled = vessels.filter((v) => !!v?.spiritId).length;

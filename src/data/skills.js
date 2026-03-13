@@ -1,5 +1,4 @@
 import { getSkillModSockets, getSkillUnlocks } from './constants.js';
-import { hasTalent } from './talents.js';
 
 export const SKILL_CATEGORIES = { projectile: "Projectile", melee: "Melee", aura: "Aura" };
 
@@ -50,7 +49,7 @@ export function getModsForSkillSlot(game, slot) {
 }
 
 export function getModEffectMult(game) {
-  return hasTalent("grandSocketeer") ? 1.5 : 1;
+  return 1;
 }
 
 export function applyElementDebuffsFromMods(game, enemy, mods, skillDamage, gameTime) {
@@ -71,7 +70,19 @@ export function applyElementDebuffsFromMods(game, enemy, mods, skillDamage, game
     enemy.stunUntil = Math.max(enemy.stunUntil || 0, gameTime + 0.5);
   }
   if (mods.includes("toxic")) {
-    enemy.toxicStacks = Math.min(3, (enemy.toxicStacks || 0) + 1);
+    if (typeof game?.applyStackDelta === "function") {
+      game.applyStackDelta(enemy, "enemy.toxic", 1, {
+        stackKey: "toxicStacks",
+        targetType: "enemy",
+        source: "skill_mod_toxic",
+        reason: "toxic_on_hit",
+        mode: "add",
+        min: 0,
+        max: 3
+      });
+    } else {
+      enemy.toxicStacks = Math.min(3, (enemy.toxicStacks || 0) + 1);
+    }
     enemy.toxicUntil = gameTime + 3;
     enemy.toxicAccum = 0;
   }
@@ -108,25 +119,26 @@ export const SKILL_DEFS = [
   { id: "soulAura", name: "Soul Aura", icon: "spr_skill_soulAura", illustration: "assets/UI/Soul Aura.png", baseCd: 0, desc: "Toggle: 50% damage to healing, 2% HP/s", unlock: "vampiric50", category: "aura", auraUpkeep: 0.02, tags: ["aura", "defense"] }
 ];
 
-export function isSkillUnlocked(skillDef) {
+export function isSkillUnlocked(skillDef, game) {
   const u = getSkillUnlocks();
+  const hasT = game && game.hasCharacterTalent ? (id) => game.hasCharacterTalent(id) : () => false;
   if (skillDef.unlock === "always") return true;
   if (skillDef.unlock === "scavengerFull") {
-    return ["cardTranscendence", "phantomExtractor", "vaultMaster", "curator"].some((t) => hasTalent(t));
+    return ["lootTranscendence", "vaultMaster", "curator"].some((t) => hasT(t));
   }
   if (skillDef.unlock === "diff2") return !!u.diff2;
   if (skillDef.unlock === "diff3") return !!u.diff3;
   if (skillDef.unlock === "diff4") return !!u.diff4;
   if (skillDef.unlock === "diff5") return !!u.diff5;
-  if (skillDef.unlock === "fortified") return hasTalent("fortified");
+  if (skillDef.unlock === "fortified") return hasT("fortified");
   if (skillDef.unlock === "vampiric50") return (u.vampiricTriggers || 0) >= 50;
-  if (skillDef.unlock === "mastermind") return hasTalent("curator");
+  if (skillDef.unlock === "mastermind") return hasT("curator");
   if (skillDef.unlock === "secondWindUsed") return !!u.secondWindUsed;
   if (skillDef.unlock === "iceShard5") return !!u.iceShard5;
   if (skillDef.unlock === "lightningOnlyRun") return !!u.lightningOnlyRun;
   return false;
 }
 
-export function getUnlockedSkills() {
-  return SKILL_DEFS.filter((s) => isSkillUnlocked(s));
+export function getUnlockedSkills(game) {
+  return SKILL_DEFS.filter((s) => isSkillUnlocked(s, game));
 }

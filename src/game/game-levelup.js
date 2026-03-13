@@ -1,13 +1,85 @@
 // -------- Game Level Up Methods Mixin --------
-// XP, level up, upgrade choices
-// This module adds methods to Game.prototype when imported
+// Automatic build-driven upgrades and weapon evolutions.
 
 import { getXpForLevel } from '../entities/enemy.js';
 import { markSkillEncountered, addSkillXp } from '../data/constants.js';
-import { hasTalent } from '../data/talents.js';
-import { ATTACK_UPGRADE_DEFS, CONTRADICTORY_UPGRADE_PENALTY, getUpgradeDisplayDescription, getPenaltyDisplayDescription, rollUpgradeValue } from '../data/level-up-data.js';
-import { getAttackEvolutionsForWeapon, getAttackEvolutionById, getEvolutionUnlockProgress } from '../data/attack-evolutions.js';
+import {
+  createEmptyCategoryCounts,
+  getAttackUpgradeDefById,
+  getBuildUpgradePoolForAttackType,
+  getBuildUpgradeQuotaTotalForAttack,
+  getElementalShotUpgradeCategoryCounts,
+  getElementalShotDominantCategories,
+  rollUpgradeValue
+} from '../data/level-up-data.js';
+import { getElementalShotEvolutionState, getElementalShotProfile } from '../data/elemental-shot-evolution.js';
+import {
+  getAttackEvolutionById,
+  getTier1EvolutionOptions,
+  getTier2EvolutionOptions
+} from '../data/attack-evolutions.js';
+import { resolveSoulSiphonDominantCategories } from '../data/soul-siphon-evolution.js';
 import { onRingLevelUp } from './ring-effects.js';
+
+const PROJECTILE_BASE_WEAPON_ID = "ProjectileShot";
+const CATEGORY_ORDER = ["damage", "rhythm", "control", "onhit"];
+const CATEGORY_LABELS = {
+  damage: "Damage",
+  rhythm: "Rhythm",
+  control: "Control",
+  onhit: "OnHit"
+};
+
+const ELEMENTAL_SHOT_CATEGORY_LABELS = {
+  damage: "Damage",
+  rhythm: "Rhythm",
+  control: "Control",
+  elemental: "Elemental"
+};
+
+const ELEMENTAL_SHOT_FIRST_EVO_NAMES = {
+  damage: "Inferno Core",
+  rhythm: "Storm Engine",
+  control: "Tempest Arc",
+  elemental: "Prismatic Cycle"
+};
+
+function cloneCategoryCounts(counts) {
+  return {
+    damage: Math.max(0, Math.floor(Number(counts?.damage) || 0)),
+    rhythm: Math.max(0, Math.floor(Number(counts?.rhythm) || 0)),
+    control: Math.max(0, Math.floor(Number(counts?.control) || 0)),
+    onhit: Math.max(0, Math.floor(Number(counts?.onhit) || 0)),
+    elemental: Math.max(0, Math.floor(Number(counts?.elemental) || 0))
+  };
+}
+
+function getMaxCategoryCount(counts) {
+  return CATEGORY_ORDER.reduce((max, category) => Math.max(max, Number(counts?.[category]) || 0), 0);
+}
+
+function getDominantCategories(counts) {
+  const maxCount = getMaxCategoryCount(counts);
+  if (maxCount <= 0) return [];
+  return CATEGORY_ORDER.filter((category) => (Number(counts?.[category]) || 0) === maxCount);
+}
+
+function closeLevelUpOverlay(game) {
+  const overlay = document.getElementById("level-up-overlay");
+  const rerollBtn = document.getElementById("level-up-reroll");
+  if (overlay) overlay.classList.add("hidden");
+  if (rerollBtn) {
+    rerollBtn.classList.add("hidden");
+    rerollBtn.onclick = null;
+  }
+  game.levelUpChoices = null;
+  game.levelUpChoiceContext = null;
+  game.paused = false;
+  if (game.pauseToggleEl) {
+    game.pauseToggleEl.textContent = "Pause";
+    game.pauseToggleEl.classList.remove("paused");
+  }
+}
 
 export function applyGameLevelUpMixin(Game) {
   Object.assign(Game.prototype, {
@@ -30,85 +102,320 @@ export function applyGameLevelUpMixin(Game) {
       if (upgrade.id === "damageBoost") stats.attackDamagePct += value;
       if (upgrade.id === "rangeBoost") stats.projectileRangePct += value;
       if (upgrade.id === "attackSpeed") stats.attackSpeedPct += value;
+      // Elemental Shot (rarity-first) IDs
+      if (upgrade.id === "elemental_damage") stats.attackDamagePct += value;
+      if (upgrade.id === "range_boost") stats.projectileRangePct += value;
+      if (upgrade.id === "attack_speed") stats.attackSpeedPct += value;
+    },
+
+    refreshAscendedGrowthRuntimeState() {
+      const pickState = this.levelUpPickState;
+      if (!pickState || Number(pickState.pickCount || 0) <= 1) {
+        this.__pillarAscendedGrowthState = null;
+        return;
+      }
+      const currentPickIndex = Math.max(
+        0,
+        Math.min(Number(pickState.pickCount || 1) - 1, Number(pickState.resolvedPicks || 0))
+      );
+      this.__pillarAscendedGrowthState = {
+        active: true,
+        pickCount: Number(pickState.pickCount || 1),
+        picksRemaining: Number(pickState.picksRemaining || 0),
+        resolvedPicks: Number(pickState.resolvedPicks || 0),
+        currentPickIndex,
+        currentEffectiveness: Number(pickState.effectiveness?.[currentPickIndex] ?? 1) || 1,
+        effectiveness: Array.isArray(pickState.effectiveness) ? [...pickState.effectiveness] : [1],
+        chosen: Array.isArray(pickState.chosen) ? [...pickState.chosen] : []
+      };
+    },
+
+    ensureSelectedUpgrades() {
+      if (!Array.isArray(this.selectedUpgrades)) {
+        this.selectedUpgrades = [];
+      }
+      const maxSelected = getBuildUpgradeQuotaTotalForAttack(this.attackType);
+      if (this.selectedUpgrades.length >= maxSelected) return this.selectedUpgrades;
+      const buildPool = getBuildUpgradePoolForAttackType(this.attackType);
+      while (this.selectedUpgrades.length < maxSelected && buildPool.length > 0) {
+        const def = buildPool[Math.floor(Math.random() * buildPool.length)];
+        this.selectedUpgrades.push({
+          id: def.id,
+          name: def.name,
+          category: def.category,
+          level: 0,
+          maxLevel: def.maxLevel
+        });
+      }
+      return this.selectedUpgrades;
     },
 
     getSelectedAttackEvolution(baseWeaponId) {
-      if (!this.weaponEvolutions || !baseWeaponId) return null;
-      const evoId = this.weaponEvolutions[baseWeaponId];
-      if (!evoId) return null;
-      return getAttackEvolutionById(evoId);
+      const state = this.weaponEvolutionState?.[baseWeaponId];
+      if (!state) return null;
+      return getAttackEvolutionById(state.tier2Id || state.tier1Id);
     },
 
-    buildTransformCardsForCurrentAttack() {
-      if (this.attackType !== "projectile") return [];
-      const baseWeaponId = "ProjectileShot";
-      const evolutions = getAttackEvolutionsForWeapon(baseWeaponId);
-      if (!evolutions.length) return [];
+    getProjectileShotEvolution() {
+      return this.getSelectedAttackEvolution(PROJECTILE_BASE_WEAPON_ID);
+    },
 
-      this.ensureUpgradeOnlyStats();
-      this.weaponEvolutions = this.weaponEvolutions || {};
-      this.evolutionGroupSelections = this.evolutionGroupSelections || {};
-      this.loggedEvolutionAvailability = this.loggedEvolutionAvailability || {};
-
-      const out = [];
-      for (const evo of evolutions) {
-        if (this.evolutionGroupSelections[evo.groupId]) continue;
-        if (this.weaponEvolutions[baseWeaponId] === evo.id) continue;
-
-        const progress = getEvolutionUnlockProgress(evo, this.upgradeOnlyStats);
-        if (!progress.unlocked) continue;
-
-        if (!this.loggedEvolutionAvailability[evo.id]) {
-          this.loggedEvolutionAvailability[evo.id] = true;
-          console.info(`[Evolution] Available: ${evo.id} (unlock ${progress.currentPct.toFixed(1)} / ${progress.requiredPct}%)`);
+    getProjectileShotEvolutionOverrides() {
+      if (this.attackType === "projectile") {
+        const profile = typeof getElementalShotProfile === "function" ? getElementalShotProfile(getElementalShotEvolutionState(this)) : null;
+        if (!profile) return null;
+        if ((this.elementalShotEvolutionFirst != null) && !this._elementalShotSurgeSynced) {
+          this._elementalShotSurgeSynced = true;
+          this.elementalState = profile.defaultElement ?? "fire";
+          const sb = profile.surgeBehavior?.elements;
+          if (Array.isArray(sb) && sb[0]) this.nextElementalSurge = sb[0];
         }
-
-        const description = `${evo.summary}<br>(${progress.label}: ${progress.currentPct.toFixed(1)} / ${progress.requiredPct}%)`;
-        const transformOption = {
-          id: evo.transformChoiceId,
-          type: "transform",
-          name: evo.transformName,
-          description,
-          icon: evo.icon || null,
-          baseWeaponId,
-          evolutionId: evo.id,
-          evolutionGroupId: evo.groupId
+        const pm = profile.projectileMods || {};
+        return {
+          damageMult: pm.damageMult,
+          projectileSpeedMult: pm.speedMult,
+          attackSpeedMult: pm.attackSpeedMult,
+          projectileScaleMult: pm.speedMult,
+          infiniteRange: !!pm.pierceInfinite,
+          pierceEnabled: !!pm.pierceInfinite,
+          pierceMaxTargets: pm.pierceInfinite ? Number.POSITIVE_INFINITY : undefined,
+          attackMode: profile.attackMode,
+          defaultElement: profile.defaultElement,
+          surgeBehavior: profile.surgeBehavior,
+          projectileMods: pm,
+          elementalInteractions: profile.elementalInteractions || {},
+          environment: profile.environment || {},
+          links: profile.links || {},
+          formId: profile.formId
         };
-        out.push({
-          type: "transform",
-          transform: transformOption,
-          upgrades: [transformOption],
-          penalty: null,
-          isUnique: true
-        });
       }
+      return this.getProjectileShotEvolution()?.overrides || null;
+    },
 
-      return out;
+    hasAttackUpgrade(id) {
+      return (this.runAttackUpgrades || []).some((upgrade) => upgrade.id === id);
+    },
+
+    getAttackUpgradeValue(id) {
+      return (this.runAttackUpgrades || []).reduce((sum, upgrade) => {
+        if (upgrade.id !== id || upgrade.value == null) return sum;
+        return sum + (upgrade.percent ? upgrade.value / 100 : upgrade.value);
+      }, 0);
+    },
+
+    getAttackUpgradeStackCount(id) {
+      return (this.runAttackUpgrades || []).reduce((sum, upgrade) => {
+        if (upgrade.id !== id) return sum;
+        const lvl = Number(upgrade.level || 1);
+        return sum + (Number.isFinite(lvl) && lvl > 0 ? lvl : 1);
+      }, 0);
+    },
+
+    /** Elemental Shot: effective max charge (profile can override, faster_charge reduces by 2 per stack). */
+    getEffectiveMaxElementalCharge() {
+      if (this.attackType !== "projectile") return this.maxElementalCharge ?? 12;
+      const profileCharge = this.getElementalShotProfile?.()?.surgeChargeRequired;
+      const base = profileCharge != null ? profileCharge : (this.maxElementalCharge ?? 12);
+      const reduce = typeof this.getAttackUpgradeStackCount === "function" ? this.getAttackUpgradeStackCount("faster_charge") * 2 : 0;
+      return Math.max(2, base - reduce);
+    },
+
+    /**
+     * Elemental Shot evolution trace: attack type, applied upgrades, category counts,
+     * threshold checks, and evolution assignment. Use for debugging why evolutions never trigger.
+     * @returns {object|null} Trace object or null if not projectile.
+     */
+    getElementalShotEvolutionTrace() {
+      const attackType = this.attackType;
+      const trace = {
+        attackType,
+        isProjectile: attackType === "projectile",
+        level: this.level,
+        appliedUpgrades: {
+          length: (this.runAttackUpgrades || []).length,
+          ids: (this.runAttackUpgrades || []).map((u) => u.id),
+          perUpgrade: (this.runAttackUpgrades || []).map((u) => {
+            const def = typeof getAttackUpgradeDefById === "function" ? getAttackUpgradeDefById(attackType, u.id) : null;
+            const category = def?.category ?? null;
+            const inElementalKeys = def && ["damage", "rhythm", "control", "elemental"].includes(category);
+            return { id: u.id, defFound: !!def, category, inElementalKeys, level: u.level };
+          })
+        },
+        categoryCounts: null,
+        maxCount: 0,
+        dominantFirst: null,
+        dominantSecond: null,
+        thresholdFirst: false,
+        thresholdSecond: false,
+        evolutionFirst: this.elementalShotEvolutionFirst ?? null,
+        evolutionSecond: this.elementalShotEvolutionSecond ?? null,
+        assignment: { firstAssigned: false, secondAssigned: false },
+        reasons: []
+      };
+      if (attackType !== "projectile") {
+        trace.reasons.push("attackType is not 'projectile'");
+        return trace;
+      }
+      const counts = typeof getElementalShotUpgradeCategoryCounts === "function" ? getElementalShotUpgradeCategoryCounts(this) : { damage: 0, rhythm: 0, control: 0, elemental: 0 };
+      trace.categoryCounts = counts;
+      trace.maxCount = Math.max(counts.damage || 0, counts.rhythm || 0, counts.control || 0, counts.elemental || 0);
+      const [first, second] = typeof getElementalShotDominantCategories === "function" ? getElementalShotDominantCategories(counts) : [null, null];
+      trace.dominantFirst = first;
+      trace.dominantSecond = second;
+      trace.thresholdFirst = this.level >= 9;
+      trace.thresholdSecond = this.level >= 16;
+
+      if (!this.elementalShotEvolutionFirst) {
+        if (!trace.thresholdFirst) trace.reasons.push("first: level < 9");
+        else if (!first) trace.reasons.push("first: no dominant category (all zeros?)");
+        else trace.assignment.firstAssigned = true;
+      } else {
+        trace.assignment.firstAssigned = true;
+      }
+      if (!this.elementalShotEvolutionSecond && this.elementalShotEvolutionFirst) {
+        if (!trace.thresholdSecond) trace.reasons.push("second: level < 16");
+        else if (!first) trace.reasons.push("second: no dominant category");
+        else trace.assignment.secondAssigned = true;
+      } else if (this.elementalShotEvolutionSecond) {
+        trace.assignment.secondAssigned = true;
+      }
+      if (trace.reasons.length > 0) {
+        const defsMissing = trace.appliedUpgrades.perUpgrade.filter((p) => !p.defFound).length;
+        if (defsMissing > 0) trace.diagnostic = `${defsMissing} upgrade(s) have no def for attackType '${attackType}' (wrong pool or id)?`;
+        else if (!trace.thresholdFirst && trace.appliedUpgrades.length < 5) trace.diagnostic = `Only ${trace.appliedUpgrades.length} upgrades in runAttackUpgrades; need 5 in one category (grantRandomSelectedUpgrade adding?)`;
+        else if (!trace.thresholdFirst) trace.diagnostic = "maxCount < 5; spread upgrades across damage/rhythm/control/elemental?";
+        else trace.diagnostic = trace.reasons.join("; ");
+      }
+      return trace;
+    },
+
+    /** Elemental Shot: lightweight debug info (evolution, profile, upgrades, charge, category counts). */
+    getElementalShotDebugInfo() {
+      if (this.attackType !== "projectile") return null;
+      const counts = typeof getElementalShotUpgradeCategoryCounts === "function" ? getElementalShotUpgradeCategoryCounts(this) : { damage: 0, rhythm: 0, control: 0, elemental: 0 };
+      const [firstDominant, secondDominant] = typeof getElementalShotDominantCategories === "function" ? getElementalShotDominantCategories(counts) : [null, null];
+      const evoState = typeof getElementalShotEvolutionState === "function" ? getElementalShotEvolutionState(this) : { first: null, second: null, formId: "base" };
+      const profile = typeof getElementalShotProfile === "function" ? getElementalShotProfile(evoState) : null;
+      const upgrades = (this.runAttackUpgrades || []).filter((u) => ["elemental_damage", "burning_power", "burn_hunter", "attack_speed", "projectile_speed", "elemental_charge", "range_boost", "spread_reduction", "crit_chance", "lightning_conduction", "wind_bleed", "extra_projectile", "faster_charge", "fire_explosion", "detonation_boost", "wind_force", "seeking", "chain_lightning", "explosive_burn", "inferno", "elemental_overdrive", "storm_wind", "superstorm"].includes(u.id));
+      const stacks = (id) => (typeof this.getAttackUpgradeStackCount === "function" ? this.getAttackUpgradeStackCount(id) : 0);
+      const surgeSec = this.hasAttackUpgrade?.("elemental_overdrive") ? 5 : (profile?.surgeBehavior?.durationSec ?? 3);
+      return {
+        firstEvolution: this.elementalShotEvolutionFirst ?? null,
+        secondEvolution: this.elementalShotEvolutionSecond ?? null,
+        formId: evoState?.formId ?? "base",
+        attackMode: profile?.attackMode ?? "projectile",
+        defaultElement: profile?.defaultElement ?? "fire",
+        currentElement: this.elementalState ?? "fire",
+        nextSurgeElement: this.nextElementalSurge ?? "wind",
+        surgeEndTime: this.elementalSurgeEndTime ?? 0,
+        categoryCounts: counts,
+        firstDominant: firstDominant,
+        secondDominant: secondDominant,
+        upgrades: upgrades.map((u) => ({ id: u.id, level: u.level || 1, value: u.value })),
+        elementalCharge: this.elementalCharge ?? 0,
+        maxElementalCharge: this.getEffectiveMaxElementalCharge?.() ?? 12,
+        activeStormCount: (this.elementalStorms || []).length,
+        activeSwirlCount: (this.elementalSwirls || []).filter((s) => !s.consumed && this.time < (s.endTime || 0)).length,
+        derived: {
+          damageMult: (profile?.projectileMods?.damageMult ?? 1) * (1 + (this.getAttackUpgradeValue?.("elemental_damage") || 0)),
+          attackSpeedMult: (profile?.projectileMods?.attackSpeedMult ?? 1) * (1 + (this.getAttackUpgradeValue?.("attack_speed") || 0)),
+          projectileSpeedMult: (profile?.projectileMods?.speedMult ?? 1) * (1 + (this.getAttackUpgradeValue?.("projectile_speed") || 0)),
+          chainCount: 2 + (stacks("chain_lightning") || 0),
+          surgeDurationSec: surgeSec
+        }
+      };
+    },
+
+    hasAttackPenalty(id) {
+      return (this.runAttackPenalties || []).some((penalty) => penalty.id === id);
+    },
+
+    getAttackPenaltyValue(id) {
+      return (this.runAttackPenalties || []).reduce((sum, penalty) => {
+        if (penalty.id !== id || penalty.value == null) return sum;
+        return sum + (penalty.percent ? penalty.value / 100 : penalty.value);
+      }, 0);
+    },
+
+    getCategoryCounts() {
+      if (!this.categoryCounts) this.categoryCounts = createEmptyCategoryCounts();
+      return cloneCategoryCounts(this.categoryCounts);
+    },
+
+    getTier1Prediction() {
+      const history = Array.isArray(this.upgradeHistory) ? this.upgradeHistory.slice(0, 5) : [];
+      const counts = createEmptyCategoryCounts();
+      for (const entry of history) {
+        if (!entry?.category || counts[entry.category] == null) continue;
+        counts[entry.category]++;
+      }
+      return {
+        counts,
+        upgradesConsidered: history.length,
+        remainingUntilEvolution: Math.max(0, 5 - history.length),
+        dominantCategories: getDominantCategories(counts),
+        resolvedEvolutionId: this.tier1EvolutionId || null
+      };
+    },
+
+    getTier2Progress() {
+      const counts = this.getCategoryCounts();
+      const progress = {};
+      for (const category of CATEGORY_ORDER) {
+        const current = Number(counts[category]) || 0;
+        progress[category] = {
+          label: CATEGORY_LABELS[category],
+          current,
+          target: 5,
+          unlocked: current >= 5
+        };
+      }
+      return progress;
     },
 
     applyTransformChoice(transformOption) {
-      const baseWeaponId = transformOption?.baseWeaponId;
+      const baseWeaponId = transformOption?.baseWeaponId || PROJECTILE_BASE_WEAPON_ID;
       const evolutionId = transformOption?.evolutionId;
       if (!baseWeaponId || !evolutionId) return;
-
       const evoDef = getAttackEvolutionById(evolutionId);
       if (!evoDef) return;
 
+      this.weaponEvolutionState = this.weaponEvolutionState || {};
       this.weaponEvolutions = this.weaponEvolutions || {};
       this.evolutionGroupSelections = this.evolutionGroupSelections || {};
 
-      const groupId = evoDef.groupId;
-      const alreadyChosen = this.evolutionGroupSelections[groupId];
-      if (alreadyChosen && alreadyChosen !== evolutionId) return;
+      const state = this.weaponEvolutionState[baseWeaponId] || { tier1Id: null, tier2Id: null };
+      if (evoDef.tier === 1) {
+        state.tier1Id = evoDef.id;
+        state.tier2Id = null;
+        this.tier1EvolutionId = evoDef.id;
+        this.tier2EvolutionId = null;
+        this.tier2EvolutionPending = false;
+        this.tier2DelayRemaining = 0;
+      } else {
+        state.tier1Id = state.tier1Id || evoDef.parentEvolutionId || null;
+        state.tier2Id = evoDef.id;
+        this.tier1EvolutionId = state.tier1Id;
+        this.tier2EvolutionId = evoDef.id;
+        this.tier2EvolutionPending = false;
+        this.tier2DelayRemaining = 0;
+      }
+      this.weaponEvolutionState[baseWeaponId] = state;
+      this.weaponEvolutions[baseWeaponId] = state.tier2Id || state.tier1Id || null;
+      if (evoDef.groupId) this.evolutionGroupSelections[evoDef.groupId] = evoDef.id;
 
-      this.weaponEvolutions[baseWeaponId] = evolutionId;
-      this.evolutionGroupSelections[groupId] = evolutionId;
-      console.info(`[Evolution] Chosen: ${evolutionId} for ${baseWeaponId}`);
+      // Spiritual Resonance: souls on Soul Siphon evolution
+      if (baseWeaponId === PROJECTILE_BASE_WEAPON_ID && typeof this.getAttackUpgradeStackCount === "function") {
+        const stacks = this.getAttackUpgradeStackCount("spiritual_resonance");
+        if (stacks > 0 && typeof this.runSoulsTotal === "number") {
+          const bonusSouls = 8 * stacks;
+          this.runSoulsTotal = (this.runSoulsTotal || 0) + bonusSouls;
+        }
+      }
     },
 
     grantXP(amount) {
       let mult = this.equipmentXpGainedMult ?? 1;
-      // Frenzy buff: 20% XP gained
       if (this.frenzyBuffUntil > this.time) {
         mult *= 1.2;
       }
@@ -128,193 +435,463 @@ export function applyGameLevelUpMixin(Game) {
       }
     },
 
-    checkLevelUp() {
-      if (this.levelUpChoices) return;
-      const nextThreshold = getXpForLevel(this.level + 1);
-      if (this.xp >= nextThreshold) {
-        this.level++;
-        this.levelUpRerollsRemaining = typeof this.getPillarLevelUpRerolls === "function"
-          ? this.getPillarLevelUpRerolls()
-          : 0;
-        this.showLevelUpChoices();
-      }
+    createAppliedUpgradeFromSelection(selectedUpgrade) {
+      const def = getAttackUpgradeDefById(this.attackType, selectedUpgrade?.id);
+      if (!def) return null;
+      return {
+        id: def.id,
+        name: def.name,
+        description: def.description,
+        category: def.category,
+        level: Math.max(1, Math.floor(Number(selectedUpgrade?.level) || 1)),
+        maxLevel: def.maxLevel,
+        value: rollUpgradeValue(def),
+        percent: !!def.valueRange?.percent
+      };
     },
 
-    buildLevelUpCards() {
-      const defs = ATTACK_UPGRADE_DEFS[this.attackType];
-      if (!defs) return [];
-      const takenUpgrades = new Set((this.runAttackUpgrades || []).map((u) => u.id));
-      const takenPenalties = new Set((this.runAttackPenalties || []).map((p) => p.id));
+    grantRandomSelectedUpgrade() {
+      const selectedUpgrades = this.ensureSelectedUpgrades();
+      const available = selectedUpgrades.filter((upgrade) => {
+        if (upgrade?.maxLevel == null) return true;
+        return Number(upgrade.level || 0) < Number(upgrade.maxLevel || 0);
+      });
+      if (available.length === 0) return null;
+      const selectedUpgrade = available[Math.floor(Math.random() * available.length)];
+      selectedUpgrade.level = Math.max(0, Number(selectedUpgrade.level) || 0) + 1;
+      const appliedUpgrade = this.createAppliedUpgradeFromSelection(selectedUpgrade);
+      if (!appliedUpgrade) return null;
+      this.runAttackUpgrades = this.runAttackUpgrades || [];
+      this.runAttackUpgrades.push(appliedUpgrade);
+      this.addUpgradeOnlyStatsFromLevelUpUpgrade(appliedUpgrade);
+      this.upgradeHistory = this.upgradeHistory || [];
+      this.upgradeHistory.push({
+        id: selectedUpgrade.id,
+        name: selectedUpgrade.name,
+        category: selectedUpgrade.category,
+        level: selectedUpgrade.level,
+        maxLevel: selectedUpgrade.maxLevel
+      });
+      if (!this.categoryCounts) this.categoryCounts = createEmptyCategoryCounts();
+      if (this.categoryCounts[selectedUpgrade.category] == null) {
+        this.categoryCounts[selectedUpgrade.category] = 0;
+      }
+      this.categoryCounts[selectedUpgrade.category]++;
+      return appliedUpgrade;
+    },
 
-      const pickUniquePenalty = (excludeIds = []) => {
-        const pool = (defs.uniquePenalties || []).filter(
-          (p) => !takenPenalties.has(p.id) && !excludeIds.includes(p.id)
-        );
-        if (pool.length === 0) return null;
-        const def = pool[Math.floor(Math.random() * pool.length)];
-        return { id: def.id, name: def.name, description: def.description, value: undefined };
+    shouldForceTier2EvolutionPrompt() {
+      return !this.tier2EvolutionId && this.tier2EvolutionPending && this.tier2DelayRemaining <= 0;
+    },
+
+    getTier1EvolutionChoiceDefs() {
+      const prediction = this.getTier1Prediction();
+      return getTier1EvolutionOptions(prediction.dominantCategories, PROJECTILE_BASE_WEAPON_ID);
+    },
+
+    getUnlockedTier2Categories() {
+      const counts = this.getCategoryCounts();
+      return CATEGORY_ORDER.filter((category) => (Number(counts[category]) || 0) >= 5);
+    },
+
+    getTier2EvolutionChoiceDefs() {
+      if (!this.tier1EvolutionId) return [];
+      return getTier2EvolutionOptions(
+        this.tier1EvolutionId,
+        this.getUnlockedTier2Categories(),
+        PROJECTILE_BASE_WEAPON_ID
+      );
+    },
+
+    openEvolutionPrompt(context, evolutionDefs, options = {}) {
+      if (!Array.isArray(evolutionDefs) || evolutionDefs.length === 0) return false;
+      this.levelUpChoices = evolutionDefs.map((evoDef) => ({
+        type: "evolution",
+        evolutionId: evoDef.id,
+        name: evoDef.name,
+        description: evoDef.summary,
+        tier: evoDef.tier
+      }));
+      this.levelUpChoiceContext = {
+        ...context,
+        delayAllowed: !!options.delayAllowed
       };
 
-      const cards = [];
-      const usedInOfferUp = new Set();
-      const usedInOfferPen = new Set();
-      for (let i = 0; i < 2; i++) {
-        const upgrades = [];
-        for (let j = 0; j < 2; j++) {
-          const poolUp = (defs.standardUpgrades || []).filter((u) => !usedInOfferUp.has(u.id));
-          if (poolUp.length === 0) break;
-          const defUp = poolUp[Math.floor(Math.random() * poolUp.length)];
-          const upgrade = { id: defUp.id, name: defUp.name, description: defUp.description, value: rollUpgradeValue(defUp), percent: !!defUp.valueRange?.percent };
-          upgrades.push(upgrade);
-          usedInOfferUp.add(upgrade.id);
-        }
-        const poolPen = (defs.standardPenalties || []).filter((p) => !usedInOfferPen.has(p.id));
-        if (upgrades.length < 2 || poolPen.length === 0) break;
-        const defPen = poolPen[Math.floor(Math.random() * poolPen.length)];
-        const penalty = { id: defPen.id, name: defPen.name, description: defPen.description, value: rollUpgradeValue(defPen), percent: !!defPen.valueRange?.percent };
-        cards.push({ upgrades, penalty, isUnique: false });
-        usedInOfferPen.add(penalty.id);
-      }
-
-      const uUpgrades = [];
-      const showUniqueCard = this.level === 5 || this.level === 10;
-      if (showUniqueCard) {
-        const usedUniqueUp = new Set();
-        for (let j = 0; j < 1; j++) {
-          const poolU = (defs.uniqueUpgrades || []).filter((u) => !takenUpgrades.has(u.id) && !usedUniqueUp.has(u.id));
-          if (poolU.length === 0) break;
-          const defU = poolU[Math.floor(Math.random() * poolU.length)];
-          uUpgrades.push({ id: defU.id, name: defU.name, description: defU.description, value: undefined });
-          usedUniqueUp.add(defU.id);
-        }
-        let blockedPenalties = [];
-        for (const u of uUpgrades) {
-          blockedPenalties = blockedPenalties.concat(CONTRADICTORY_UPGRADE_PENALTY[u.id] || []);
-        }
-        const uPen = pickUniquePenalty(blockedPenalties);
-        if (uUpgrades.length === 1 && uPen) {
-          cards.push({ upgrades: uUpgrades, penalty: uPen, isUnique: true });
-        }
-      }
-
-      const poolUpOnly = (defs.standardUpgrades || []).filter((u) => !usedInOfferUp.has(u.id));
-      if (poolUpOnly.length > 0) {
-        const defUp = poolUpOnly[Math.floor(Math.random() * poolUpOnly.length)];
-        const upgrade = { id: defUp.id, name: defUp.name, description: defUp.description, value: rollUpgradeValue(defUp), percent: !!defUp.valueRange?.percent };
-        cards.push({ upgrades: [upgrade], penalty: null, isUnique: false });
-      }
-
-      const transformCards = this.buildTransformCardsForCurrentAttack();
-      if (transformCards.length > 0) {
-        const maxCardsInOffer = 3;
-        const keptNonTransform = cards.slice(0, Math.max(0, maxCardsInOffer - transformCards.length));
-        const shownTransforms = transformCards.slice(0, maxCardsInOffer);
-        return keptNonTransform.concat(shownTransforms);
-      }
-
-      return cards;
-    },
-
-    showLevelUpChoices() {
-      this.levelUpChoices = this.buildLevelUpCards();
-      if (!this.levelUpChoices || this.levelUpChoices.length === 0) {
-        this.levelUpChoices = null;
-        return;
-      }
-      
       const overlay = document.getElementById("level-up-overlay");
+      const titleEl = overlay?.querySelector(".level-up-title");
+      const subtitleEl = overlay?.querySelector(".level-up-subtitle");
       const choicesEl = document.getElementById("level-up-choices");
       const rerollBtn = document.getElementById("level-up-reroll");
-      if (!overlay || !choicesEl) return;
+      if (!overlay || !titleEl || !subtitleEl || !choicesEl) return false;
 
+      titleEl.textContent = context.title || "Evolution";
+      subtitleEl.textContent = context.subtitle || "Choose an evolution.";
       choicesEl.innerHTML = "";
-      for (const card of this.levelUpChoices) {
+      for (const choice of this.levelUpChoices) {
         const btn = document.createElement("button");
-        btn.className = "level-up-card" + (card.isUnique ? " level-up-card-unique" : "");
-        const star = card.isUnique ? '<span class="level-up-card-star">spr_ui_star</span>' : "";
-        const upgradeBlocks = (card.upgrades || []).map(
-          (u, idx) => `<div class="level-up-card-upgrade">${idx === 0 ? star : ""}<strong>${u.name}</strong><br><span class="level-up-card-desc">${getUpgradeDisplayDescription(u)}</span></div>`
-        ).join("");
-        const penaltyBlock = card.penalty
-          ? `<div class="level-up-card-divider"></div><div class="level-up-card-penalty"><strong>${card.penalty.name}</strong><br><span class="level-up-card-desc">${getPenaltyDisplayDescription(card.penalty)}</span></div>`
-          : `<div class="level-up-card-no-penalty">No penalty</div>`;
-        btn.innerHTML = `<div class="level-up-card-inner">${upgradeBlocks}${penaltyBlock}</div>`;
-        btn.addEventListener("click", () => this.applyLevelUpChoice(card, btn));
+        btn.className = "level-up-card level-up-card-unique";
+        btn.innerHTML = `
+          <div class="level-up-card-inner">
+            <div class="level-up-card-upgrade">
+              <strong>${choice.name}</strong><br>
+              <span class="level-up-card-desc">${choice.description || ""}</span>
+            </div>
+          </div>
+        `;
+        btn.addEventListener("click", () => this.applyLevelUpChoice(choice, btn));
         choicesEl.appendChild(btn);
       }
+
       if (rerollBtn) {
-        const pillarRerollsLeft = Math.max(0, Number(this.levelUpRerollsRemaining) || 0);
-        const canUseWildCard = hasTalent("wildCard") && !this.wildCardRerollUsed;
-        const canReroll = canUseWildCard || pillarRerollsLeft > 0;
-        rerollBtn.classList.toggle("hidden", !canReroll);
-        if (canReroll) {
-          rerollBtn.textContent = pillarRerollsLeft > 0
-            ? `Reroll (${pillarRerollsLeft} left)`
-            : "Reroll (Wild Card)";
+        if (context.type === "tier2" && options.delayAllowed) {
+          rerollBtn.classList.remove("hidden");
+          rerollBtn.textContent = "Delay Tier 2";
+          rerollBtn.onclick = () => this.delayTier2Evolution();
+        } else {
+          rerollBtn.classList.add("hidden");
+          rerollBtn.onclick = null;
         }
-        rerollBtn.onclick = canReroll ? () => {
-          if ((this.levelUpRerollsRemaining || 0) > 0) {
-            this.levelUpRerollsRemaining = Math.max(0, this.levelUpRerollsRemaining - 1);
-          } else {
-            this.wildCardRerollUsed = true;
-          }
-          this.showLevelUpChoices();
-        } : null;
       }
+
       overlay.classList.remove("hidden");
-      const buildLogPanel = document.getElementById("build-log-panel");
-      if (buildLogPanel) {
-        buildLogPanel.classList.remove("hidden");
-        if (this.buildLogRefresh) this.buildLogRefresh();
-      }
       this.paused = true;
       if (this.pauseToggleEl) {
         this.pauseToggleEl.textContent = "Resume";
         this.pauseToggleEl.classList.add("paused");
       }
-    },
-
-    applyLevelUpChoice(card, cardEl) {
-      if (card?.type === "transform" && card.transform) {
-        this.applyTransformChoice(card.transform);
-      } else {
-        for (const u of (card.upgrades || [])) {
-          this.runAttackUpgrades.push(u);
-          this.addUpgradeOnlyStatsFromLevelUpUpgrade(u);
-        }
-        if (card.penalty) this.runAttackPenalties.push(card.penalty);
-      }
-      onRingLevelUp(this);
-      this.levelUpChoices = null;
-      
-      if (cardEl) {
-        cardEl.classList.add("level-up-card-selected");
-        setTimeout(() => {
-          const overlay = document.getElementById("level-up-overlay");
-          if (overlay) overlay.classList.add("hidden");
-          this.paused = false;
-          if (this.pauseToggleEl) {
-            this.pauseToggleEl.textContent = "Pause";
-            this.pauseToggleEl.classList.remove("paused");
-          }
-          this.recalculateStats();
-          this.updateXpUI();
-          this.checkLevelUp();
-          if (this.buildLogRefresh) this.buildLogRefresh();
-        }, 320);
-      } else {
-        const overlay = document.getElementById("level-up-overlay");
-        if (overlay) overlay.classList.add("hidden");
-        this.paused = false;
-        if (this.pauseToggleEl) {
-          this.pauseToggleEl.textContent = "Pause";
-          this.pauseToggleEl.classList.remove("paused");
-        }
-        this.recalculateStats();
-        this.updateXpUI();
-        this.checkLevelUp();
+      const buildLogPanel = document.getElementById("build-log-panel");
+      if (buildLogPanel) {
+        buildLogPanel.classList.remove("hidden");
         if (this.buildLogRefresh) this.buildLogRefresh();
       }
+      return true;
+    },
+
+    openElementalShotEvolutionPrompt(context, choices) {
+      if (!Array.isArray(choices) || choices.length === 0) return false;
+      this.levelUpChoices = choices.map((c) => ({
+        type: "elementalShotEvolution",
+        stage: c.stage,
+        category: c.category,
+        name: c.name,
+        description: c.description || ""
+      }));
+      this.levelUpChoiceContext = { ...context, delayAllowed: false };
+
+      const overlay = document.getElementById("level-up-overlay");
+      const titleEl = overlay?.querySelector(".level-up-title");
+      const subtitleEl = overlay?.querySelector(".level-up-subtitle");
+      const choicesEl = document.getElementById("level-up-choices");
+      const rerollBtn = document.getElementById("level-up-reroll");
+      if (!overlay || !titleEl || !subtitleEl || !choicesEl) return false;
+
+      titleEl.textContent = context.title || "Evolution";
+      subtitleEl.textContent = context.subtitle || "";
+      choicesEl.innerHTML = "";
+      for (const choice of this.levelUpChoices) {
+        const btn = document.createElement("button");
+        btn.className = "level-up-card level-up-card-unique";
+        btn.innerHTML = `
+          <div class="level-up-card-inner">
+            <div class="level-up-card-upgrade">
+              <strong>${choice.name}</strong><br>
+              <span class="level-up-card-desc">${choice.description || ""}</span>
+            </div>
+          </div>
+        `;
+        btn.addEventListener("click", () => this.applyLevelUpChoice(choice, btn));
+        choicesEl.appendChild(btn);
+      }
+
+      if (rerollBtn) {
+        rerollBtn.classList.add("hidden");
+        rerollBtn.onclick = null;
+      }
+
+      overlay.classList.remove("hidden");
+      this.paused = true;
+      if (this.pauseToggleEl) {
+        this.pauseToggleEl.textContent = "Resume";
+        this.pauseToggleEl.classList.add("paused");
+      }
+      const buildLogPanel = document.getElementById("build-log-panel");
+      if (buildLogPanel) {
+        buildLogPanel.classList.remove("hidden");
+        if (this.buildLogRefresh) this.buildLogRefresh();
+      }
+      return true;
+    },
+
+    getElementalShotDominantCategoriesForEvolution() {
+      const counts = getElementalShotUpgradeCategoryCounts(this);
+      const [first, second] = getElementalShotDominantCategories(counts);
+      const firstCat = first || "damage";
+      const secondCat = (second && second !== firstCat) ? second : "elemental";
+      return [firstCat, secondCat];
+    },
+
+    maybeOpenElementalShotFirstEvolutionPrompt() {
+      if (this.attackType !== "projectile") return false;
+      if (this.elementalShotEvolutionFirst) return false;
+      if (this.level !== 9) return false;
+      const [major] = this.getElementalShotDominantCategoriesForEvolution();
+      const label = ELEMENTAL_SHOT_CATEGORY_LABELS[major] || "Damage";
+      const name = ELEMENTAL_SHOT_FIRST_EVO_NAMES[major] || "Inferno Core";
+      return this.openElementalShotEvolutionPrompt({
+        type: "elementalShotFirst",
+        title: "Elemental Shot – First Evolution",
+        subtitle: `Your build has converged on ${label}.`
+      }, [{
+        stage: "first",
+        category: major,
+        name,
+        description: `First evolution: ${label}.`
+      }]);
+    },
+
+    maybeOpenElementalShotSecondEvolutionPrompt() {
+      if (this.attackType !== "projectile") return false;
+      if (!this.elementalShotEvolutionFirst || this.elementalShotEvolutionSecond) return false;
+      if (this.level !== 16) return false;
+      const [major, secondMajor] = this.getElementalShotDominantCategoriesForEvolution();
+      const opts = [major, secondMajor].filter((x, i, a) => x && a.indexOf(x) === i);
+      const choices = opts.map((cat) => ({
+        stage: "second",
+        category: cat,
+        name: `${ELEMENTAL_SHOT_CATEGORY_LABELS[cat] || cat} Path`,
+        description: `Second evolution option: ${ELEMENTAL_SHOT_CATEGORY_LABELS[cat] || cat}.`
+      }));
+      return this.openElementalShotEvolutionPrompt({
+        type: "elementalShotSecond",
+        title: "Elemental Shot – Second Evolution",
+        subtitle: "Choose your second evolution."
+      }, choices);
+    },
+
+    delayTier2Evolution() {
+      this.tier2EvolutionPending = true;
+      this.tier2DelayRemaining = 3;
+      closeLevelUpOverlay(this);
+      this.recalculateStats();
+      this.updateXpUI();
+      if (this.buildLogRefresh) this.buildLogRefresh();
+      this.checkLevelUp();
+    },
+
+    maybeOpenTier1EvolutionPrompt() {
+      if (this.attackType === "soulSiphon") return false;
+      if (this.attackType === "projectile") return false;
+      if (this.tier1EvolutionId || this.level !== 7) return false;
+      const choices = this.getTier1EvolutionChoiceDefs();
+      return this.openEvolutionPrompt({
+        type: "tier1",
+        title: "Tier 1 Evolution",
+        subtitle: "Your opening build has converged. Choose how your basic attack evolves."
+      }, choices);
+    },
+
+    maybeOpenTier2EvolutionPrompt(options = {}) {
+      if (this.attackType === "projectile") return false;
+      if (!this.tier1EvolutionId || this.tier2EvolutionId) return false;
+      const choices = this.getTier2EvolutionChoiceDefs();
+      if (choices.length === 0) return false;
+      const forced = !!options.forced;
+      const canDelay = !forced && !this.tier2EvolutionPending;
+      return this.openEvolutionPrompt({
+        type: "tier2",
+        title: forced ? "Tier 2 Evolution" : "Tier 2 Evolution Ready",
+        subtitle: forced
+          ? "Your delay window has ended. Choose your final evolution."
+          : "A final evolution is available. Choose it now or delay for up to 3 more levels."
+      }, choices, { delayAllowed: canDelay });
+    },
+
+    finalizeLevelUpState() {
+      this.recalculateStats();
+      this.updateXpUI();
+      if (this.buildLogRefresh) this.buildLogRefresh();
+    },
+
+    checkLevelUp() {
+      if (this.levelUpChoices) return;
+      let leveled = false;
+      while (!this.levelUpChoices) {
+        const nextThreshold = getXpForLevel(this.level + 1);
+        if (this.xp < nextThreshold) break;
+
+        this.level++;
+        leveled = true;
+        onRingLevelUp(this);
+        this.updateXpUI();
+
+        if (this.attackType === "soulSiphon" && this.level === 7 && !this.soulSiphonEvolutionFirst) {
+          const [first] = resolveSoulSiphonDominantCategories(this.categoryCounts || {});
+          this.soulSiphonEvolutionFirst = first || "power";
+        }
+        if (this.attackType === "soulSiphon" && this.level >= 13 && this.soulSiphonEvolutionFirst && !this.soulSiphonEvolutionSecond) {
+          const [first, second] = resolveSoulSiphonDominantCategories(this.categoryCounts || {});
+          this.soulSiphonEvolutionSecond = second || first;
+        }
+
+        if (this.maybeOpenElementalShotFirstEvolutionPrompt()) break;
+        if (this.maybeOpenElementalShotSecondEvolutionPrompt()) break;
+
+        if (this.maybeOpenTier1EvolutionPrompt()) {
+          break;
+        }
+
+        if (!this.tier2EvolutionId && this.level === 13) {
+          if (this.maybeOpenTier2EvolutionPrompt({ forced: false })) {
+            break;
+          }
+          continue;
+        }
+
+        // Elemental Shot evolutions consume the level-up at 9 and 16 (no upgrade granted).
+        if ((this.attackType === "projectile" && this.level === 9) || (this.attackType === "projectile" && this.level === 16)) {
+          this.finalizeLevelUpState();
+          continue;
+        }
+
+        const grantedUpgrade = this.grantRandomSelectedUpgrade();
+        if (this.tier2EvolutionPending && !this.tier2EvolutionId) {
+          this.tier2DelayRemaining--;
+        }
+
+        if (!grantedUpgrade) {
+          this.finalizeLevelUpState();
+          continue;
+        }
+
+        if (this.attackType === "projectile") {
+          if (typeof this.getElementalShotEvolutionTrace === "function" && (this.level === 9 || this.level === 16)) {
+            const trace = this.getElementalShotEvolutionTrace();
+            if (trace) console.log("[Elemental Shot evolution]", trace);
+          }
+        }
+
+        if (this.shouldForceTier2EvolutionPrompt()) {
+          this.finalizeLevelUpState();
+          if (this.maybeOpenTier2EvolutionPrompt({ forced: true })) {
+            break;
+          }
+        } else if (
+          !this.tier2EvolutionId &&
+          !this.tier2EvolutionPending &&
+          this.level > 13 &&
+          this.getUnlockedTier2Categories().length > 0
+        ) {
+          this.finalizeLevelUpState();
+          if (this.maybeOpenTier2EvolutionPrompt({ forced: false })) {
+            break;
+          }
+        } else {
+          this.finalizeLevelUpState();
+        }
+      }
+
+      if (leveled && !this.levelUpChoices) {
+        this.finalizeLevelUpState();
+      }
+    },
+
+    buildLevelUpCards() {
+      return [];
+    },
+
+    showLevelUpChoices() {
+      this.levelUpChoices = null;
+      this.levelUpChoiceContext = null;
+    },
+
+    applyLevelUpChoice(choice, cardEl) {
+      if (choice?.type !== "evolution" && Array.isArray(choice?.upgrades)) {
+        const pickState = this.levelUpPickState || {
+          pickCount: 1,
+          picksRemaining: 1,
+          resolvedPicks: 0,
+          effectiveness: [1],
+          chosen: []
+        };
+        const currentPickIndex = Math.max(
+          0,
+          Math.min(Number(pickState.pickCount || 1) - 1, Number(pickState.resolvedPicks || 0))
+        );
+        const effectiveness = Number(pickState.effectiveness?.[currentPickIndex] ?? 1) || 1;
+        for (const upgrade of choice.upgrades) {
+          const appliedUpgrade = { ...upgrade };
+          if (Number.isFinite(Number(appliedUpgrade.value))) {
+            appliedUpgrade.value = Math.round(Number(appliedUpgrade.value) * effectiveness * 10000) / 10000;
+          }
+          this.runAttackUpgrades = this.runAttackUpgrades || [];
+          this.runAttackUpgrades.push(appliedUpgrade);
+          this.addUpgradeOnlyStatsFromLevelUpUpgrade(appliedUpgrade);
+        }
+        if (choice.penalty) {
+          this.runAttackPenalties = this.runAttackPenalties || [];
+          this.runAttackPenalties.push({ ...choice.penalty });
+        }
+        pickState.resolvedPicks = Math.max(0, Number(pickState.resolvedPicks || 0)) + 1;
+        pickState.picksRemaining = Math.max(0, Number(pickState.picksRemaining || 0) - 1);
+        pickState.chosen = Array.isArray(pickState.chosen) ? pickState.chosen : [];
+        pickState.chosen.push({
+          name: choice.upgrades?.[0]?.name || "Upgrade",
+          scale: effectiveness
+        });
+        this.levelUpPickState = pickState;
+        this.refreshAscendedGrowthRuntimeState();
+        if (pickState.picksRemaining <= 0) {
+          this.levelUpPickState = null;
+          this.refreshAscendedGrowthRuntimeState();
+        }
+        this.finalizeLevelUpState();
+        return;
+      }
+
+      if (choice?.type === "elementalShotEvolution") {
+        const cat = choice.category;
+        if (!["damage", "rhythm", "control", "elemental"].includes(cat)) return;
+        if (choice.stage === "first") {
+          this.elementalShotEvolutionFirst = cat;
+          this.elementalShotEvolutionSecond = null;
+        } else if (choice.stage === "second") {
+          this.elementalShotEvolutionSecond = cat;
+        } else {
+          return;
+        }
+        // Re-sync immediate combat state from profile.
+        this._elementalShotSurgeSynced = false;
+        const profile = getElementalShotProfile(getElementalShotEvolutionState(this));
+        if (this.time >= (this.elementalSurgeEndTime || 0)) {
+          this.elementalState = profile?.defaultElement ?? "fire";
+        }
+        const sb = profile?.surgeBehavior?.elements;
+        if (Array.isArray(sb) && sb[0]) this.nextElementalSurge = sb[0];
+
+        if (cardEl) cardEl.classList.add("level-up-card-selected");
+        setTimeout(() => {
+          closeLevelUpOverlay(this);
+          this.finalizeLevelUpState();
+          this.checkLevelUp();
+        }, cardEl ? 220 : 0);
+        return;
+      }
+
+      if (choice?.type !== "evolution" || !choice.evolutionId) return;
+      this.applyTransformChoice({
+        baseWeaponId: PROJECTILE_BASE_WEAPON_ID,
+        evolutionId: choice.evolutionId
+      });
+
+      if (cardEl) {
+        cardEl.classList.add("level-up-card-selected");
+      }
+
+      setTimeout(() => {
+        closeLevelUpOverlay(this);
+        this.finalizeLevelUpState();
+        this.checkLevelUp();
+      }, cardEl ? 220 : 0);
     }
   });
 }

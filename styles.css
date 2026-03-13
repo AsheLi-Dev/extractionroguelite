@@ -45,8 +45,7 @@ body {
 .skill-bar {
   position: absolute;
   bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 12px;
   display: flex;
   gap: 8px;
   z-index: 50;
@@ -148,7 +147,7 @@ body {
   background: #020617;
   border: 2px solid #6b21a8;
   border-radius: 16px;
-  max-width: 640px;
+  max-width: 1280px;
   width: 100%;
   padding: 24px;
 }
@@ -169,6 +168,10 @@ body {
   margin-bottom: 20px;
 }
 
+.skill-select-upgrade-section {
+  margin-bottom: 20px;
+}
+
 .skill-select-attack-label {
   display: block;
   font-size: 12px;
@@ -183,6 +186,192 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.skill-select-upgrade-help {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.4;
+  margin: 0 0 10px;
+}
+
+.skill-select-upgrade-slots {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.skill-select-upgrade-slot {
+  min-height: 72px;
+  border: 2px dashed #4b5563;
+  border-radius: 12px;
+  background: radial-gradient(circle at 0 0, rgba(148, 163, 184, 0.12), rgba(15, 23, 42, 0.9));
+  color: #cbd5e1;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.skill-select-upgrade-slot:hover {
+  border-color: #64748b;
+}
+
+.skill-select-upgrade-slot.filled {
+  border-style: solid;
+  border-color: #a855f7;
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.24);
+}
+
+.skill-select-upgrade-slot-label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.skill-select-upgrade-slot-name {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f8fafc;
+  margin-bottom: 4px;
+}
+
+.skill-select-upgrade-slot-cat {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #fcd34d;
+}
+
+.skill-select-upgrade-pool {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skill-select-upgrade-pool-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px 24px;
+  align-items: start;
+}
+
+.skill-select-upgrade-pool-grid-2x2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 16px 20px;
+  align-items: stretch;
+}
+
+.skill-select-upgrade-pool-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.skill-select-upgrade-category {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid #1e293b;
+  min-width: 0;
+}
+
+.skill-select-upgrade-category-heading {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #fcd34d;
+  margin-bottom: 6px;
+}
+
+.skill-select-upgrade-pool-two-col .skill-select-upgrade-btn {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+.skill-select-upgrade-btn {
+  flex: 1 1 180px;
+  min-width: 0;
+  min-height: 80px;
+  padding: 10px 12px;
+  border: 2px solid #4b5563;
+  border-radius: 10px;
+  background: #1e293b;
+  color: #e2e8f0;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, opacity 0.15s;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.skill-select-upgrade-btn:hover:not(:disabled) {
+  border-color: #64748b;
+}
+
+.skill-select-upgrade-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.skill-select-upgrade-btn.selected {
+  border-color: #a855f7;
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.18);
+}
+
+.skill-select-upgrade-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-bottom: 2px;
+}
+
+.skill-select-upgrade-meta {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #fcd34d;
+  margin-bottom: 4px;
+}
+
+.skill-select-upgrade-btn.rarity-common .skill-select-upgrade-meta {
+  color: #9ca3af;
+}
+
+.skill-select-upgrade-btn.rarity-uncommon .skill-select-upgrade-meta {
+  color: #6ee7b7;
+}
+
+.skill-select-upgrade-btn.rarity-rare .skill-select-upgrade-meta {
+  color: #fbbf24;
+}
+
+.skill-select-upgrade-desc {
+  display: block;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #94a3b8;
 }
 
 .skill-select-attack-btn {
@@ -605,6 +794,30 @@ body {
   margin-bottom: 14px;
 }
 
+.player-shield-bar-wrap {
+  margin-bottom: 4px;
+}
+
+.player-shield-bar-wrap.hidden {
+  display: none;
+}
+
+.player-shield-bar-track {
+  width: 100%;
+  height: 8px;
+  background: #1e3a5f;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.player-shield-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  border-radius: 999px;
+  transition: width 0.15s ease;
+}
+
 .player-health-bar-track {
   width: 100%;
   height: 10px;
@@ -729,6 +942,62 @@ body {
   background: rgba(15, 23, 42, 0.95);
 }
 
+.pause-enemy-panel {
+  position: fixed;
+  z-index: 48;
+  min-width: 260px;
+  max-width: min(90vw, 360px);
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(2, 6, 23, 0.92);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.pause-enemy-panel.hidden {
+  display: none;
+}
+
+.pause-enemy-panel-title {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #93c5fd;
+  margin-bottom: 8px;
+}
+
+.pause-enemy-panel-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pause-enemy-select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 12px;
+}
+
+.pause-enemy-spawn-btn {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #16a34a;
+  background: rgba(22, 163, 74, 0.14);
+  color: #86efac;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pause-enemy-spawn-btn:hover {
+  background: rgba(34, 197, 94, 0.25);
+}
+
 /* Build log */
 .build-log-toggle {
   position: fixed;
@@ -823,7 +1092,7 @@ body {
 }
 
 .build-log-section:first-child .build-log-section-title { color: #22c55e; }
-.build-log-section:last-child .build-log-section-title { color: #ef4444; }
+.build-log-section:last-child .build-log-section-title { color: #eab308; }
 
 .build-log-list {
   list-style: none;
@@ -874,21 +1143,46 @@ body {
   color: #fca5a5;
 }
 
+.build-log-list .build-log-evolution {
+  color: #eab308;
+  border-left: 3px solid #eab308;
+}
+
+.build-log-list .build-log-evolution .build-log-effect {
+  color: #fde047;
+}
+
 /* Dev toggle & panel */
 .dev-toggle {
   position: fixed;
-  top: 16px;
+  bottom: 16px;
   right: 16px;
   z-index: 40;
-  padding: 4px 10px;
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 22px;
+  padding: 0;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   border-radius: 999px;
   border: 1px solid rgba(249, 115, 22, 0.8);
   background: rgba(15, 23, 42, 0.9);
   color: #fed7aa;
   cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Force-toggle sizing in case generic button rules stretch it */
+#dev-toggle {
+  width: 44px !important;
+  height: 22px !important;
+  padding: 0 !important;
+  max-height: 22px !important;
 }
 
 .dev-panel {
@@ -1344,6 +1638,7 @@ body {
   padding: 24px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .talent-tree-branches {
@@ -1351,6 +1646,60 @@ body {
   flex-direction: column;
   gap: 24px;
   width: 100%;
+}
+
+.talent-tree-branch-body {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.talent-tree-branch-grid-wrap {
+  flex: 0 0 auto;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.talent-tree-details-panel {
+  width: 280px;
+  flex-shrink: 0;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.8);
+  align-self: flex-start;
+  min-height: 120px;
+}
+
+.talent-tree-details-placeholder {
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.talent-tree-details-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.talent-tree-details-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #a78bfa;
+}
+
+.talent-tree-details-desc {
+  font-size: 14px;
+  color: #e2e8f0;
+  line-height: 1.5;
+}
+
+.talent-tree-details-cost {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fbbf24;
 }
 
 .talent-tree-branch {
@@ -1472,6 +1821,21 @@ body {
   color: #fbbf24;
 }
 
+.talent-tree-node-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 6px auto;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+}
+
+.talent-icon-tree .talent-tree-node-icon {
+  width: 44px;
+  height: 44px;
+  margin: 0;
+}
+
 @keyframes talent-glow {
   from {
     box-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
@@ -1481,11 +1845,11 @@ body {
   }
 }
 
-/* Warrior branching tree */
-.warrior-branch .warrior-tree-grid {
+/* Brutality branching tree (no prerequisites; 4x4 grid) */
+.brutality-branch .brutality-tree-grid {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   grid-template-rows: minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto);
   row-gap: 24px;
   column-gap: 16px;
@@ -1494,31 +1858,31 @@ body {
   width: 100%;
 }
 
-.warrior-branch .warrior-node {
+.brutality-branch .brutality-node {
   position: relative;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
 }
 
-.warrior-branch .warrior-node .talent-tree-node-name,
-.warrior-branch .warrior-node .talent-tree-node-desc,
-.warrior-branch .warrior-node .talent-tree-node-cost {
+.brutality-branch .brutality-node .talent-tree-node-name,
+.brutality-branch .brutality-node .talent-tree-node-desc,
+.brutality-branch .brutality-node .talent-tree-node-cost {
   overflow-wrap: break-word;
   word-wrap: break-word;
   word-break: break-word;
 }
 
-.warrior-branch .warrior-node .talent-tree-node-desc {
+.brutality-branch .brutality-node .talent-tree-node-desc {
   line-height: 1.3;
 }
 
-.warrior-branch .warrior-connection {
+.brutality-branch .brutality-connection {
   position: relative;
   height: 32px;
 }
 
-.warrior-branch .warrior-connection::before {
+.brutality-branch .brutality-connection::before {
   content: "";
   position: absolute;
   left: 0;
@@ -1527,7 +1891,7 @@ body {
   border-top: 2px solid rgba(148, 163, 184, 0.7);
 }
 
-.warrior-branch .warrior-connection::after {
+.brutality-branch .brutality-connection::after {
   content: "";
   position: absolute;
   top: 0;
@@ -1537,12 +1901,11 @@ body {
   transform: translateX(-50%);
 }
 
-/* Survivalist branching tree (same layout as Warrior) */
-.survivalist-branch .warrior-tree-grid,
-.survivalist-branch .survivalist-tree-grid {
+/* Agility branching tree (no prerequisites; same 4x4 grid as Brutality) */
+.agility-branch .agility-tree-grid {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   grid-template-rows: minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto);
   row-gap: 24px;
   column-gap: 16px;
@@ -1551,36 +1914,31 @@ body {
   width: 100%;
 }
 
-.survivalist-branch .survivalist-node,
-.survivalist-branch .warrior-node {
+.agility-branch .agility-node {
   position: relative;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
 }
 
-.survivalist-branch .survivalist-node .talent-tree-node-name,
-.survivalist-branch .survivalist-node .talent-tree-node-desc,
-.survivalist-branch .survivalist-node .talent-tree-node-cost,
-.survivalist-branch .warrior-node .talent-tree-node-name,
-.survivalist-branch .warrior-node .talent-tree-node-desc,
-.survivalist-branch .warrior-node .talent-tree-node-cost {
+.agility-branch .agility-node .talent-tree-node-name,
+.agility-branch .agility-node .talent-tree-node-desc,
+.agility-branch .agility-node .talent-tree-node-cost {
   overflow-wrap: break-word;
   word-wrap: break-word;
   word-break: break-word;
 }
 
-.survivalist-branch .survivalist-node .talent-tree-node-desc,
-.survivalist-branch .warrior-node .talent-tree-node-desc {
+.agility-branch .agility-node .talent-tree-node-desc {
   line-height: 1.3;
 }
 
-.survivalist-branch .warrior-connection {
+.agility-branch .agility-connection {
   position: relative;
   height: 32px;
 }
 
-.survivalist-branch .warrior-connection::before {
+.agility-branch .agility-connection::before {
   content: "";
   position: absolute;
   left: 0;
@@ -1589,7 +1947,119 @@ body {
   border-top: 2px solid rgba(148, 163, 184, 0.7);
 }
 
-.survivalist-branch .warrior-connection::after {
+.agility-branch .agility-connection::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  border-left: 2px solid rgba(148, 163, 184, 0.7);
+  transform: translateX(-50%);
+}
+
+/* Vitality branching tree (no prerequisites; 4x4 grid; Red crystal) */
+.vitality-branch .vitality-tree-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto);
+  row-gap: 24px;
+  column-gap: 16px;
+  padding-top: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.vitality-branch .vitality-node {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.vitality-branch .vitality-node .talent-tree-node-name,
+.vitality-branch .vitality-node .talent-tree-node-desc,
+.vitality-branch .vitality-node .talent-tree-node-cost {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+.vitality-branch .vitality-node .talent-tree-node-desc {
+  line-height: 1.3;
+}
+
+.vitality-branch .vitality-connection {
+  position: relative;
+  height: 32px;
+}
+
+.vitality-branch .vitality-connection::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 2px solid rgba(148, 163, 184, 0.7);
+}
+
+.vitality-branch .vitality-connection::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  border-left: 2px solid rgba(148, 163, 184, 0.7);
+  transform: translateX(-50%);
+}
+
+/* Luck branching tree (no prerequisites; 4x4 grid; Yellow crystal) */
+.luck-branch .luck-tree-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto) 32px minmax(80px, auto);
+  row-gap: 24px;
+  column-gap: 16px;
+  padding-top: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.luck-branch .luck-node {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.luck-branch .luck-node .talent-tree-node-name,
+.luck-branch .luck-node .talent-tree-node-desc,
+.luck-branch .luck-node .talent-tree-node-cost {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+.luck-branch .luck-node .talent-tree-node-desc {
+  line-height: 1.3;
+}
+
+.luck-branch .luck-connection {
+  position: relative;
+  height: 32px;
+}
+
+.luck-branch .luck-connection::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 2px solid rgba(148, 163, 184, 0.7);
+}
+
+.luck-branch .luck-connection::after {
   content: "";
   position: absolute;
   top: 0;
@@ -2353,9 +2823,9 @@ body {
 
 .champion-card {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
   padding: 14px 16px;
   background: rgba(15, 23, 42, 0.9);
   border: 1px solid #334155;
@@ -2367,6 +2837,68 @@ body {
 .champion-card-content {
   flex: 1;
   min-width: 0;
+}
+
+.champion-attributes {
+  color: #a5b4fc;
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.champion-attribute-points {
+  color: #94a3b8;
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+
+.champion-wounds {
+  font-size: 11px;
+  margin-bottom: 4px;
+  color: #f59e0b;
+}
+
+.champion-wounds-dead {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.champion-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.champion-talent-tree-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 6px;
+  border: 1px solid #059669;
+  background: #047857;
+  color: #d1fae5;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.champion-talent-tree-btn:hover {
+  background: #059669;
+  border-color: #10b981;
+}
+
+.champion-allocate-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 6px;
+  border: 1px solid #3730a3;
+  background: #312e81;
+  color: #c7d2fe;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.champion-allocate-btn:hover {
+  background: #3730a3;
+  border-color: #4f46e5;
 }
 
 .champion-delete-btn {
@@ -2402,6 +2934,107 @@ body {
 .champion-cards {
   font-size: 11px;
   color: #64748b;
+}
+
+.champion-allocate-panel {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #334155;
+}
+
+.champion-allocate-panel.hidden {
+  display: none;
+}
+
+.champion-allocate-available {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.champion-allocate-available-num {
+  font-weight: 700;
+  color: #facc15;
+}
+
+.champion-allocate-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.champion-allocate-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.champion-allocate-label {
+  font-size: 12px;
+  color: #e2e8f0;
+}
+
+.champion-allocate-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.champion-allocate-minus,
+.champion-allocate-plus {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #334155;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.champion-allocate-minus:hover:not(:disabled),
+.champion-allocate-plus:hover:not(:disabled) {
+  background: #475569;
+  border-color: #64748b;
+}
+
+.champion-allocate-minus:disabled,
+.champion-allocate-plus:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.champion-allocate-value {
+  min-width: 20px;
+  text-align: center;
+  font-weight: 700;
+  color: #facc15;
+}
+
+.champion-allocate-panel-actions {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #334155;
+}
+
+.champion-allocate-save-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid #059669;
+  background: #047857;
+  color: #d1fae5;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.champion-allocate-save-btn:hover {
+  background: #059669;
+  border-color: #10b981;
 }
 
 /* Boss health bar */
@@ -2838,6 +3471,49 @@ body {
   color: #fbbf24;
   margin-bottom: 20px;
   text-align: center;
+}
+
+.pre-run-character {
+  margin-bottom: 20px;
+}
+
+.pre-run-character label {
+  display: block;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.pre-run-character-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pre-run-character-btn {
+  flex: 1;
+  min-width: 120px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 2px solid #374151;
+  background: #111827;
+  color: #9ca3af;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pre-run-character-btn:hover {
+  border-color: #f59e0b;
+  color: #fbbf24;
+}
+
+.pre-run-character-btn.selected {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
 }
 
 .pre-run-difficulty {

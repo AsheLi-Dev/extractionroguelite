@@ -1,4 +1,4 @@
-﻿
+
 .instructions-section p {
   font-size: 14px;
   color: #cbd5e1;
@@ -60,6 +60,146 @@
   display: flex;
   flex-direction: column;
   box-shadow: 0 24px 60px rgba(107, 33, 168, 0.3);
+}
+
+.legacy-vault-box.legacy-vault-box--ironsmith {
+  max-width: 1000px;
+}
+
+.legacy-vault-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.legacy-vault-box.legacy-vault-box--ironsmith .legacy-vault-body {
+  flex-direction: row;
+}
+
+.legacy-vault-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.legacy-vault-ironsmith-panel {
+  width: 280px;
+  flex-shrink: 0;
+  border-left: 1px solid #334155;
+  padding: 16px;
+  overflow-y: auto;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.legacy-vault-ironsmith-panel.hidden {
+  display: none;
+}
+
+.legacy-vault-ironsmith-title {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: #a78bfa;
+}
+
+.ironsmith-chosen-item {
+  margin-bottom: 12px;
+  padding: 10px;
+  background: rgba(30, 27, 75, 0.4);
+  border-radius: 8px;
+  border: 1px solid #334155;
+}
+
+.ironsmith-no-item {
+  margin: 0;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.ironsmith-item-name {
+  font-weight: 700;
+  color: #f5f7ff;
+  margin-bottom: 4px;
+}
+
+.ironsmith-item-type,
+.ironsmith-item-level {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0 0 4px;
+}
+
+.ironsmith-required-value {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #e5e7eb;
+}
+
+.ironsmith-required-value.hidden {
+  display: none;
+}
+
+.ironsmith-cubes-section h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #c4b5fd;
+}
+
+.ironsmith-cube-hint {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.ironsmith-cube-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.ironsmith-cube-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  background: rgba(30, 27, 75, 0.3);
+  border: 1px solid #334155;
+}
+
+.ironsmith-cube-row .cube-name { flex: 1; font-size: 12px; color: #e5e7eb; }
+.ironsmith-cube-row .cube-value { font-size: 11px; color: #94a3b8; min-width: 2.5em; }
+.ironsmith-cube-row .cube-qty { font-size: 11px; color: #64748b; }
+.ironsmith-cube-row button {
+  padding: 2px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid #4b5563;
+  background: #1f2937;
+  color: #e5e7eb;
+  cursor: pointer;
+}
+
+.ironsmith-cube-row button:hover:not(:disabled) {
+  background: #374151;
+}
+
+.ironsmith-cube-row button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ironsmith-selected-value {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #a78bfa;
 }
 
 .legacy-vault-header {
@@ -276,9 +416,9 @@
 
 .champion-card {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
   padding: 14px 16px;
   background: rgba(15, 23, 42, 0.9);
   border: 1px solid #334155;
@@ -290,6 +430,68 @@
 .champion-card-content {
   flex: 1;
   min-width: 0;
+}
+
+.champion-attributes {
+  color: #a5b4fc;
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.champion-attribute-points {
+  color: #94a3b8;
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+
+.champion-wounds {
+  font-size: 11px;
+  margin-bottom: 4px;
+  color: #f59e0b;
+}
+
+.champion-wounds-dead {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.champion-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.champion-talent-tree-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 6px;
+  border: 1px solid #059669;
+  background: #047857;
+  color: #d1fae5;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.champion-talent-tree-btn:hover {
+  background: #059669;
+  border-color: #10b981;
+}
+
+.champion-allocate-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 6px;
+  border: 1px solid #3730a3;
+  background: #312e81;
+  color: #c7d2fe;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.champion-allocate-btn:hover {
+  background: #3730a3;
+  border-color: #4f46e5;
 }
 
 .champion-delete-btn {
@@ -325,6 +527,107 @@
 .champion-cards {
   font-size: 11px;
   color: #64748b;
+}
+
+.champion-allocate-panel {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #334155;
+}
+
+.champion-allocate-panel.hidden {
+  display: none;
+}
+
+.champion-allocate-available {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.champion-allocate-available-num {
+  font-weight: 700;
+  color: #facc15;
+}
+
+.champion-allocate-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.champion-allocate-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.champion-allocate-label {
+  font-size: 12px;
+  color: #e2e8f0;
+}
+
+.champion-allocate-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.champion-allocate-minus,
+.champion-allocate-plus {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #334155;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.champion-allocate-minus:hover:not(:disabled),
+.champion-allocate-plus:hover:not(:disabled) {
+  background: #475569;
+  border-color: #64748b;
+}
+
+.champion-allocate-minus:disabled,
+.champion-allocate-plus:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.champion-allocate-value {
+  min-width: 20px;
+  text-align: center;
+  font-weight: 700;
+  color: #facc15;
+}
+
+.champion-allocate-panel-actions {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #334155;
+}
+
+.champion-allocate-save-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid #059669;
+  background: #047857;
+  color: #d1fae5;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.champion-allocate-save-btn:hover {
+  background: #059669;
+  border-color: #10b981;
 }
 
 /* Boss health bar */

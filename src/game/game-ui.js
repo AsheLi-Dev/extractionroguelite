@@ -38,6 +38,20 @@ export function applyGameUIMixin(Game) {
       const goldEl = document.getElementById("gold-display");
       if (goldEl) goldEl.textContent = `Gold: ${this.gold ?? 0}`;
       this.updateEnemyCountUI();
+      const soulsEl = document.getElementById("souls-display");
+      if (soulsEl) {
+        const souls = this.runSoulsTotal ?? 0;
+        const spirit = this.cuteSpiritCompanion;
+        if (souls > 0 || spirit) {
+          soulsEl.classList.remove("hidden");
+          const chargeThreshold = spirit && spirit.stage >= 3 ? 2 : 3;
+          soulsEl.textContent = spirit
+            ? `Souls: ${souls} | Spirit S${spirit.stage} Charge: ${spirit.charge}/${chargeThreshold}`
+            : `Souls: ${souls}`;
+        } else {
+          soulsEl.classList.add("hidden");
+        }
+      }
       this.updateEscortQuestUI();
     },
 
@@ -163,6 +177,21 @@ export function applyGameUIMixin(Game) {
       label.textContent = `${Math.round(this.currentHealth)} / ${this.currentStats.maxHealth}`;
       bar.style.backgroundColor =
         pct > 0.5 ? "#4ade80" : pct > 0.25 ? "#facc15" : "#ef4444";
+
+      const shieldWrap = document.getElementById("player-shield-bar-wrap");
+      const shieldFill = document.getElementById("player-shield-fill");
+      const shield = typeof this.getPlayerShield === "function" ? this.getPlayerShield() : Math.max(0, this.immortalShield || 0);
+      if (shieldWrap && shieldFill) {
+        if (shield > 0) {
+          shieldWrap.classList.remove("hidden");
+          const maxShield = Math.max(30, Math.round((this.currentStats?.maxHealth || 100) * 0.3));
+          const shieldPct = Math.min(1, shield / maxShield);
+          shieldFill.style.width = `${Math.round(shieldPct * 100)}%`;
+        } else {
+          shieldWrap.classList.add("hidden");
+          shieldFill.style.width = "0%";
+        }
+      }
     },
 
     updateDashUI() {

@@ -23,8 +23,7 @@
 .skill-bar {
   position: absolute;
   bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 12px;
   display: flex;
   gap: 8px;
   z-index: 50;
@@ -148,6 +147,16 @@
   font-size: 12px;
   color: #94a3b8;
   margin-top: 4px;
+}
+
+.souls-display {
+  font-size: 12px;
+  color: #c4b5fd;
+  margin-top: 4px;
+}
+
+.souls-display.hidden {
+  display: none;
 }
 
 .escort-quest-indicator {

@@ -1,4 +1,4 @@
-// -------- Economy API: gold, pricing, shop, LP conversion --------
+// -------- Economy API: gold, pricing, shop --------
 // First argument is always the run state holder (game) for stateful calls.
 
 import {
@@ -10,12 +10,9 @@ import {
   SLOT_PRICE_MULT,
   ARMOUR_WEIGHT_MULT,
   SOCKET_PRICE_PREMIUM,
-  LP_CONVERSION_COSTS,
-  LP_MAX_PER_RUN,
   REROLL_MOD_SERVICE,
   SOCKET_DRILL_COST
 } from '../data/economy-config.js';
-import { addLegacyPoints } from '../data/constants.js';
 import {
   MODIFIER_ROLL_BY_DIFFICULTY,
   LOCAL_STAT_SCALE_ROLL_BY_DIFFICULTY,
@@ -169,26 +166,3 @@ export function socketDrillService(game, itemId) {
   return true;
 }
 
-// -------- Extraction LP conversion --------
-
-export function getNextLPConversionCost(game) {
-  const n = game.legacyPointsEarnedThisRun ?? 0;
-  if (n >= LP_MAX_PER_RUN) return null;
-  return LP_CONVERSION_COSTS[n] ?? LP_CONVERSION_COSTS[LP_CONVERSION_COSTS.length - 1];
-}
-
-export function canBuyLegacyPointAtExtraction(game) {
-  const earned = game.legacyPointsEarnedThisRun ?? 0;
-  if (earned >= LP_MAX_PER_RUN) return false;
-  const cost = getNextLPConversionCost(game);
-  return cost != null && canSpendGold(game, cost);
-}
-
-export function buyLegacyPointAtExtraction(game) {
-  if (!canBuyLegacyPointAtExtraction(game)) return false;
-  const cost = getNextLPConversionCost(game);
-  spendGold(game, cost, 'lp_conversion', {});
-  game.legacyPointsEarnedThisRun = (game.legacyPointsEarnedThisRun ?? 0) + 1;
-  addLegacyPoints(1);
-  return true;
-}

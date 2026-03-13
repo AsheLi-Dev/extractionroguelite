@@ -2,19 +2,22 @@
 // Map transitions, obstacles
 // This module adds methods to Game.prototype when imported
 
-import { MAP_DEFS, createProceduralWorld, PRESET_MEDIUM } from '../data/maps.js';
+import { MAP_DEFS, createProceduralWorld, PRESET_MEDIUM, getBiomeCellBounds, BIOME_ARCHETYPE, BIOME_GRID_COLS, BIOME_GRID_ROWS } from '../data/maps.js';
 import { OBSTACLE_TYPES } from '../data/obstacles.js';
 import { BREAKABLE_DEFS } from '../data/breakables-data.js';
 import { SEARCHABLE_PROP_DEFS } from '../data/searchable-props-data.js';
+import { generateEquipmentItem } from '../data/loot-data.js';
 import { SHRINE_DEFS } from '../data/shrines.js';
 import { NPC_DEFS } from '../data/npc-data.js';
 import { Obstacle } from '../entities/obstacle.js';
 import { Breakable } from '../entities/breakable.js';
 import { SearchableProp } from '../entities/searchable-prop.js';
-import { ENEMY_TYPES, Enemy } from '../entities/enemy.js';
+import { ENEMY_TYPES, UNDEAD_HERO_TYPES, AFFIX_DEFS, Enemy } from '../entities/enemy.js';
 import { HazardSystem } from '../entities/hazard.js';
 import { LootItem } from '../entities/loot.js';
 import { hasTalent } from '../data/talents.js';
+import { preloadSound } from '../audio.js';
+import { Totem } from '../entities/totem.js';
 
 export function applyGameMapMixin(Game) {
   Object.assign(Game.prototype, {
@@ -38,12 +41,28 @@ export function applyGameMapMixin(Game) {
       );
     },
 
+    trySpawnUndeadHeroForCurrentMap() {
+      if (!this.enemySystem?.spawnUndeadHero) return null;
+      if (!this.undeadHeroRunEnabled || this.undeadHeroSpawned) return null;
+      const mapId = Number(this.currentMapId);
+      const bossMapId = MAP_DEFS.length - 1;
+      if (!Number.isFinite(mapId) || mapId === bossMapId) return null;
+      if (!Number.isFinite(this.undeadHeroTargetMapId) || mapId !== this.undeadHeroTargetMapId) return null;
+      const spawned = this.enemySystem.spawnUndeadHero(this);
+      if (!spawned) return null;
+      this.undeadHeroSpawned = true;
+      this.undeadHeroSpawnMapId = mapId;
+      return spawned;
+    },
+
     saveMapEnemyState(mapId) {
       // Save current enemy state for this map
       const es = this.enemySystem;
+      const validAffixIds = new Set(AFFIX_DEFS.map((affix) => affix.id));
       this.mapEnemyStates[mapId] = {
         enemies: es.enemies.map(e => ({
           id: e.id,
+          enemyTypeId: e.enemyTypeId || null,
           position: { x: e.position.x, y: e.position.y },
           size: e.size,
           name: e.name,
@@ -58,8 +77,10 @@ export function applyGameMapMixin(Game) {
           activated: e.activated,
           enemyTier: e.enemyTier,
           isElite: e.isElite,
+          isSpecial: e.isSpecial,
+          isUndeadHero: e.isUndeadHero,
           tierXpMult: e.tierXpMult,
-          affixes: e.affixes ? [...e.affixes] : [],
+          affixes: e.affixes ? e.affixes.filter((id) => validAffixIds.has(id)) : [],
           burnUntil: e.burnUntil,
           burnDps: e.burnDps,
           burnAccum: e.burnAccum || 0,
@@ -134,12 +155,33 @@ export function applyGameMapMixin(Game) {
         this.enemySystem.projectiles = [];
         this.enemySystem.respawnQueue = [];
         this.enemySystem.spawnInitial(this);
+        this.trySpawnUndeadHeroForCurrentMap();
         return;
       }
 
       const es = this.enemySystem;
+      const allEnemyTypes = [...ENEMY_TYPES, ...UNDEAD_HERO_TYPES];
+      const validAffixIds = new Set(AFFIX_DEFS.map((affix) => affix.id));
+      const applyRestoredStack = (target, stackId, stackKey, value, targetType = "enemy") => {
+        const restored = Math.max(0, Number(value) || 0);
+        if (typeof this.applyStackDelta === "function") {
+          this.applyStackDelta(target, stackId, restored, {
+            stackKey,
+            targetType,
+            source: "map_restore",
+            reason: "restore_map_enemy_state",
+            mode: "set",
+            min: 0,
+            max: 999,
+            skipPillarModifiers: true,
+            skipCapResolution: true
+          });
+          return;
+        }
+        target[stackKey] = restored;
+      };
       es.enemies = savedState.enemies.map(eData => {
-        const base = ENEMY_TYPES.find(t => t.name === eData.name);
+        const base = allEnemyTypes.find((t) => t.id === eData.enemyTypeId) || allEnemyTypes.find((t) => t.name === eData.name);
         if (!base) return null;
         const enemy = new Enemy(eData.position.x, eData.position.y, {
           ...base,
@@ -156,15 +198,17 @@ export function applyGameMapMixin(Game) {
         enemy.activated = eData.activated;
         enemy.enemyTier = eData.enemyTier;
         enemy.isElite = eData.isElite;
+        enemy.isSpecial = eData.isSpecial || eData.enemyTier === "special";
+        enemy.isUndeadHero = !!eData.isUndeadHero;
         enemy.tierXpMult = eData.tierXpMult;
-        enemy.affixes = eData.affixes ? [...eData.affixes] : [];
+        enemy.affixes = eData.affixes ? eData.affixes.filter((id) => validAffixIds.has(id)) : [];
         enemy.burnUntil = eData.burnUntil;
         enemy.burnDps = eData.burnDps;
         enemy.burnAccum = eData.burnAccum || 0;
-        enemy.toxicStacks = eData.toxicStacks;
+        applyRestoredStack(enemy, "enemy.toxic", "toxicStacks", eData.toxicStacks, "enemy");
         enemy.toxicUntil = eData.toxicUntil;
         enemy.toxicAccum = eData.toxicAccum || 0;
-        enemy.bleedStacks = eData.bleedStacks || 0;
+        applyRestoredStack(enemy, "enemy.bleed", "bleedStacks", eData.bleedStacks || 0, "enemy");
         enemy.bleedDps = eData.bleedDps || 0;
         enemy.bleedTimer = eData.bleedTimer || 0;
         enemy.bleedAccum = eData.bleedAccum || 0;
@@ -198,10 +242,10 @@ export function applyGameMapMixin(Game) {
           boss.slowUntil = bossData.slowUntil;
           boss.slowMult = bossData.slowMult;
           boss.stunUntil = bossData.stunUntil;
-          boss.toxicStacks = bossData.toxicStacks;
+          applyRestoredStack(boss, "enemy.toxic", "toxicStacks", bossData.toxicStacks, "boss");
           boss.toxicUntil = bossData.toxicUntil;
           boss.toxicAccum = bossData.toxicAccum || 0;
-          boss.bleedStacks = bossData.bleedStacks || 0;
+          applyRestoredStack(boss, "enemy.bleed", "bleedStacks", bossData.bleedStacks || 0, "boss");
           boss.bleedDps = bossData.bleedDps || 0;
           boss.bleedTimer = bossData.bleedTimer || 0;
           boss.bleedAccum = bossData.bleedAccum || 0;
@@ -265,8 +309,39 @@ export function applyGameMapMixin(Game) {
           x: p.position.x,
           y: p.position.y,
           isSearched: p.isSearched,
+          isMiniBossLootChest: !!p.isMiniBossLootChest,
+          keepVisibleWhenSearched: !!p.keepVisibleWhenSearched,
+          phantomSpawnTriggered: !!p.phantomSpawnTriggered,
           pendingLootDefs: Array.isArray(p.pendingLootDefs) ? p.pendingLootDefs.map((d) => ({ ...d })) : null
-        }))
+        })),
+        totems: (this.totems || []).map(t => ({
+          typeId: t.typeId,
+          zoneId: t.zoneId,
+          x: t.position.x,
+          y: t.position.y,
+          health: t.health,
+          maxHealth: t.maxHealth,
+          isDead: t.isDead,
+          deathAnimStartTime: t.deathAnimStartTime
+        })),
+        ambushZoneState: Object.fromEntries(
+          Object.entries(this.ambushZoneState || {}).map(([id, s]) => [
+            id,
+            { triggered: s.triggered, complete: !!s.complete, rewardSpawned: !!s.rewardSpawned, themeId: s.themeId, themeName: s.themeName }
+          ])
+        ),
+        hazardZoneState: Object.fromEntries(
+          Object.entries(this.hazardZoneState || {}).map(([id, s]) => [
+            id,
+            { active: !!s.active, type: s.type }
+          ])
+        ),
+        bloodAltarZoneState: Object.fromEntries(
+          Object.entries(this.bloodAltarZoneState || {}).map(([id, s]) => [
+            id,
+            { charges: s.charges ?? 0, activated: !!s.activated, type: s.type }
+          ])
+        )
       };
     },
 
@@ -316,9 +391,77 @@ export function applyGameMapMixin(Game) {
         if (!def) return null;
         const p = new SearchableProp(pData.id, pData.x, pData.y, pData.typeId);
         p.isSearched = pData.isSearched || false;
+        p.isMiniBossLootChest = !!pData.isMiniBossLootChest;
+        p.keepVisibleWhenSearched = !!(pData.keepVisibleWhenSearched || p.def?.keepVisibleWhenSearched);
+        p.phantomSpawnTriggered = !!pData.phantomSpawnTriggered;
         p.pendingLootDefs = Array.isArray(pData.pendingLootDefs) ? pData.pendingLootDefs.map((d) => ({ ...d })) : null;
         return p;
       }).filter(Boolean);
+
+      if (Array.isArray(savedState.totems)) {
+        this.totems = savedState.totems.map(tData => {
+          const t = new Totem(tData.x, tData.y, tData.typeId, tData.zoneId);
+          t.health = tData.health ?? t.maxHealth;
+          t.maxHealth = tData.maxHealth ?? t.maxHealth;
+          if (tData.isDead || t.health <= 0) {
+            t.isDead = true;
+            t.deathAnimStartTime = tData.deathAnimStartTime ?? 0;
+          }
+          return t;
+        });
+      } else {
+        this.totems = [];
+      }
+
+      if (savedState.ambushZoneState && typeof savedState.ambushZoneState === 'object') {
+        this.ambushZoneState = {};
+        for (const [id, s] of Object.entries(savedState.ambushZoneState)) {
+          this.ambushZoneState[id] = {
+            triggered: !!s.triggered,
+            complete: !!s.complete,
+            rewardSpawned: !!s.rewardSpawned,
+            themeId: s.themeId,
+            themeName: s.themeName,
+            spawnSchedule: [],
+            spawnPoints: [],
+            spawnedEnemyIds: new Set(),
+          };
+        }
+      } else {
+        this.ambushZoneState = this.ambushZoneState || {};
+      }
+
+      if (savedState.hazardZoneState && typeof savedState.hazardZoneState === 'object') {
+        this.hazardZoneState = {};
+        for (const [id, s] of Object.entries(savedState.hazardZoneState)) {
+          this.hazardZoneState[id] = {
+            active: !!s.active,
+            type: s.type || 'avalanche',
+            snowOrbs: [],
+            eruptionWarnings: [],
+            swampPatches: [],
+            fallingFireballs: [],
+            windGustUntil: 0,
+            windDirection: { x: 0, y: 0 },
+            swampStacks: 0,
+          };
+        }
+      } else {
+        this.hazardZoneState = this.hazardZoneState || {};
+      }
+
+      if (savedState.bloodAltarZoneState && typeof savedState.bloodAltarZoneState === 'object') {
+        this.bloodAltarZoneState = {};
+        for (const [id, s] of Object.entries(savedState.bloodAltarZoneState)) {
+          this.bloodAltarZoneState[id] = {
+            charges: s.charges ?? 0,
+            activated: !!s.activated,
+            type: s.type || 'heal',
+          };
+        }
+      } else {
+        this.bloodAltarZoneState = this.bloodAltarZoneState || {};
+      }
     },
 
     spawnBreakablesForMap(map, rng = Math.random) {
@@ -476,6 +619,12 @@ export function applyGameMapMixin(Game) {
         )) return true;
         return false;
       };
+      const maybeMarkAsOpenedEmpty = (prop) => {
+        if (!prop || rng() >= 0.5) return;
+        prop.isSearched = true;
+        prop.pendingLootDefs = [];
+        prop.keepVisibleWhenSearched = true;
+      };
 
       if (tileGrid && tileSize) {
         const W = tileGrid[0].length;
@@ -526,6 +675,7 @@ export function applyGameMapMixin(Game) {
           if (this.overlapsTileWall(px, py, w, h)) continue;
           used.add(key);
           const prop = new SearchableProp(nextId + placed, px, py, typeId);
+          maybeMarkAsOpenedEmpty(prop);
           this.searchableProps.push(prop);
           placed++;
         }
@@ -546,9 +696,340 @@ export function applyGameMapMixin(Game) {
         if (overlapsAnything(x, y, w, h, null)) continue;
         if (this.overlapsTileWall(x, y, w, h)) continue;
         const prop = new SearchableProp(nextId + placed, x, y, typeId);
+        maybeMarkAsOpenedEmpty(prop);
         this.searchableProps.push(prop);
         placed++;
       }
+      this.searchablePropNextId = nextId + placed;
+    },
+
+    spawnBreakablesForBiome() {
+      this.breakables = this.breakables || [];
+      const data = this.world.archetypeGrid;
+      if (!data?.grid) return;
+      const tileSize = this.world.tileSize || 32;
+      const tileGrid = this.world.tileGrid;
+      const WALL = 1;
+      const FLOOR = 0;
+      const nextId = this.breakableNextId ?? 1;
+      const weights = [
+        { id: 'crate_basic', w: 48 },
+        { id: 'urn_magic', w: 16 },
+        { id: 'jar_1', w: 14 },
+        { id: 'jar_2', w: 12 },
+        { id: 'ore_sack', w: 6 }
+      ];
+      const totalW = weights.reduce((s, x) => s + x.w, 0);
+      const pickDefId = () => {
+        let v = Math.random() * totalW;
+        for (const w of weights) {
+          v -= w.w;
+          if (v <= 0) return w.id;
+        }
+        return weights[0].id;
+      };
+      let placed = 0;
+      for (let row = 0; row < BIOME_GRID_ROWS; row++) {
+        for (let col = 0; col < BIOME_GRID_COLS; col++) {
+          const archetype = data.grid[row][col];
+          if (archetype === BIOME_ARCHETYPE.START || archetype === BIOME_ARCHETYPE.EXIT) continue;
+          if (archetype === BIOME_ARCHETYPE.LOST_CAMPS || archetype === BIOME_ARCHETYPE.MINIBOSS) continue;
+          let count = 1 + Math.floor(Math.random() * 3);
+          const bounds = getBiomeCellBounds(this.world, col, row);
+          const margin = this.world.wallThickness + 40;
+          const inner = { x: bounds.x + margin, y: bounds.y + margin, w: Math.max(0, bounds.w - 2 * margin), h: Math.max(0, bounds.h - 2 * margin) };
+          for (let i = 0; i < count; i++) {
+            const defId = pickDefId();
+            const def = BREAKABLE_DEFS[defId];
+            if (!def) continue;
+            let px = inner.x + Math.random() * Math.max(0, inner.w - def.hitbox.w);
+            let py = inner.y + Math.random() * Math.max(0, inner.h - def.hitbox.h);
+            const gx = Math.floor(px / tileSize);
+            const gy = Math.floor(py / tileSize);
+            if (tileGrid && (gy < 1 || gy >= tileGrid.length - 1 || gx < 1 || gx >= tileGrid[0].length - 1 || tileGrid[gy][gx] === WALL)) continue;
+            const overlap = (this.obstacles || []).some(obs =>
+              px < obs.position.x + obs.size.w && px + def.hitbox.w > obs.position.x &&
+              py < obs.position.y + obs.size.h && py + def.hitbox.h > obs.position.y
+            ) || (this.breakables || []).some(b =>
+              px < b.position.x + b.hitbox.w && px + def.hitbox.w > b.position.x &&
+              py < b.position.y + b.hitbox.h && py + def.hitbox.h > b.position.y
+            );
+            if (overlap) continue;
+            if (this.overlapsTileWall(px, py, def.hitbox.w, def.hitbox.h)) continue;
+            this.breakables.push(new Breakable(nextId + placed, px, py, defId));
+            placed++;
+          }
+        }
+      }
+      this.breakableNextId = nextId + placed;
+    },
+
+    spawnSearchablePropsForBiome() {
+      this.searchableProps = this.searchableProps || [];
+      const data = this.world.archetypeGrid;
+      if (!data?.grid) return;
+      const tileSize = this.world.tileSize || 32;
+      const tileGrid = this.world.tileGrid;
+      const WALL = 1;
+      const FLOOR = 0;
+      const nextId = this.searchablePropNextId ?? 1;
+      const weights = [
+        { typeId: 'crate', w: 45 },
+        { typeId: 'locker', w: 25 },
+        { typeId: 'deadWarrior', w: 15 },
+        { typeId: 'chest', w: 15 }
+      ];
+      const totalW = weights.reduce((s, x) => s + x.w, 0);
+      const pickTypeId = () => {
+        let v = Math.random() * totalW;
+        for (const w of weights) {
+          v -= w.w;
+          if (v <= 0) return w.typeId;
+        }
+        return weights[0].typeId;
+      };
+      let placed = 0;
+      const corridorMiddlePoints = this.world.corridorMiddlePoints || {};
+      const chestDef = SEARCHABLE_PROP_DEFS.chest;
+      const chestW = chestDef?.width ?? 32;
+      const chestH = chestDef?.height ?? 32;
+      const clusterRadiusTiles = 2;
+      const findNearestFloorTile = (startGx, startGy, radius = 3) => {
+        if (!tileGrid) return { gx: startGx, gy: startGy };
+        const W = tileGrid[0]?.length ?? 0;
+        const H = tileGrid.length ?? 0;
+        const inBounds = (gx, gy) => gx >= 1 && gx < W - 1 && gy >= 1 && gy < H - 1;
+        if (inBounds(startGx, startGy) && tileGrid[startGy][startGx] !== WALL) return { gx: startGx, gy: startGy };
+        for (let r = 1; r <= radius; r++) {
+          for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+              if (Math.abs(dx) + Math.abs(dy) !== r) continue; // ring
+              const gx = startGx + dx;
+              const gy = startGy + dy;
+              if (!inBounds(gx, gy)) continue;
+              if (tileGrid[gy][gx] !== WALL) return { gx, gy };
+            }
+          }
+        }
+        return { gx: startGx, gy: startGy };
+      };
+      const getPathMidpointBetweenInteriorPoints = (p1, p2) => {
+        // Path between interior points is carved as: vertical to (p1.gx, p2.gy) then horizontal to (p2.gx, p2.gy).
+        const vLen = Math.abs(p2.gy - p1.gy);
+        const hLen = Math.abs(p2.gx - p1.gx);
+        const total = vLen + hLen;
+        if (total <= 0) return { gx: p1.gx, gy: p1.gy };
+        const half = total / 2;
+        if (half <= vLen) {
+          const sy = p2.gy >= p1.gy ? 1 : -1;
+          return { gx: p1.gx, gy: p1.gy + sy * Math.round(half) };
+        }
+        const sx = p2.gx >= p1.gx ? 1 : -1;
+        return { gx: p1.gx + sx * Math.round(half - vLen), gy: p2.gy };
+      };
+      const tryPlaceChestCluster = (centerGx, centerGy) => {
+        const count = 3 + Math.floor(Math.random() * 3);
+        let clusterPlaced = 0;
+        for (let tries = 0; tries < count * 8 && clusterPlaced < count; tries++) {
+          const offsetGx = (Math.random() * 2 - 1) * clusterRadiusTiles;
+          const offsetGy = (Math.random() * 2 - 1) * clusterRadiusTiles;
+          const px = (centerGx + offsetGx) * tileSize + (tileSize - chestW) / 2;
+          const py = (centerGy + offsetGy) * tileSize + (tileSize - chestH) / 2;
+          const gx = Math.floor(px / tileSize);
+          const gy = Math.floor(py / tileSize);
+          if (tileGrid && (gy < 1 || gy >= tileGrid.length - 1 || gx < 1 || gx >= tileGrid[0].length - 1 || tileGrid[gy][gx] === WALL)) continue;
+          const overlap = (this.obstacles || []).some(obs =>
+            px < obs.position.x + obs.size.w && px + chestW > obs.position.x &&
+            py < obs.position.y + obs.size.h && py + chestH > obs.position.y
+          ) || (this.searchableProps || []).some(p =>
+            px < p.position.x + p.width && px + chestW > p.position.x &&
+            py < p.position.y + p.height && py + chestH > p.position.y
+          ) || (this.breakables || []).some(b =>
+            px < b.position.x + b.hitbox.w && px + chestW > b.position.x &&
+            py < b.position.y + b.hitbox.h && py + chestH > b.position.y
+          );
+          if (overlap) continue;
+          if (this.overlapsTileWall(px, py, chestW, chestH)) continue;
+          const prop = new SearchableProp(nextId + placed, px, py, 'chest');
+          this.searchableProps.push(prop);
+          placed++;
+          clusterPlaced++;
+        }
+      };
+      for (let row = 0; row < BIOME_GRID_ROWS; row++) {
+        for (let col = 0; col < BIOME_GRID_COLS; col++) {
+          const archetype = data.grid[row][col];
+          if (archetype === BIOME_ARCHETYPE.START || archetype === BIOME_ARCHETYPE.EXIT) continue;
+          if (archetype === BIOME_ARCHETYPE.MINIBOSS) continue;
+          const points = corridorMiddlePoints[`${row}_${col}`];
+          if (archetype === BIOME_ARCHETYPE.CORRIDORS && points?.length === 2) {
+            const mid = getPathMidpointBetweenInteriorPoints(points[0], points[1]);
+            const snapped = findNearestFloorTile(mid.gx, mid.gy, 4);
+            tryPlaceChestCluster(snapped.gx, snapped.gy);
+          }
+          if (archetype === BIOME_ARCHETYPE.OPEN_SPACE) {
+            const bounds = getBiomeCellBounds(this.world, col, row);
+            const centerGx = Math.floor((bounds.x + bounds.w / 2) / tileSize);
+            const centerGy = Math.floor((bounds.y + bounds.h / 2) / tileSize);
+            const base = findNearestFloorTile(centerGx, centerGy, 6);
+            const offsets = [
+              { dx: -2, dy: 0 },
+              { dx: 0, dy: 0 },
+              { dx: 2, dy: 0 }
+            ];
+            const rareTypes = ["Weapon", "Helmet", "Body Armour", "Boots", "Ring"];
+            for (let i = 0; i < offsets.length; i++) {
+              const t = offsets[i];
+              const snapped = findNearestFloorTile(base.gx + t.dx, base.gy + t.dy, 4);
+              const px = snapped.gx * tileSize + (tileSize - chestW) / 2;
+              const py = snapped.gy * tileSize + (tileSize - chestH) / 2;
+              const overlap = (this.obstacles || []).some(obs =>
+                px < obs.position.x + obs.size.w && px + chestW > obs.position.x &&
+                py < obs.position.y + obs.size.h && py + chestH > obs.position.y
+              ) || (this.searchableProps || []).some(p =>
+                px < p.position.x + p.width && px + chestW > p.position.x &&
+                py < p.position.y + p.height && py + chestH > p.position.y
+              ) || (this.breakables || []).some(b =>
+                px < b.position.x + b.hitbox.w && px + chestW > b.position.x &&
+                py < b.position.y + b.hitbox.h && py + chestH > b.position.y
+              );
+              if (overlap) continue;
+              if (this.overlapsTileWall(px, py, chestW, chestH)) continue;
+              const prop = new SearchableProp(nextId + placed, px, py, 'chest');
+              if (i === 2) {
+                const roll = Math.random();
+                const type = rareTypes[Math.floor(Math.random() * rareTypes.length)];
+                const diff = this.difficulty ?? null;
+                const equipOpts = diff != null ? { difficulty: diff } : {};
+                if (roll < 0.10) {
+                  prop.pendingLootDefs = [generateEquipmentItem(type, 1, 0.8, "rare", equipOpts)];
+                } else if (roll < 0.60) {
+                  prop.pendingLootDefs = [generateEquipmentItem(type, 0.8, 0.3, "magic", equipOpts)];
+                } else {
+                  prop.spawnEliteOnOpen = true;
+                }
+              } else {
+                prop.spawnEliteOnOpen = true;
+              }
+              this.searchableProps.push(prop);
+              placed++;
+            }
+          }
+          if (archetype === BIOME_ARCHETYPE.WOODS) {
+            const bounds = getBiomeCellBounds(this.world, col, row);
+            const margin = this.world.wallThickness + 40;
+            const inner = { x: bounds.x + margin, y: bounds.y + margin, w: Math.max(0, bounds.w - 2 * margin), h: Math.max(0, bounds.h - 2 * margin) };
+            const chestCount = 7 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < chestCount; i++) {
+              for (let attempt = 0; attempt < 25; attempt++) {
+                const px = inner.x + Math.random() * Math.max(0, inner.w - chestW);
+                const py = inner.y + Math.random() * Math.max(0, inner.h - chestH);
+                const gx = Math.floor(px / tileSize);
+                const gy = Math.floor(py / tileSize);
+                if (tileGrid && (gy < 1 || gy >= tileGrid.length - 1 || gx < 1 || gx >= tileGrid[0].length - 1 || tileGrid[gy][gx] === WALL)) continue;
+                const overlap = (this.obstacles || []).some(obs =>
+                  px < obs.position.x + obs.size.w && px + chestW > obs.position.x &&
+                  py < obs.position.y + obs.size.h && py + chestH > obs.position.y
+                ) || (this.searchableProps || []).some(p =>
+                  px < p.position.x + p.width && px + chestW > p.position.x &&
+                  py < p.position.y + p.height && py + chestH > p.position.y
+                ) || (this.breakables || []).some(b =>
+                  px < b.position.x + b.hitbox.w && px + chestW > b.position.x &&
+                  py < b.position.y + b.hitbox.h && py + chestH > b.position.y
+                );
+                if (overlap) continue;
+                if (this.overlapsTileWall(px, py, chestW, chestH)) continue;
+                const prop = new SearchableProp(nextId + placed, px, py, 'chest');
+                this.searchableProps.push(prop);
+                placed++;
+                break;
+              }
+            }
+          }
+          let count = (archetype === BIOME_ARCHETYPE.LOST_CAMPS || archetype === BIOME_ARCHETYPE.VAULT || archetype === BIOME_ARCHETYPE.WOODS) ? 0 : 1 + Math.floor(Math.random() * 2);
+          const bounds = getBiomeCellBounds(this.world, col, row);
+          const margin = this.world.wallThickness + 40;
+          const inner = { x: bounds.x + margin, y: bounds.y + margin, w: Math.max(0, bounds.w - 2 * margin), h: Math.max(0, bounds.h - 2 * margin) };
+          for (let i = 0; i < count; i++) {
+            const typeId = pickTypeId();
+            const def = SEARCHABLE_PROP_DEFS[typeId];
+            const w = def?.width ?? 32;
+            const h = def?.height ?? 32;
+            let px = inner.x + Math.random() * Math.max(0, inner.w - w);
+            let py = inner.y + Math.random() * Math.max(0, inner.h - h);
+            const gx = Math.floor(px / tileSize);
+            const gy = Math.floor(py / tileSize);
+            if (tileGrid && (gy < 1 || gy >= tileGrid.length - 1 || gx < 1 || gx >= tileGrid[0].length - 1 || tileGrid[gy][gx] === WALL)) continue;
+            const overlap = (this.obstacles || []).some(obs =>
+              px < obs.position.x + obs.size.w && px + w > obs.position.x &&
+              py < obs.position.y + obs.size.h && py + h > obs.position.y
+            ) || (this.searchableProps || []).some(p =>
+              px < p.position.x + p.width && px + w > p.position.x &&
+              py < p.position.y + p.height && py + h > p.position.y
+            ) || (this.breakables || []).some(b =>
+              px < b.position.x + b.hitbox.w && px + w > b.position.x &&
+              py < b.position.y + b.hitbox.h && py + h > b.position.y
+            );
+            if (overlap) continue;
+            if (this.overlapsTileWall(px, py, w, h)) continue;
+            const prop = new SearchableProp(nextId + placed, px, py, typeId);
+            this.searchableProps.push(prop);
+            placed++;
+          }
+        }
+      }
+      const lostCampChests = this.world.lostCampChestPositions || [];
+      for (const pos of lostCampChests) {
+        const px = pos.x;
+        const py = pos.y;
+        const prop = new SearchableProp(nextId + placed, px, py, 'chest');
+        this.searchableProps.push(prop);
+        placed++;
+      }
+
+      // START cell: guaranteed low-roll common equipment chest (1 weapon + 2 of helmet/body/boots).
+      const startCell = data.startCell;
+      if (startCell) {
+        const bounds = getBiomeCellBounds(this.world, startCell.col, startCell.row);
+        const centerGx = Math.floor((bounds.x + bounds.w / 2) / tileSize);
+        const centerGy = Math.floor((bounds.y + bounds.h / 2) / tileSize);
+        const snapped = findNearestFloorTile(centerGx, centerGy, 6);
+        const chestDef = SEARCHABLE_PROP_DEFS.chest;
+        const w = chestDef?.width ?? 32;
+        const h = chestDef?.height ?? 32;
+        const px = snapped.gx * tileSize + (tileSize - w) / 2;
+        const py = snapped.gy * tileSize + (tileSize - h) / 2;
+        const overlap =
+          (this.obstacles || []).some(obs =>
+            px < obs.position.x + obs.size.w && px + w > obs.position.x &&
+            py < obs.position.y + obs.size.h && py + h > obs.position.y
+          ) || (this.searchableProps || []).some(p =>
+            px < p.position.x + p.width && px + w > p.position.x &&
+            py < p.position.y + p.height && py + h > p.position.y
+          ) || (this.breakables || []).some(b =>
+            px < b.position.x + b.hitbox.w && px + w > b.position.x &&
+            py < b.position.y + b.hitbox.h && py + h > b.position.y
+          );
+        if (!overlap && !this.overlapsTileWall(px, py, w, h)) {
+          const diff = this.difficulty ?? null;
+          const equipOpts = diff != null ? { difficulty: diff, forceMinBaseStats: true } : { forceMinBaseStats: true };
+          const weapon = generateEquipmentItem("Weapon", 0, 0, "common", equipOpts);
+          const armourChoices = ["Helmet", "Body Armour", "Boots"];
+          for (let i = armourChoices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const tmp = armourChoices[i];
+            armourChoices[i] = armourChoices[j];
+            armourChoices[j] = tmp;
+          }
+          const a1 = generateEquipmentItem(armourChoices[0], 0, 0, "common", equipOpts);
+          const a2 = generateEquipmentItem(armourChoices[1], 0, 0, "common", equipOpts);
+          const prop = new SearchableProp(nextId + placed, px, py, "chest");
+          prop.pendingLootDefs = [weapon, a1, a2];
+          this.searchableProps.push(prop);
+          placed++;
+        }
+      }
+
       this.searchablePropNextId = nextId + placed;
     },
 
@@ -574,7 +1055,7 @@ export function applyGameMapMixin(Game) {
       const count = profile.min + Math.floor(Math.random() * (profile.max - profile.min + 1));
 
       const weightedSpawnByMap = {
-        0: { giantRock: 5, ruinedPillar: 5, ancientTree: 3, bonePile: 1 },
+        0: { giantRock: 5, ruinPillar: 5, ancientTree: 3, bonePile: 1 },
         1: { ancientTree: 12, giantRock: 2 }
       };
       const weightedDefs = [];
@@ -620,36 +1101,39 @@ export function applyGameMapMixin(Game) {
         attempts++;
         const typeDef = pickType();
         const size = typeDef.size;
-        
+        // Use placementSize for ruinPillar so overlap check reserves sprite footprint (sprites load at natural size).
+        const placeW = typeDef.placementSize ? typeDef.placementSize.w : size.w;
+        const placeH = typeDef.placementSize ? typeDef.placementSize.h : size.h;
+
         // Random position
         const minSpawnX = Math.max(margin, this.world.width * 0.2);
-        const xRange = Math.max(1, this.world.width - margin - size.w - minSpawnX);
+        const xRange = Math.max(1, this.world.width - margin - placeW - minSpawnX);
         const x = minSpawnX + Math.random() * xRange;
-        const y = margin + Math.random() * (this.world.height - 2 * margin - size.h);
+        const y = margin + Math.random() * (this.world.height - 2 * margin - placeH);
 
         // Check if position is valid
         let valid = true;
 
         // Check exit zones
         for (const zone of exitZones) {
-          if (x < zone.x + zone.w && x + size.w > zone.x &&
-              y < zone.y + zone.h && y + size.h > zone.y) {
+          if (x < zone.x + zone.w && x + placeW > zone.x &&
+              y < zone.y + zone.h && y + placeH > zone.y) {
             valid = false;
             break;
           }
         }
 
         // Check player spawn zone
-        if (x < playerSpawnZone.x + playerSpawnZone.w && x + size.w > playerSpawnZone.x &&
-            y < playerSpawnZone.y + playerSpawnZone.h && y + size.h > playerSpawnZone.y) {
+        if (x < playerSpawnZone.x + playerSpawnZone.w && x + placeW > playerSpawnZone.x &&
+            y < playerSpawnZone.y + playerSpawnZone.h && y + placeH > playerSpawnZone.y) {
           valid = false;
         }
 
         // Check overlap with existing obstacles
         if (valid) {
           for (const existing of this.obstacles) {
-            if (x < existing.position.x + existing.size.w && x + size.w > existing.position.x &&
-                y < existing.position.y + existing.size.h && y + size.h > existing.position.y) {
+            if (x < existing.position.x + existing.size.w && x + placeW > existing.position.x &&
+                y < existing.position.y + existing.size.h && y + placeH > existing.position.y) {
               valid = false;
               break;
             }
@@ -660,8 +1144,8 @@ export function applyGameMapMixin(Game) {
         if (valid) {
           for (const loot of this.lootSystem.items) {
             const lootPos = loot.displayPosition;
-            if (x < lootPos.x + loot.size && x + size.w > lootPos.x &&
-                y < lootPos.y + loot.size && y + size.h > lootPos.y) {
+            if (x < lootPos.x + loot.size && x + placeW > lootPos.x &&
+                y < lootPos.y + loot.size && y + placeH > lootPos.y) {
               valid = false;
               break;
             }
@@ -674,8 +1158,8 @@ export function applyGameMapMixin(Game) {
           if (this.enemySystem.boss) allEnemies.push(this.enemySystem.boss);
           for (const enemy of allEnemies) {
             if (enemy.isDead) continue;
-            if (x < enemy.position.x + enemy.size && x + size.w > enemy.position.x &&
-                y < enemy.position.y + enemy.size && y + size.h > enemy.position.y) {
+            if (x < enemy.position.x + enemy.size && x + placeW > enemy.position.x &&
+                y < enemy.position.y + enemy.size && y + placeH > enemy.position.y) {
               valid = false;
               break;
             }
@@ -685,15 +1169,15 @@ export function applyGameMapMixin(Game) {
         // Check overlap with interactables
         if (valid) {
           for (const obj of this.mapInteractables) {
-            if (x < obj.x + obj.w && x + size.w > obj.x &&
-                y < obj.y + obj.h && y + size.h > obj.y) {
+            if (x < obj.x + obj.w && x + placeW > obj.x &&
+                y < obj.y + obj.h && y + placeH > obj.y) {
               valid = false;
               break;
             }
           }
         }
 
-        if (valid && this.overlapsTileWall(x, y, size.w, size.h)) valid = false;
+        if (valid && this.overlapsTileWall(x, y, placeW, placeH)) valid = false;
 
         if (valid) {
           if (typeDef.id === "bonePile") {
@@ -763,6 +1247,84 @@ export function applyGameMapMixin(Game) {
 
     spawnMapNpcsForVisit(_mapId) {
       this.mapInteractables = this.mapInteractables || [];
+
+      // Biome: spawn NPCs in LOST_CAMPS (always) and OPEN_SPACE (10% chance per cell).
+      if (this.world?.archetypeGrid?.grid) {
+        const data = this.world.archetypeGrid;
+        const tileSize = this.world.tileSize || 32;
+        const npcDefs = Object.values(NPC_DEFS || {}).filter((d) => d && d.type && d.type !== NPC_DEFS.rogue?.type);
+        const pickNpcDef = () => npcDefs[Math.floor(Math.random() * npcDefs.length)];
+
+        const findSpotInBounds = (bounds, size = 64) => {
+          const margin = (this.world.wallThickness || 32) + 60;
+          const inner = {
+            x: bounds.x + margin,
+            y: bounds.y + margin,
+            w: Math.max(1, bounds.w - margin * 2),
+            h: Math.max(1, bounds.h - margin * 2)
+          };
+          for (let attempts = 0; attempts < 80; attempts++) {
+            const x = inner.x + Math.random() * Math.max(1, inner.w - size);
+            const y = inner.y + Math.random() * Math.max(1, inner.h - size);
+            const overlapObj = (this.mapInteractables || []).some(obj =>
+              x < obj.x + obj.w && x + size > obj.x &&
+              y < obj.y + obj.h && y + size > obj.y
+            );
+            if (overlapObj) continue;
+            if (this.overlapsTileWall(x, y, size, size)) continue;
+            // Extra safety: if tile grid exists, require the NPC center to be on a FLOOR tile.
+            const grid = this.world.tileGrid;
+            if (grid) {
+              const gx = Math.floor((x + size / 2) / tileSize);
+              const gy = Math.floor((y + size / 2) / tileSize);
+              if (gy < 0 || gy >= grid.length || gx < 0 || gx >= grid[0].length) continue;
+              if (grid[gy][gx] === 1) continue;
+            }
+            return { x, y };
+          }
+          return null;
+        };
+
+        const trySpawnNpcInCell = (row, col) => {
+          const def = pickNpcDef();
+          if (!def) return;
+          const npcWorldW = Math.max(1, Number(def.worldSize?.w) || 56);
+          const npcWorldH = Math.max(1, Number(def.worldSize?.h) || 56);
+          const npcSize = Math.max(npcWorldW, npcWorldH);
+          const bounds = getBiomeCellBounds(this.world, col, row);
+          const spot = findSpotInBounds(bounds, npcSize);
+          if (!spot) return;
+          this.mapInteractables.push({
+            type: def.type,
+            npcName: def.name,
+            spriteAtlas: def.sprite.atlas,
+            spriteRect: { x: def.sprite.x, y: def.sprite.y, w: def.sprite.w, h: def.sprite.h },
+            x: spot.x,
+            y: spot.y,
+            w: npcWorldW,
+            h: npcWorldH,
+            npcWorldW,
+            npcWorldH,
+            used: false,
+            consumeOnInteract: false,
+            interactionCount: 0,
+            biomeCell: { col, row }
+          });
+        };
+
+        for (let row = 0; row < BIOME_GRID_ROWS; row++) {
+          for (let col = 0; col < BIOME_GRID_COLS; col++) {
+            const archetype = data.grid[row][col];
+            if (archetype === BIOME_ARCHETYPE.LOST_CAMPS) {
+              trySpawnNpcInCell(row, col);
+            } else if (archetype === BIOME_ARCHETYPE.OPEN_SPACE && Math.random() < 0.1) {
+              trySpawnNpcInCell(row, col);
+            }
+          }
+        }
+        return;
+      }
+
       this.npcSpawnState = this.npcSpawnState || {
         oldWoman: { interval: this.rollMapInterval(NPC_DEFS.mysteriousOldWoman.spawn.min, NPC_DEFS.mysteriousOldWoman.spawn.max), counter: 0 },
         oldMan: { interval: this.rollMapInterval(NPC_DEFS.mysteriousOldMan.spawn.min, NPC_DEFS.mysteriousOldMan.spawn.max), counter: 0 },
@@ -782,15 +1344,41 @@ export function applyGameMapMixin(Game) {
         NPC_DEFS.blacksmith.type
       ]);
       const existingNpcCount = this.mapInteractables.filter((obj) => npcTypes.has(obj.type)).length;
-      const maxNpcsPerMap = 2;
+      const baseNpcCap = 2;
+      const pricingModifiers = typeof this.getPillarPricingModifiers === "function"
+        ? this.getPillarPricingModifiers()
+        : { npcSpawnCapMultiplier: 1, npcSpawnCapOverride: null };
+      const overrideCap = Number(pricingModifiers?.npcSpawnCapOverride);
+      const maxNpcsPerMap = Number.isFinite(overrideCap)
+        ? Math.max(0, Math.floor(overrideCap))
+        : Math.max(0, Math.floor(baseNpcCap * Math.max(1, Number(pricingModifiers?.npcSpawnCapMultiplier) || 1)));
       let remainingSlots = Math.max(0, maxNpcsPerMap - existingNpcCount);
+      this.__pillarNpcSpawnDebug = {
+        at: this.time,
+        mapId: _mapId,
+        baseNpcCap,
+        maxNpcsPerMap,
+        existingNpcCount,
+        remainingSlots,
+        spawnedThisVisit: 0,
+        blockedReasons: [],
+        pricingModifiers
+      };
 
       const spawnNpc = (def, extra = {}) => {
         const npcWorldW = Math.max(1, Number(def.worldSize?.w) || 56);
         const npcWorldH = Math.max(1, Number(def.worldSize?.h) || 56);
         const npcSize = Math.max(npcWorldW, npcWorldH);
         const spot = this.findInteractableSpawnSpot(npcSize);
-        if (!spot) return false;
+        if (!spot) {
+          if (this.__pillarNpcSpawnDebug) {
+            this.__pillarNpcSpawnDebug.blockedReasons.push({
+              npcType: def.type,
+              reason: "no_valid_spawn_spot"
+            });
+          }
+          return false;
+        }
         this.mapInteractables.push({
           type: def.type,
           npcName: def.name,
@@ -807,6 +1395,9 @@ export function applyGameMapMixin(Game) {
           interactionCount: 0,
           ...extra
         });
+        if (this.__pillarNpcSpawnDebug) {
+          this.__pillarNpcSpawnDebug.spawnedThisVisit += 1;
+        }
         return true;
       };
 
@@ -817,7 +1408,14 @@ export function applyGameMapMixin(Game) {
         }
       }
 
-      if (remainingSlots <= 0) return;
+      if (remainingSlots <= 0) {
+        if (this.__pillarNpcSpawnDebug) {
+          this.__pillarNpcSpawnDebug.blockedReasons.push({ reason: "npc_cap_reached" });
+          this.__pillarNpcSpawnDebug.remainingSlots = 0;
+          this.__pillarNpcSpawnDebug.finalNpcCount = this.mapInteractables.filter((obj) => npcTypes.has(obj.type)).length;
+        }
+        return;
+      }
 
       const keys = [
         ["oldWoman", NPC_DEFS.mysteriousOldWoman],
@@ -838,6 +1436,10 @@ export function applyGameMapMixin(Game) {
           st.interval = this.rollMapInterval(def.spawn.min, def.spawn.max);
           remainingSlots--;
         }
+      }
+      if (this.__pillarNpcSpawnDebug) {
+        this.__pillarNpcSpawnDebug.remainingSlots = remainingSlots;
+        this.__pillarNpcSpawnDebug.finalNpcCount = this.mapInteractables.filter((obj) => npcTypes.has(obj.type)).length;
       }
     },
 
@@ -885,13 +1487,7 @@ export function applyGameMapMixin(Game) {
       this.lootSystem.setMapLootQuality(lootQual);
       this.lootSystem.setDifficulty(this.difficulty);
 
-      if (hasTalent("immortal")) this.immortalShield = 30;
-
-      if (hasTalent("treasureHunter") && targetMapId % 3 === 2) {
-        const cx = this.world.width / 2 - 10;
-        const cy = this.world.height / 2 - 10;
-        this.lootSystem.spawnBurstAt(cx, cy, 2, 0.8);
-      }
+      if (this.hasCharacterTalent("immortal")) this.immortalShield = 30;
 
       this.empowerStacks = [0, 0, 0, 0];
       this.enemySystem.setMap(targetMap);
@@ -900,19 +1496,36 @@ export function applyGameMapMixin(Game) {
       const isFirstVisit = !this.visitedMaps.has(targetMapId);
       
       if (isFirstVisit) {
+        this.toughnessHitsThisMap = 0;
+        this.secondBreathUsedThisMap = false;
+        if (this.hasCharacterTalent("vitality") && this.currentStats?.maxHealth > 0) {
+          if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("vitality", "New map: healed 20% max HP");
+          this.healPlayer(Math.round(this.currentStats.maxHealth * 0.2));
+        }
         // First visit: initialize mapInteractables and spawn obstacles and sub-areas
         this.mapInteractables = [];
-        if (!isBossRoom && hasTalent("socketFinder") && Math.random() < 0.2) {
-          const margin = this.world.wallThickness + 80;
-          const ix = margin + Math.random() * (this.world.width - 2 * margin - 64);
-          const iy = margin + Math.random() * (this.world.height - 2 * margin - 64);
-          this.mapInteractables.push({ type: "socketWorkshop", x: ix, y: iy, w: 64, h: 64 });
-        }
         if (!isBossRoom) this.spawnMapNpcsForVisit(targetMapId);
         
         this.spawnObstacles(targetMapId);
         this.spawnBreakablesForMap(targetMap, () => Math.random());
         this.spawnSearchableProps(targetMap, () => Math.random());
+        if (this.world.vaultZones && this.world.vaultZones.length) {
+          for (const v of this.world.vaultZones) {
+            this.mapInteractables.push({
+              type: "vault",
+              id: v.id,
+              cx: v.cx,
+              cy: v.cy,
+              radius: v.radius,
+              x: v.cx - v.radius,
+              y: v.cy - v.radius,
+              w: 2 * v.radius,
+              h: 2 * v.radius,
+              opened: false
+            });
+          }
+          preloadSound("portcullisGate");
+        }
         this.spawnSubAreas(targetMapId);
         // Save the environmental state for future visits
         this.saveMapEnvironmentalState(targetMapId);
@@ -923,11 +1536,13 @@ export function applyGameMapMixin(Game) {
         this.enemySystem.projectiles = [];
         this.enemySystem.respawnQueue = [];
         this.enemySystem.spawnInitial(this);
+        this.trySpawnUndeadHeroForCurrentMap();
         this.visitedMaps.add(targetMapId);
       } else {
         // Returning to a visited map: restore environmental elements and enemy state
         this.restoreMapEnvironmentalState(targetMapId);
         this.restoreMapEnemyState(targetMapId);
+        this.trySpawnUndeadHeroForCurrentMap();
       }
 
       if (this.escortQuest?.active && targetMapId === 0) {

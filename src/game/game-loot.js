@@ -2,7 +2,7 @@
 // Loot drops, pickup, cubes
 // This module adds methods to Game.prototype when imported
 
-import { ENEMY_TYPES, Enemy } from '../entities/enemy.js';
+import { ENEMY_TYPES, UNDEAD_HERO_TYPES, Enemy } from '../entities/enemy.js';
 import { LootItem } from '../entities/loot.js';
 import { SearchableProp } from '../entities/searchable-prop.js';
 import { BLESSING_DEFS } from '../data/cubes-data.js';
@@ -14,6 +14,7 @@ import { generateEquipmentItem, getModifierPoolForType, LOCAL_STAT_SCALE_MOD_IDS
 import { DIFFICULTY_STAT_MULTIPLIER } from '../data/constants.js';
 import { LEGENDARY_MODIFIER_IDS, LEGENDARY_MODIFIER_EFFECTS } from '../data/cubes-data.js';
 import { addGold, rollGoldDrop } from './economy.js';
+import { play as playSfx } from '../audio.js';
 import {
   createSpiritItem,
   ensureRunInventoryState,
@@ -22,9 +23,43 @@ import {
   handleAncestorOnLootPickup
 } from './ancestor-system.js';
 import { getRingDropRateMult } from './ring-effects.js';
+import {
+  RITE_ENTRY_ITEM_CATEGORY,
+  RITE_ENTRY_ITEM_DISPLAY_NAME,
+  RITE_ENTRY_ITEM_PRECIOUS_ID
+} from '../data/rites.js';
+
+const ALL_KNOWN_ENEMY_TYPES = [...ENEMY_TYPES, ...UNDEAD_HERO_TYPES];
+const BLOOD_OF_THE_LAMB_LOOT_DEF = Object.freeze({
+  type: 'Precious',
+  category: RITE_ENTRY_ITEM_CATEGORY,
+  preciousId: RITE_ENTRY_ITEM_PRECIOUS_ID,
+  name: RITE_ENTRY_ITEM_DISPLAY_NAME,
+  description: 'A sanctified rite key consumed only when a Rite is completed.',
+  rarity: 'rare'
+});
 
 export function applyGameLootMixin(Game) {
   Object.assign(Game.prototype, {
+    spawnHealingOrbAt(centerX, centerY, healFraction = 0.1) {
+      if (!this.lootSystem) return null;
+      const size = 20;
+      const margin = this.world.wallThickness + 15;
+      const landX = centerX - size / 2 + (Math.random() - 0.5) * 20;
+      const landY = centerY - size / 2 + (Math.random() - 0.5) * 20;
+      const clampedX = Math.max(margin, Math.min(landX, this.world.width - margin - size));
+      const clampedY = Math.max(margin, Math.min(landY, this.world.height - margin - size));
+      const def = {
+        type: "HealingOrb",
+        name: "Healing Orb",
+        healFraction: Math.max(0, Number(healFraction) || 0.1)
+      };
+      const item = new LootItem(this.lootSystem.nextId++, clampedX, clampedY, def, centerX, centerY);
+      item.size = size;
+      this.lootSystem.items.push(item);
+      return item;
+    },
+
     applyItemSenseSlowPulse(duration = 0.5, radius = 220, slowMult = 0.7) {
       if (!this.enemySystem) return;
       const px = this.player.position.x + this.player.size / 2;
@@ -43,7 +78,7 @@ export function applyGameLootMixin(Game) {
     },
 
     grantXPFromEnemy(enemy) {
-      const baseType = ENEMY_TYPES.find((t) => t.name === enemy.name);
+      const baseType = ALL_KNOWN_ENEMY_TYPES.find((t) => t.id === enemy.enemyTypeId) || ALL_KNOWN_ENEMY_TYPES.find((t) => t.name === enemy.name);
       if (!baseType) return;
       const minXp = baseType.minXp ?? 10;
       const maxXp = baseType.maxXp ?? 20;
@@ -58,6 +93,7 @@ export function applyGameLootMixin(Game) {
       if (enemy.isAffixMinion) return [];
       const ex = enemy.position.x + enemy.size / 2;
       const ey = enemy.position.y + enemy.size / 2;
+      if (typeof this.onEnemyDiedInBloodAltar === "function") this.onEnemyDiedInBloodAltar(ex, ey);
 
       if (enemy.squadId) {
         this.squadAliveCount = this.squadAliveCount || {};
@@ -79,7 +115,7 @@ export function applyGameLootMixin(Game) {
         else this.lootSystem.spawnCubeAt(ex, ey, cubeKey);
         }
         const diff = Math.min(5, Math.max(1, this.difficulty ?? 1));
-        const equipOpts = { qualityEye: hasTalent("qualityEye"), socketSense: hasTalent("socketSense"), difficulty: diff };
+        const equipOpts = { qualityEye: false, socketSense: false, difficulty: diff };
         const lootQual = this.currentMap?.lootQuality ?? 0.5;
         const types = ["Helmet", "Boots", "Body Armour", "Weapon", "Ring"];
         if (Math.random() < HUMAN_SQUAD_DROP.equipmentMagicChance) {
@@ -108,9 +144,10 @@ export function applyGameLootMixin(Game) {
         return [];
       }
 
+      const isSpecialTier = enemy.enemyTier === "special" || enemy.isSpecial;
       const goldType = enemy.enemyTier === "miniBoss" || enemy.isMiniBoss || enemy.isFiery || enemy.isCursedChestGuardian
         ? "elite"
-        : (enemy.enemyTier === "elite" || enemy.isElite ? "elite" : "mob");
+        : (enemy.enemyTier === "elite" || enemy.isElite || isSpecialTier ? "elite" : "mob");
       const goldAmount = rollGoldDrop(goldType);
       const useMiniBossChest = !!(enemy.enemyTier === "miniBoss" || enemy.isMiniBoss);
       const queuedMiniBossLootDefs = [];
@@ -153,25 +190,12 @@ export function applyGameLootMixin(Game) {
             this.activeBlessings.push({ ...def, until: this.time + 20 });
           }
         }
-      }
-      const martyrMinions = [];
-      if (enemy.affixes?.includes("martyr")) {
-        const base = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
-        const ex = enemy.position.x + enemy.size / 2;
-        const ey = enemy.position.y + enemy.size / 2;
-        for (let i = 0; i < 5; i++) {
-          const angle = (i / 5) * Math.PI * 2 + Math.random() * 0.5;
-          const dist = 20 + Math.random() * 15;
-          const mx = ex + Math.cos(angle) * dist - 12;
-          const my = ey + Math.sin(angle) * dist - 12;
-          const typeDef = { ...base, maxHealth: Math.round(base.maxHealth * 0.35), attack: base.attack, speed: base.speed, size: 24 };
-          const minion = new Enemy(mx, my, typeDef);
-          minion.worldBounds = enemy.worldBounds;
-          minion.activated = true;
-          minion.isAffixMinion = true;
-          martyrMinions.push(minion);
+        if (!this.victoryPortal && !enemy._bloodAltarMiniboss && typeof this.spawnExtractionPortalNearPlayer === "function") {
+          this.spawnExtractionPortalNearPlayer();
         }
       }
+      const martyrMinions = [];
+      // Martyr triggers at 50% HP (flashing circle 1s, then projectiles), not on death
       if (enemy.isCursedChestGuardian) {
         this.tryDropCubeFromEnemy(enemy);
         this.cursedChestBlocked = false;
@@ -198,9 +222,53 @@ export function applyGameLootMixin(Game) {
       this.grantXPFromEnemy(enemy);
       this.tryDropCubeFromEnemy(enemy, useMiniBossChest ? emitCube : null);
 
-      const tier = enemy.enemyTier || (enemy.isMiniBoss ? "miniBoss" : enemy.isElite ? "elite" : "minion");
+      const tier = enemy.enemyTier || (enemy.isMiniBoss ? "miniBoss" : (enemy.isElite || enemy.isSpecial) ? "elite" : "minion");
+      // XP orb drops (chances not mutually exclusive)
+      if (tier === "minion") {
+        if (Math.random() < 0.05) this.lootSystem.spawnXpOrbAt(ex, ey, "small");
+        if (Math.random() < 0.01) this.lootSystem.spawnXpOrbAt(ex, ey, "medium");
+      } else if (tier === "elite" || tier === "special") {
+        if (Math.random() < 0.10) this.lootSystem.spawnXpOrbAt(ex, ey, "small");
+        if (Math.random() < 0.05) this.lootSystem.spawnXpOrbAt(ex, ey, "medium");
+        if (Math.random() < 0.01) this.lootSystem.spawnXpOrbAt(ex, ey, "large");
+      } else if (tier === "miniBoss") {
+        if (Math.random() < 0.10) {
+          this.lootSystem.spawnXpOrbAt(ex, ey, "medium");
+          this.lootSystem.spawnXpOrbAt(ex, ey, "medium");
+        }
+        if (Math.random() < 0.05) this.lootSystem.spawnXpOrbAt(ex, ey, "large");
+      }
       const types = ["Helmet", "Boots", "Body Armour", "Weapon", "Ring"];
       const lootQual = this.currentMap?.lootQuality ?? 0.5;
+      const difficulty = Math.min(5, Math.max(1, this.difficulty ?? 1));
+      const equipOpts = { qualityEye: false, socketSense: false, difficulty };
+
+      // Mimics drop any loot they stole when defeated
+      if (typeof this.isMimicLooter === "function" && this.isMimicLooter(enemy)) {
+        const stolen = Array.isArray(enemy.mimicState?.stolenLoot) ? enemy.mimicState.stolenLoot : [];
+        for (const def of stolen) {
+          if (!def) continue;
+          const item = new LootItem(
+            this.lootSystem.nextId++,
+            ex - 10 + (Math.random() - 0.5) * 16,
+            ey - 10 + (Math.random() - 0.5) * 16,
+            def,
+            ex,
+            ey
+          );
+          item.size = 20;
+          this.lootSystem.items.push(item);
+        }
+        const roll = Math.random();
+        let rarity = "common";
+        if (roll < 0.05) rarity = "rare";
+        else if (roll < 0.40) rarity = "magic";
+        const type = types[Math.floor(Math.random() * types.length)];
+        const quality = rarity === "rare" ? Math.min(1, lootQual + 0.45) : (rarity === "magic" ? Math.min(1, lootQual + 0.35) : lootQual);
+        const def = generateEquipmentItem(type, quality, rarity === "rare" ? 0.6 : (rarity === "magic" ? 0.3 : 0), rarity, equipOpts);
+        emitEquipment(def);
+        return martyrMinions;
+      }
 
       // Tutorial: Guarantee white weapon drop and tier 1 cube from first enemy
       if (this.tutorialMode && !this.tutorialFirstEnemyKilled) {
@@ -218,42 +286,61 @@ export function applyGameLootMixin(Game) {
 
       let dropMult = enemy.affixes?.includes("evasive") ? 2 : 1;
       if (this.hasBlessing("fortune")) dropMult *= 2;
-      if (hasTalent("cardHoarder") && (this.lootHoarderUntil || 0) > this.time) dropMult *= 1.2;
+      if (this.hasCharacterTalent("lootHoarder") && (this.lootHoarderUntil || 0) > this.time) dropMult *= 1.2;
       dropMult *= getRingDropRateMult(this);
-      const equipDropMult = hasTalent("keenEye") ? 1.15 : 1;
-      const difficulty = Math.min(5, Math.max(1, this.difficulty ?? 1));
-      const equipOpts = { qualityEye: hasTalent("qualityEye"), socketSense: hasTalent("socketSense"), difficulty };
+      let equipDropMult = this.hasCharacterTalent("keenEye") ? 1.15 : 1;
+      if (tier === "elite" && this.hasCharacterTalent("scavengersInstinct")) {
+        if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("scavengersInstinct", "Elite drop roll: +10% drop chance");
+        equipDropMult *= 1.1;
+      }
+      const bandMult = enemy.dropChanceMult ?? 1;
       if (tier === "minion") {
-        if (Math.random() < 0.05 * dropMult * equipDropMult) {
+        if (Math.random() < 0.05 * dropMult * equipDropMult * bandMult) {
+          if (this.hasCharacterTalent("keenEye") && typeof this.logTalentTrigger === "function") this.logTalentTrigger("keenEye", "Equipment dropped: +15% chance applied");
           const type = types[Math.floor(Math.random() * types.length)];
           const def = generateEquipmentItem(type, lootQual, 0, "common", equipOpts);
           emitEquipment(def);
         }
       } else if (tier === "elite") {
-        if (Math.random() < 0.2 * dropMult * equipDropMult) {
+        if (Math.random() < 0.2 * dropMult * equipDropMult * bandMult) {
+          if (this.hasCharacterTalent("keenEye") && typeof this.logTalentTrigger === "function") this.logTalentTrigger("keenEye", "Equipment dropped: +15% chance applied");
           const type = types[Math.floor(Math.random() * types.length)];
           const def = generateEquipmentItem(type, Math.min(1, lootQual + 0.35), 0.3, "magic", equipOpts);
+          emitEquipment(def);
+        }
+        if (Math.random() < 0.05 * bandMult * dropMult * equipDropMult) {
+          if (this.hasCharacterTalent("keenEye") && typeof this.logTalentTrigger === "function") this.logTalentTrigger("keenEye", "Equipment dropped: +15% chance applied");
+          const type = types[Math.floor(Math.random() * types.length)];
+          const def = generateEquipmentItem(type, Math.min(1, lootQual + 0.5), 0.55, "rare", equipOpts);
+          emitEquipment(def);
+        }
+      } else if (tier === "special") {
+        if (Math.random() < 0.35 * dropMult * equipDropMult * bandMult) {
+          const type = types[Math.floor(Math.random() * types.length)];
+          const def = generateEquipmentItem(type, Math.min(1, lootQual + 0.5), 0.55, "rare", equipOpts);
           emitEquipment(def);
         }
       } else if (tier === "miniBoss") {
         const type = types[Math.floor(Math.random() * types.length)];
         const def = generateEquipmentItem(type, 1, 0.8, "rare", equipOpts);
         emitEquipment(def);
-        if (Math.random() < 0.1 * dropMult * equipDropMult) {
+        if (Math.random() < 0.1 * bandMult * dropMult * equipDropMult) {
           const type2 = types[Math.floor(Math.random() * types.length)];
           const def2 = generateEquipmentItem(type2, 1, 0.8, "rare", equipOpts);
           emitEquipment(def2);
         }
-        if (hasTalent("philosophersStone") && Math.random() < 0.05) {
+        if (this.hasCharacterTalent("philosophersStone") && Math.random() < 0.05) {
+          if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("philosophersStone", "Mini-boss: 5% extra rare drop");
           const legType = types[Math.floor(Math.random() * types.length)];
           const legDef = this.generateLegendaryEquipment(legType);
           emitEquipment(legDef);
         }
-        if (hasTalent("livingItem")) {
+        if (this.hasCharacterTalent("livingItem")) {
           const living = this.getLivingItem();
           if (living && (living.modifiers?.length ?? 0) < 6) {
             const pool = getModifierPoolForType(living.type).filter((p) => !living.modifiers?.some((m) => m.id === p.id));
             if (pool.length > 0) {
+              if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("livingItem", "Mini-boss kill: +1 modifier on Living Item");
               const m = pool[Math.floor(Math.random() * pool.length)];
               const d = Math.min(5, Math.max(1, this.difficulty ?? 1));
               const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValueForDifficulty(d) : rollModifierValueForDifficulty(d);
@@ -267,18 +354,8 @@ export function applyGameLootMixin(Game) {
         }
       }
 
-      const baseType = ENEMY_TYPES.find((t) => t.name === enemy.name);
-      if (baseType && hasTalent("battleHardened") && Math.random() < 0.1) {
-        if (useMiniBossChest) emitEquipment(this.lootSystem.getLootDefinition(0.9));
-        else this.lootSystem.spawnGuaranteedWeaponAt(ex, ey);
-      }
-      if (hasTalent("jackpot") && !this.jackpotUsed) {
-        this.jackpotUsed = true;
-        if (useMiniBossChest) emitEquipment(this.lootSystem.getLootDefinition(1));
-        else this.lootSystem.spawnBurstAt(ex, ey, 1, 1);
-      }
       const isBoss = !!(enemy.isBoss || enemy === this.enemySystem?.boss);
-      const isElite = !!(enemy.enemyTier === "elite" || enemy.isElite);
+      const isElite = !!(enemy.enemyTier === "elite" || enemy.enemyTier === "special" || enemy.isElite || enemy.isSpecial);
       const isMiniBossForSpirit = !!(enemy.enemyTier === "miniBoss" || enemy.isMiniBoss || enemy.isFiery || enemy.isCursedChestGuardian);
       let spiritRarity = "normal";
       let spiritDropChance = 0.05;
@@ -296,10 +373,17 @@ export function applyGameLootMixin(Game) {
         const spiritDef = rollRandomAncestorSpiritLootDefByRarity(spiritRarity);
         if (spiritDef) emitSpirit(spiritDef);
       }
+      const bloodDropChance = isBoss ? 0.05 : (useMiniBossChest ? 0.01 : 0);
+      if (bloodDropChance > 0 && Math.random() < bloodDropChance) {
+        const bloodDef = { ...BLOOD_OF_THE_LAMB_LOOT_DEF };
+        if (useMiniBossChest) queuedMiniBossLootDefs.push(bloodDef);
+        else this.lootSystem.spawnEquipmentAt(ex, ey, bloodDef);
+      }
       if (useMiniBossChest && queuedMiniBossLootDefs.length > 0) {
         this.searchableProps = this.searchableProps || [];
         const chestId = this.searchablePropNextId ?? 1;
         const chest = new SearchableProp(chestId, ex - 16, ey - 16, "chest");
+        chest.isMiniBossLootChest = true;
         const baseSearchTime = Number(chest?.def?.searchTime) || 0;
         if (baseSearchTime > 0) {
           chest.searchTimeOverride = baseSearchTime / 3;
@@ -315,15 +399,35 @@ export function applyGameLootMixin(Game) {
       handleAncestorOnLootPickup(this, lootItem);
       if (lootItem.type === "Gold" && lootItem.goldAmount > 0) {
         addGold(this, lootItem.goldAmount, "loot_pickup", {});
-        if (hasTalent("cardSurge")) this.cardSurgeUntil = Math.max(this.cardSurgeUntil || 0, this.time + 3);
+        if (typeof playSfx === "function") playSfx("collectGold");
+        if (this.hasCharacterTalent("cardSurge")) {
+          if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("cardSurge", "Loot pickup: +20% move/attack speed 3s");
+          this.cardSurgeUntil = Math.max(this.cardSurgeUntil || 0, this.time + 3);
+        }
         if (this.updateMapUI) this.updateMapUI();
+        return;
+      }
+      if (lootItem.type === "XpOrb" && lootItem.xpAmount > 0) {
+        this.grantXP(lootItem.xpAmount);
         return;
       }
       if (lootItem.type === "Cube" && lootItem.cubeKey) {
         this.addCubeToInventory(lootItem.cubeKey);
-        if (hasTalent("cardSurge")) this.cardSurgeUntil = Math.max(this.cardSurgeUntil || 0, this.time + 3);
+        if (this.hasCharacterTalent("cardSurge")) {
+          if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("cardSurge", "Loot pickup: +20% move/attack speed 3s");
+          this.cardSurgeUntil = Math.max(this.cardSurgeUntil || 0, this.time + 3);
+        }
         if (this.hasUpgradeCard("secureFooting")) this.swiftFeetTimer = 2.0;
         this.updateInventoryUI();
+        return;
+      }
+      if (lootItem.type === "LifeOrb" || lootItem.type === "LifeFlask") {
+        const maxHp = Math.max(1, Number(this.currentStats?.maxHealth) || 1);
+        const healAmount = Math.max(1, Math.round(maxHp * (Number(lootItem.healFraction) || 0.1)));
+        this.healPlayer(healAmount);
+        if (lootItem.type === "LifeOrb" && typeof this.showNotification === "function") {
+          this.showNotification("Life Orb", `Recovered ${healAmount} HP.`);
+        }
         return;
       }
       if (lootItem.type === "Ancestor Spirit" && lootItem.spiritDefId) {
@@ -338,11 +442,36 @@ export function applyGameLootMixin(Game) {
         if (this.tutorialSystem) this.tutorialSystem.onLootCollected();
         return;
       }
+      if (lootItem.type === "HealingOrb") {
+        const maxHp = Math.max(1, Number(this.currentStats?.maxHealth) || 1);
+        const healAmount = Math.max(
+          1,
+          Math.round(maxHp * (Number(lootItem.healFraction) || 0.1) + (Number(lootItem.healFlat) || 0))
+        );
+        this.healPlayer(healAmount);
+        if (typeof this.showNotification === "function") {
+          this.showNotification("Healing Orb", `Recovered ${healAmount} HP.`);
+        }
+        return;
+      }
+      const isBloodOfTheLamb = lootItem.type === "Precious" && lootItem.preciousId === RITE_ENTRY_ITEM_PRECIOUS_ID;
+      if (isBloodOfTheLamb) {
+        if (typeof this.grantRiteEntryItem === "function") {
+          this.grantRiteEntryItem(1);
+        } else if (typeof this.grantPillarTrialEntryItem === "function") {
+          this.grantPillarTrialEntryItem(1);
+        }
+        if (typeof this.showNotification === "function") {
+          this.showNotification(RITE_ENTRY_ITEM_DISPLAY_NAME, "Rite access item added.");
+        }
+      }
 
       const newItem = {
         id: lootItem.id,
         name: lootItem.name,
         type: lootItem.type,
+        category: lootItem.category || null,
+        preciousId: lootItem.preciousId || null,
         ringId: lootItem.ringId || null,
         ringSpriteKey: lootItem.ringSpriteKey || null,
         consumedOnTrigger: !!lootItem.consumedOnTrigger,
@@ -362,22 +491,18 @@ export function applyGameLootMixin(Game) {
       ensureItemVessels(newItem);
 
       this.inventory.push(newItem);
-      if (hasTalent("cardSurge")) this.cardSurgeUntil = Math.max(this.cardSurgeUntil || 0, this.time + 3);
-      if (hasTalent("itemSense") && newItem.rarity === "magic") {
+      if (this.hasCharacterTalent("cardSurge")) {
+        if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("cardSurge", "Loot pickup: +20% move/attack speed 3s");
+        this.cardSurgeUntil = Math.max(this.cardSurgeUntil || 0, this.time + 3);
+      }
+      if (this.hasCharacterTalent("itemSense") && newItem.rarity === "magic") {
+        if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("itemSense", "Magic item pickup: slowed nearby enemies 20% for 2s");
         this.applyItemSenseSlowPulse(0.5, 220, 0.7);
       }
-      if (hasTalent("secureFooting") && (newItem.rarity === "magic" || newItem.rarity === "rare")) {
-        this.dashCooldown = 0;
-        if (typeof this.updateDashUI === "function") this.updateDashUI();
+      if (this.hasCharacterTalent("ghostLooter")) {
+        if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("ghostLooter", "Loot pickup: untargetable 0.5s");
+        this.ghostLooterUntargetableUntil = this.time + 0.5;
       }
-
-      if (hasTalent("ghostLooter")) this.ghostLooterUntargetableUntil = this.time + 0.5;
-      const isRareOrBetter = lootItem.rarity === "rare" || lootItem.rarity === "legendary" || lootItem.rarity === "magic";
-      if (hasTalent("phantomExtractor") && isRareOrBetter && this.time >= (this.phantomExtractorCooldownUntil || 0)) {
-        this.phantomExtractorUntil = this.time + 3;
-        this.phantomExtractorCooldownUntil = this.time + 20;
-      }
-
       if (this.hasUpgradeCard("secureFooting")) {
         this.swiftFeetTimer = 2.0;
       }
@@ -411,60 +536,40 @@ export function applyGameLootMixin(Game) {
       if (typeof cubeKey === "string") {
         cubeKey = cubeKey.replace(/^socketCube/, "vesselCube");
       }
-      if (hasTalent("cubeExpert")) {
-        const match = cubeKey.match(/^(.+?)T1$/);
-        if (match && MODIFIER_CUBES.some((c) => cubeKey.startsWith(c.id))) {
-          cubeKey = match[1] + "T2";
-        }
-      }
       this.cubeInventory[cubeKey] = (this.cubeInventory[cubeKey] || 0) + 1;
       if (this.inventoryOverlayOpen) this.populateInventoryOverlay();
-      if (hasTalent("tinkerersEye") && Math.random() < 0.15) {
-        const tierMatch = cubeKey.match(/T(\d)$/);
-        const tier = tierMatch ? parseInt(tierMatch[1], 10) : 1;
-        const allCubes = [...MODIFIER_CUBES, ...UPGRADE_CUBES];
-        const cube = allCubes[Math.floor(Math.random() * allCubes.length)];
-        const bonusKey = tierMatch ? `${cube.id}T${tier}` : cube.id;
-        this.cubeInventory[bonusKey] = (this.cubeInventory[bonusKey] || 0) + 1;
-      }
     },
 
     tryDropCubeFromEnemy(enemy, onDrop = null) {
       const ex = enemy.position.x + enemy.size / 2;
       const ey = enemy.position.y + enemy.size / 2;
       const isMiniBoss = !!(enemy.enemyTier === "miniBoss" || enemy.isFiery || enemy.isCursedChestGuardian);
-      const isElite = !!(enemy.enemyTier === "elite" || enemy.isElite);
+      const isElite = !!(enemy.enemyTier === "elite" || enemy.enemyTier === "special" || enemy.isElite || enemy.isSpecial);
       let dropMult = this.hasBlessing("fortune") ? 2 : 1;
-      if (hasTalent("cubeMagnet")) dropMult *= 1.2;
-      if (hasTalent("cardHoarder") && (this.lootHoarderUntil || 0) > this.time) dropMult *= 1.2;
+      if (this.hasCharacterTalent("cubeMagnet")) {
+        if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("cubeMagnet", "Cube drop roll: +20% chance");
+        dropMult *= 1.2;
+      }
+      if (this.hasCharacterTalent("lootHoarder") && (this.lootHoarderUntil || 0) > this.time) dropMult *= 1.2;
       dropMult *= getRingDropRateMult(this);
+      const bandMult = enemy.dropChanceMult ?? 1;
 
       const allCubes = [...MODIFIER_CUBES, ...UPGRADE_CUBES];
       const upgradeCubes = [...UPGRADE_CUBES];
       const magicRareCubes = UPGRADE_CUBES.filter((c) => c.id === "magicCube" || c.id === "rareCube");
       const pickRandomCube = (tier) => {
-        let cube;
-        if (hasTalent("transmuter") && magicRareCubes.length > 0 && Math.random() < 0.2) {
-          cube = magicRareCubes[Math.floor(Math.random() * magicRareCubes.length)];
-        } else {
-          cube = allCubes[Math.floor(Math.random() * allCubes.length)];
-        }
+        const cube = allCubes[Math.floor(Math.random() * allCubes.length)];
         const cubeKey = `${cube.id}T${tier}`;
         if (typeof onDrop === "function") onDrop(cubeKey);
         else this.lootSystem.spawnCubeAt(ex, ey, cubeKey);
       };
 
       if (isMiniBoss) {
-        if (hasTalent("rarityRush") && this.difficulty >= 3 && Math.random() < 0.05) {
-          const cube = LEGENDARY_CUBES[Math.floor(Math.random() * LEGENDARY_CUBES.length)];
-          if (typeof onDrop === "function") onDrop(cube.id);
-          else this.lootSystem.spawnCubeAt(ex, ey, cube.id);
-        }
-        if (Math.random() < 0.05 * dropMult) pickRandomCube(3);
+        if (Math.random() < 0.05 * dropMult * bandMult) pickRandomCube(3);
       } else if (isElite) {
-        if (Math.random() < 0.1 * dropMult) pickRandomCube(2);
+        if (Math.random() < 0.1 * dropMult * bandMult) pickRandomCube(2);
       } else {
-        if (Math.random() < 0.5 * dropMult) pickRandomCube(1);
+        if (Math.random() < 0.5 * dropMult * bandMult) pickRandomCube(1);
       }
     }
   });

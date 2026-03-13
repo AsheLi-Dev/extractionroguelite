@@ -44,8 +44,27 @@ export function openFriends() {
 export function closeFriends() {
   const overlay = document.getElementById("friends-overlay");
   if (overlay) overlay.classList.add("hidden");
+  // If we're in the hub (home base), stay there; otherwise return to main menu
+  if (document.body.classList.contains("home-base-active")) return;
   const mainMenu = document.getElementById("main-menu");
   if (mainMenu) mainMenu.classList.remove("hidden");
+}
+
+export function getFriendSpriteHtml(friendDef, pixelSize = 64, spriteClass = "friend-sprite") {
+  if (!friendDef?.spritePath) return friendDef?.iconKey ? `<span class="friend-icon">${friendDef.iconKey}</span>` : '';
+  const rect = friendDef.spriteRect;
+  const sheet = friendDef.spriteSheetSize;
+  if (rect && sheet) {
+    const scale = pixelSize / rect.w;
+    const w = Math.round(sheet.w * scale);
+    const h = Math.round(sheet.h * scale);
+    const ml = -rect.x * scale;
+    const mt = -rect.y * scale;
+    return `<div class="friend-sprite-wrap" style="width:${pixelSize}px;height:${pixelSize}px;overflow:hidden;flex-shrink:0;">
+      <img src="${escapeHtml(friendDef.spritePath)}" alt="${escapeHtml(friendDef.displayName)}" class="${escapeHtml(spriteClass)}" width="${w}" height="${h}" style="width:${w}px;height:${h}px;margin-left:${ml}px;margin-top:${mt}px;" />
+    </div>`;
+  }
+  return `<img src="${escapeHtml(friendDef.spritePath)}" alt="${escapeHtml(friendDef.displayName)}" class="${escapeHtml(spriteClass)}" width="${pixelSize}" height="${pixelSize}" style="width: ${pixelSize}px; height: ${pixelSize}px; max-width: ${pixelSize}px; max-height: ${pixelSize}px;" />`;
 }
 
 function formatTimeMs(ms) {
@@ -87,7 +106,7 @@ function renderFriendsHub() {
 
     html += `<div class="friend-card" data-friend-id="${escapeHtml(friendId)}">
       <div class="friend-card-header">
-        ${friendDef.spritePath ? `<img src="${escapeHtml(friendDef.spritePath)}" alt="${escapeHtml(friendDef.displayName)}" class="friend-sprite" width="64" height="64" style="width: 64px; height: 64px; max-width: 64px; max-height: 64px;" />` : `<span class="friend-icon">${friendDef.iconKey}</span>`}
+        ${getFriendSpriteHtml(friendDef, 64)}
         <div class="friend-name">${escapeHtml(friendDef.displayName)}</div>
       </div>
       <div class="friend-level">Level ${friend.level}</div>
@@ -160,7 +179,7 @@ function renderFriendDetail(friendId) {
   const buffs = COMPANION_BUFFS[friendId];
 
   let html = `<div class="friend-detail-header">
-    ${friendDef.spritePath ? `<img src="${escapeHtml(friendDef.spritePath)}" alt="${escapeHtml(friendDef.displayName)}" class="friend-sprite-large" width="128" height="128" style="width: 128px; height: 128px; max-width: 128px; max-height: 128px;" />` : `<span class="friend-icon-large">${friendDef.iconKey}</span>`}
+    ${getFriendSpriteHtml(friendDef, 128, "friend-sprite-large")}
     <div>
       <div class="friend-name-large">${escapeHtml(friendDef.displayName)}</div>
       <div class="friend-theme">${escapeHtml(friendDef.theme)}</div>

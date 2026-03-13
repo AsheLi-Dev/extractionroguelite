@@ -45,11 +45,19 @@ export class Camera {
 
     const dx = targetX - this.position.x;
     const dy = targetY - this.position.y;
+    const distance = Math.hypot(dx, dy);
 
-    if (Math.abs(dx) > CAMERA_DEADZONE) this.position.x += dx * lerp;
-    if (Math.abs(dy) > CAMERA_DEADZONE) this.position.y += dy * lerp;
+    // Radial deadzone: move both axes together when outside deadzone (prevents diagonal jitter from per-axis stagger)
+    if (distance > CAMERA_DEADZONE) {
+      this.position.x += dx * lerp;
+      this.position.y += dy * lerp;
+    }
 
     this.position.x = Math.max(0, Math.min(this.position.x, maxX));
     this.position.y = Math.max(0, Math.min(this.position.y, maxY));
+
+    // Round to integer pixels so drawing with Math.floor(world - camera) doesn't jitter by 1px
+    this.position.x = Math.round(this.position.x);
+    this.position.y = Math.round(this.position.y);
   }
 }

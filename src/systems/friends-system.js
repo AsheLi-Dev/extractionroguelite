@@ -32,9 +32,15 @@ export function initFriendsState(saveData = null) {
     stash: []
   };
 
+  // Migrate snow_owl → axolotl (one-time rename)
+  const friendsFromSave = saveData?.friends ?? {};
+  if (friendsFromSave.snow_owl && FRIEND_IDS.includes("axolotl")) {
+    friendsFromSave.axolotl = friendsFromSave.axolotl ?? friendsFromSave.snow_owl;
+  }
+
   // Initialize all 6 friends
   for (const friendId of FRIEND_IDS) {
-    const saved = saveData?.friends?.[friendId];
+    const saved = friendsFromSave[friendId];
     state.friends[friendId] = {
       level: saved?.level ?? 1,
       xp: saved?.xp ?? 0,
@@ -44,7 +50,9 @@ export function initFriendsState(saveData = null) {
   }
 
   if (saveData) {
-    state.selectedCompanionId = saveData.selectedCompanionId ?? null;
+    let selectedCompanionId = saveData.selectedCompanionId ?? null;
+    if (selectedCompanionId === "snow_owl") selectedCompanionId = "axolotl";
+    state.selectedCompanionId = selectedCompanionId;
     state.mailbox = Array.isArray(saveData.mailbox) ? saveData.mailbox : [];
     state.stash = Array.isArray(saveData.stash) ? saveData.stash : [];
   }

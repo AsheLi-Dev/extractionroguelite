@@ -183,12 +183,31 @@ export function applyGameEventsMixin(Game) {
       );
     },
 
+    resolveNpcServiceCost(baseCost, context = {}) {
+      const normalized = Math.max(0, Math.round(Number(baseCost) || 0));
+      if (typeof this.resolvePillarNpcPrice === "function") {
+        return this.resolvePillarNpcPrice(normalized, context);
+      }
+      return normalized;
+    },
+
     openPriestServices() {
       const options = [
-        { pct: 0.3, cost: 80, label: "Restore 30% HP (80 gold)" },
-        { pct: 0.5, cost: 100, label: "Restore 50% HP (100 gold)" },
-        { pct: 1.0, cost: 180, label: "Restore 100% HP (180 gold)" }
-      ];
+        { pct: 0.3, baseCost: 80 },
+        { pct: 0.5, baseCost: 100 },
+        { pct: 1.0, baseCost: 180 }
+      ].map((entry) => {
+        const cost = this.resolveNpcServiceCost(entry.baseCost, {
+          npcType: "npcPriest",
+          service: "heal",
+          pct: entry.pct
+        });
+        return {
+          ...entry,
+          cost,
+          label: `Restore ${Math.round(entry.pct * 100)}% HP (${cost} gold)`
+        };
+      });
       this.openNpcChoiceCard(
         "Priest",
         "A blessing can restore your vitality for a fee.",
@@ -365,7 +384,11 @@ export function applyGameEventsMixin(Game) {
       this.paused = true;
       this.currentEvent = { id: "npcBlacksmith" };
       titleEl.textContent = "Blacksmith";
-      descEl.textContent = "Upgrade one magic/rare inventory item for 100 gold (+5% to +10% to one random modifier).";
+      const blacksmithCost = this.resolveNpcServiceCost(100, {
+        npcType: "npcBlacksmith",
+        service: "upgrade"
+      });
+      descEl.textContent = `Upgrade one magic/rare inventory item for ${blacksmithCost} gold (+5% to +10% to one random modifier).`;
       choicesEl.classList.add("hidden");
       merchantPick.classList.remove("hidden");
       list.innerHTML = "";
@@ -378,11 +401,11 @@ export function applyGameEventsMixin(Game) {
       } else {
         for (const item of candidates) {
           const li = document.createElement("li");
-          li.textContent = `${item.name} (${item.type}) - 100 gold`;
+          li.textContent = `${item.name} (${item.type}) - ${blacksmithCost} gold`;
           li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
           li.addEventListener("mouseleave", hideItemTooltip);
           li.onclick = () => {
-            if (!canSpendGold(this, 100)) {
+            if (!canSpendGold(this, blacksmithCost)) {
               this.showNotification("Blacksmith", "Not enough gold.");
               return;
             }
@@ -395,7 +418,12 @@ export function applyGameEventsMixin(Game) {
             const mod = modCandidates[Math.floor(Math.random() * modCandidates.length)];
             mod.value = Math.round((mod.value + bonus) * 10000) / 10000;
             item.blacksmithUpgraded = true;
-            spendGold(this, 100, "blacksmith_upgrade", { itemId: item.id, modifierId: mod.id, bonus });
+            spendGold(this, blacksmithCost, "blacksmith_upgrade", {
+              itemId: item.id,
+              modifierId: mod.id,
+              bonus,
+              baseCost: 100
+            });
             this.rebuildItemStats(item);
             this.recalculateStats();
             this.updateInventoryUI();
@@ -418,7 +446,11 @@ export function applyGameEventsMixin(Game) {
 
     openRogueVaultTransferUI(obj) {
       const alreadySent = Math.max(0, Math.min(3, obj?.vaultSentCount || 0));
-      this.rogueVaultState = { active: true, sent: alreadySent, max: 3, cost: 150, objRef: obj || null };
+      const rogueVaultCost = this.resolveNpcServiceCost(150, {
+        npcType: "npcRogue",
+        service: "vault_transfer"
+      });
+      this.rogueVaultState = { active: true, sent: alreadySent, max: 3, cost: rogueVaultCost, objRef: obj || null };
       this.showInventoryOverlay();
       this.currentEvent = { id: "npcRogueVault" };
 
@@ -436,7 +468,7 @@ export function applyGameEventsMixin(Game) {
       merchantPick.classList.add("hidden");
       choicesEl.classList.remove("hidden");
       titleEl.textContent = "Rogue";
-      descEl.textContent = `Send up to 3 inventory items to Legacy Vault for 150 gold each. Sent: ${alreadySent}/3`;
+      descEl.textContent = `Send up to 3 inventory items to Legacy Vault for ${rogueVaultCost} gold each. Sent: ${alreadySent}/3`;
       choicesEl.innerHTML = "";
 
       const doneBtn = document.createElement("button");
@@ -668,11 +700,10 @@ export function applyGameEventsMixin(Game) {
       } else if (obj.type === "npcRogue") {
         this.openRogueVaultTransferUI(obj);
       } else if (obj.type === "socketWorkshop") {
-        for (const slot of ["Helmet", "Body Armour", "Weapon", "Boots", "Ring1", "Ring2"]) {
+        for (const slot of Object.keys(this.equipment || {})) {
           const item = this.equipment[slot];
           if (item && (item.sockets ?? 0) < 2) {
-            let add = 1;
-            if (item.rarity === "rare" && (item.sockets ?? 0) === 1 && hasTalent("tinkererSocketMastery") && Math.random() < 0.05) add = 2;
+            const add = 1;
             item.sockets = Math.min(3, (item.sockets ?? 0) + add);
             this.rebuildItemStats(item);
             this.recalculateStats();
@@ -681,7 +712,7 @@ export function applyGameEventsMixin(Game) {
           }
         }
       } else if (obj.type === "foresightShrine") {
-        for (const slot of ["Helmet", "Body Armour", "Weapon", "Boots", "Ring1", "Ring2"]) {
+        for (const slot of Object.keys(this.equipment || {})) {
           const item = this.equipment[slot];
           if (item) {
             item.modifiers = item.modifiers || [];
@@ -695,7 +726,7 @@ export function applyGameEventsMixin(Game) {
           }
         }
       } else if (obj.type === "perfectionWorkshop") {
-        for (const slot of ["Helmet", "Body Armour", "Weapon", "Boots", "Ring1", "Ring2"]) {
+        for (const slot of Object.keys(this.equipment || {})) {
           const item = this.equipment[slot];
           if (item && item.modifiers?.length > 0) {
             const idx = Math.floor(Math.random() * item.modifiers.length);

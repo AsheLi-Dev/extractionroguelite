@@ -29,6 +29,9 @@ export const SEARCHABLE_PROP_DEFS = {
     lootTable: "dead_warrior",
     width: 32,
     height: 40,
+    tileClosed: { row: 24, col: "d" }, // sarcophagus (closed)
+    tileOpen: { row: 24, col: "e" }, // sarcophagus (ajar)
+    keepVisibleWhenSearched: true,
   },
   chest: {
     id: "chest",

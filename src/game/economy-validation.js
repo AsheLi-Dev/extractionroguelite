@@ -5,11 +5,9 @@ import {
   computeEquipmentValue,
   computeSellValue,
   roundToNearest5,
-  getShopRerollCost,
-  getNextLPConversionCost,
-  canBuyLegacyPointAtExtraction
+  getShopRerollCost
 } from './economy.js';
-import { SHOP_REROLL, LP_CONVERSION_COSTS, LP_MAX_PER_RUN } from '../data/economy-config.js';
+import { SHOP_REROLL } from '../data/economy-config.js';
 
 export function runEconomyValidation() {
   const errors = [];
@@ -40,31 +38,6 @@ export function runEconomyValidation() {
     const cost = getShopRerollCost(fakeGame, 'test');
     if (cost > SHOP_REROLL.cap) errors.push(`Reroll cost ${cost} exceeds cap ${SHOP_REROLL.cap}`);
     fakeGame.shopRerollCountByShopId['test'] = i + 1;
-  }
-
-  // LP purchase respects cap and costs
-  if (LP_CONVERSION_COSTS.length < LP_MAX_PER_RUN) {
-    errors.push(`LP_CONVERSION_COSTS length (${LP_CONVERSION_COSTS.length}) < LP_MAX_PER_RUN (${LP_MAX_PER_RUN})`);
-  }
-  const gameFull = {
-    gold: 10000,
-    legacyPointsEarnedThisRun: LP_MAX_PER_RUN
-  };
-  if (canBuyLegacyPointAtExtraction(gameFull)) {
-    errors.push('canBuyLegacyPointAtExtraction should be false when at LP cap');
-  }
-  const gameNoGold = { gold: 0, legacyPointsEarnedThisRun: 0 };
-  if (canBuyLegacyPointAtExtraction(gameNoGold)) {
-    errors.push('canBuyLegacyPointAtExtraction should be false when gold < first cost');
-  }
-  const firstCost = LP_CONVERSION_COSTS[0];
-  const gameOk = { gold: firstCost, legacyPointsEarnedThisRun: 0 };
-  if (!canBuyLegacyPointAtExtraction(gameOk)) {
-    errors.push(`canBuyLegacyPointAtExtraction should be true when gold=${firstCost} and earned=0`);
-  }
-  const nextCost = getNextLPConversionCost(gameOk);
-  if (nextCost !== firstCost) {
-    errors.push(`getNextLPConversionCost expected ${firstCost}, got ${nextCost}`);
   }
 
   if (errors.length > 0) {

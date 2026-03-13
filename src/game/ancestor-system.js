@@ -681,6 +681,31 @@ function getSavageCount(game) {
   return game.activeClanCounts?.savage || 0;
 }
 
+function applyAncestorStackDelta(game, target, stackId, delta, options = {}) {
+  if (!target) return null;
+  if (typeof game?.applyStackDelta === "function") {
+    return game.applyStackDelta(target, stackId, delta, options);
+  }
+  const stackKey = String(options.stackKey || stackId || "");
+  if (!stackKey) return null;
+  const mode = options.mode || "add";
+  const min = Number.isFinite(Number(options.min)) ? Number(options.min) : 0;
+  const max = Number.isFinite(Number(options.max)) ? Number(options.max) : null;
+  const before = Number(target[stackKey]) || 0;
+  let next = before;
+  if (mode === "set") {
+    next = Number(delta) || 0;
+  } else if (mode === "remove") {
+    next = before - Math.abs(Number(delta) || 0);
+  } else {
+    next = before + (Number(delta) || 0);
+  }
+  next = Math.max(min, next);
+  if (max != null) next = Math.min(max, next);
+  target[stackKey] = next;
+  return { applied: true, before, after: next, deltaApplied: next - before };
+}
+
 function applySavageBleed(game, enemy, hitDamage) {
   if (!enemy || enemy.isDead) return false;
   const savageCount = getSavageCount(game);
@@ -690,15 +715,39 @@ function applySavageBleed(game, enemy, hitDamage) {
   const perStackDps = Math.max(0, (0.20 * Math.max(0, hitDamage)) / 2);
 
   if (!stackAllowed) {
-    enemy.bleedStacks = 1;
+    applyAncestorStackDelta(game, enemy, "enemy.bleed", 1, {
+      stackKey: "bleedStacks",
+      targetType: "enemy",
+      source: "ancestor_savage_bleed",
+      reason: "savage_bleed_apply",
+      mode: "set",
+      min: 0,
+      max: 1
+    });
     enemy.bleedDps = perStackDps;
   } else {
     const stacks = Math.max(0, enemy.bleedStacks || 0);
     if (stacks < 100) {
-      enemy.bleedStacks = stacks + 1;
+      applyAncestorStackDelta(game, enemy, "enemy.bleed", 1, {
+        stackKey: "bleedStacks",
+        targetType: "enemy",
+        source: "ancestor_savage_bleed",
+        reason: "savage_bleed_stack",
+        mode: "add",
+        min: 0,
+        max: 100
+      });
       enemy.bleedDps = (enemy.bleedDps || 0) + perStackDps;
     } else {
-      enemy.bleedStacks = 100;
+      applyAncestorStackDelta(game, enemy, "enemy.bleed", 100, {
+        stackKey: "bleedStacks",
+        targetType: "enemy",
+        source: "ancestor_savage_bleed",
+        reason: "savage_bleed_cap",
+        mode: "set",
+        min: 0,
+        max: 100
+      });
       enemy.bleedDps = Math.max(enemy.bleedDps || 0, perStackDps * 100);
     }
   }
@@ -740,8 +789,15 @@ export function handleAncestorOnHit(game, info = {}) {
     enemy.stunUntil = Math.max(enemy.stunUntil || 0, game.time + 0.1);
   }
   if (isRangedHit && hasActiveHook(runtime, "warcaller_aresk_ranged_vulnerability") && enemy && !enemy.isDead) {
-    const stacks = Math.max(0, enemy.meleeVulnStacks || 0);
-    enemy.meleeVulnStacks = Math.min(15, stacks + 1);
+    applyAncestorStackDelta(game, enemy, "enemy.melee_vulnerability", 1, {
+      stackKey: "meleeVulnStacks",
+      targetType: "enemy",
+      source: "ancestor_warcaller_aresk",
+      reason: "ranged_vulnerability",
+      mode: "add",
+      min: 0,
+      max: 15
+    });
     enemy.meleeVulnUntil = game.time + 5;
   }
   if (isMeleeHit) {
@@ -771,7 +827,15 @@ export function tickEnemyBleed(game, enemy, dt) {
   if (!enemy || enemy.isDead) return;
   if (!Number.isFinite(enemy.bleedTimer) || enemy.bleedTimer <= 0 || !Number.isFinite(enemy.bleedDps) || enemy.bleedDps <= 0) {
     if (enemy.bleedTimer != null) {
-      enemy.bleedStacks = 0;
+      applyAncestorStackDelta(game, enemy, "enemy.bleed", 0, {
+        stackKey: "bleedStacks",
+        targetType: "enemy",
+        source: "ancestor_bleed_tick",
+        reason: "bleed_invalid_state_reset",
+        mode: "set",
+        min: 0,
+        max: 100
+      });
       enemy.bleedDps = 0;
       enemy.bleedTimer = 0;
       enemy.bleedAccum = 0;
@@ -788,7 +852,15 @@ export function tickEnemyBleed(game, enemy, dt) {
   }
 
   if (enemy.bleedTimer <= 0) {
-    enemy.bleedStacks = 0;
+    applyAncestorStackDelta(game, enemy, "enemy.bleed", 0, {
+      stackKey: "bleedStacks",
+      targetType: "enemy",
+      source: "ancestor_bleed_tick",
+      reason: "bleed_expired_reset",
+      mode: "set",
+      min: 0,
+      max: 100
+    });
     enemy.bleedDps = 0;
     enemy.bleedTimer = 0;
     enemy.bleedAccum = 0;

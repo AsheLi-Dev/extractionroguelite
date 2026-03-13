@@ -1,7 +1,7 @@
 // -------- Main Menu helpers --------
 
-import { restoreEternalItemsFromDefeat } from './save-system.js';
-import { getLegacyPoints } from '../data/constants.js';
+import { restoreEternalItemsFromDefeat, loadSavedCharacters, updateSavedCharacter } from './save-system.js';
+import { CRYSTAL_TYPES } from '../data/crystals.js';
 
 const RESOLUTION_STORAGE_KEY = "game_resolution_preset";
 const RESOLUTION_PRESETS = {
@@ -13,8 +13,6 @@ const RESOLUTION_PRESETS = {
 
 export function refreshMainMenuLP() {
   restoreEternalItemsFromDefeat();
-  const el = document.getElementById("main-menu-lp-value");
-  if (el) el.textContent = getLegacyPoints();
 }
 
 export function initOptionsSettings() {
@@ -78,4 +76,15 @@ export function closeInstructions() {
   if (overlay) overlay.classList.add("hidden");
   const mainMenu = document.getElementById("main-menu");
   if (mainMenu) mainMenu.classList.remove("hidden");
+}
+
+/** Dev: set crystals override to 999 for all crystal types on every saved character. */
+export function giveAllCharacters999Crystals() {
+  const saved = loadSavedCharacters();
+  const crystals = Object.fromEntries(CRYSTAL_TYPES.map((c) => [c.id, 999]));
+  let updated = 0;
+  for (let i = 0; i < saved.length; i++) {
+    if (updateSavedCharacter(i, { crystals: { ...crystals } })) updated++;
+  }
+  return { total: saved.length, updated };
 }

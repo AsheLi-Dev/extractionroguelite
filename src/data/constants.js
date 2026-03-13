@@ -1,10 +1,15 @@
 // -------- Difficulty & Run Conditions --------
 
 export const DIFFICULTY_CONDITION_COUNTS = { 1: 0, 2: 2, 3: 4, 4: 6, 5: 8, 6: 10 };
-export const LP_PER_DIFFICULTY = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 10 };
 export const DIFFICULTY_STAT_MULTIPLIER = { 1: 0.8, 2: 1.0, 3: 1.2, 4: 1.4, 5: 1.6, 6: 1.8 };
 
-export const LEGACY_POINTS_KEY = "spaceShooter_legacyPoints";
+export const APP_TITLE = "Extract Da Panda";
+export const APP_SUBTITLE = "Fight through shifting biomes, grow stronger, and escape alive.";
+export const BUILD_CHANNEL = "main";
+export const DEMO_BUILD = BUILD_CHANNEL === "demo";
+export const SHOW_DEV_CONTROLS = !DEMO_BUILD;
+export const SHOW_DEV_MENU = !DEMO_BUILD;
+
 export const TALENTS_KEY = "spaceShooter_talents";
 export const SKILL_UNLOCKS_KEY = "spaceShooter_skillUnlocks";
 export const SKILL_LEVELS_KEY = "spaceShooter_skillLevels";
@@ -17,10 +22,13 @@ export const SKILL_MAX_LEVEL = 10;
 
 export const SKILL_SLOT_UNLOCK = { 1: 0, 2: 1, 3: 3, 4: 5 };
 
-export const DEV_MODE_ENABLED = true;
+export const DEV_MODE_ENABLED = SHOW_DEV_CONTROLS;
 
 /** Inset from player's nominal size when testing vs walls/obstacles so the character can get closer (sprite often doesn't fill full box). */
 export const PLAYER_WALL_COLLISION_INSET = 10;
+
+/** Scale factor for player collision rect (width/height). 1 = original size, 0.7 = 30% smaller. */
+export const PLAYER_HITBOX_SCALE = 0.7;
 
 export function getXpForSkillLevel(level) {
   if (level <= 1) return 0;
@@ -135,22 +143,6 @@ export function removeModCardFromInventoryAtIndex(index) {
   const cardId = inv.splice(index, 1)[0];
   localStorage.setItem(MOD_CARDS_INVENTORY_KEY, JSON.stringify(inv));
   return cardId;
-}
-
-export function getLegacyPoints() {
-  try {
-    const raw = localStorage.getItem(LEGACY_POINTS_KEY);
-    return raw ? parseInt(raw, 10) : 0;
-  } catch {
-    return 0;
-  }
-}
-
-export function addLegacyPoints(amount) {
-  const current = getLegacyPoints();
-  const next = current + amount;
-  localStorage.setItem(LEGACY_POINTS_KEY, String(next));
-  return next;
 }
 
 export function getSkillUnlocks() {

@@ -3,15 +3,14 @@ import { Input } from './input.js';
 import { Camera } from './camera.js';
 import { Player } from './player.js';
 import {
-  DIFFICULTY_CONDITION_COUNTS, LP_PER_DIFFICULTY, DIFFICULTY_STAT_MULTIPLIER,
-  LEGACY_POINTS_KEY, TALENTS_KEY, SKILL_UNLOCKS_KEY, SKILL_LEVELS_KEY,
+  DIFFICULTY_CONDITION_COUNTS, DIFFICULTY_STAT_MULTIPLIER,
+  TALENTS_KEY, SKILL_UNLOCKS_KEY, SKILL_LEVELS_KEY,
   SKILL_MOD_SOCKETS_KEY, MOD_CARDS_INVENTORY_KEY,
   SKILL_XP_CURVE, SKILL_MAX_LEVEL, SKILL_SLOT_UNLOCK, DEV_MODE_ENABLED,
   getXpForSkillLevel, getSkillLevels, setSkillLevels, getSkillLevel, getSkillXp,
   markSkillEncountered, addSkillXp, getModSlotsForSkillLevel,
   getSkillModSockets, setSkillModSockets,
   getModCardInventory, addModCardToInventory, removeModCardFromInventoryAtIndex,
-  getLegacyPoints, addLegacyPoints,
   getSkillUnlocks, setSkillUnlock,
   getHighestCompletedDifficulty, markDifficultyCompleted, getAvailableSkillSlots
 } from './data/constants.js';

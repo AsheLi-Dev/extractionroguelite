@@ -29,8 +29,8 @@ const DEFAULT_CONFIG = {
   debug: false,
 };
 
-/** Mulberry32 seeded RNG */
-function mulberry32(seed) {
+/** Mulberry32 seeded RNG; returns a function that yields [0, 1). */
+export function mulberry32(seed) {
   return function () {
     let t = (seed += 0x6d2b79f5);
     t = Math.imul(t ^ (t >>> 15), t | 1);
@@ -158,11 +158,15 @@ export function generateBlockerMap({ W, H, seed = 12345, config = {} }) {
     }
   }
 
-  // 3) Choose start and exit
+  // 3) Choose start and exit (optionally constrained to vertical band for biome middle rows)
   const startX = border;
-  const startY = border + Math.floor(rng() * (H - 2 * border));
+  let startY = border + Math.floor(rng() * (H - 2 * border));
   const exitX = W - 1 - border;
-  const exitY = border + Math.floor(rng() * (H - 2 * border));
+  let exitY = border + Math.floor(rng() * (H - 2 * border));
+  const yMin = typeof cfg.waypointYMin === 'number' ? cfg.waypointYMin : border;
+  const yMax = typeof cfg.waypointYMax === 'number' ? cfg.waypointYMax : H - 1 - border;
+  startY = clamp(startY, yMin, yMax);
+  exitY = clamp(exitY, yMin, yMax);
 
   grid[startY][startX] = FLOOR;
   grid[exitY][exitX] = FLOOR;
@@ -180,7 +184,8 @@ export function generateBlockerMap({ W, H, seed = 12345, config = {} }) {
   const step = (exitX - startX) / (waypointCount + 1);
   for (let i = 1; i <= waypointCount; i++) {
     const wx = Math.floor(startX + step * i + (rng() - 0.5) * 4);
-    const wy = border + Math.floor(rng() * (H - 2 * border));
+    let wy = border + Math.floor(rng() * (H - 2 * border));
+    wy = clamp(wy, yMin, yMax);
     waypoints.push({
       x: clamp(wx, border, W - 1 - border),
       y: clamp(wy, border, H - 1 - border),
@@ -336,6 +341,121 @@ export function generateBlockerMap({ W, H, seed = 12345, config = {} }) {
   return { grid, start, exit };
 }
 
+const CORRIDOR_WIDTH = 3;
+const MIN_INTERIOR_POINT_DIST = 9;
+const MIN_FROM_EDGE_POINT_DIST = 9;
+const MIN_AXIS_SEP = 5;
+const MAX_INTERIOR_ATTEMPTS = 100;
+/** Interior points P1 and P2 must be at least this many tiles from the cell edge. */
+const CORRIDOR_EDGE_INSET = 5;
+/** Corner radius in tiles for rounded-rectangle corridor cell outline. */
+const CORRIDOR_CORNER_RADIUS = 4;
+
+/**
+ * Generate corridor archetype layout for one cell: fill with walls (rounded rect outline),
+ * pick 4 points (left edge, right edge, two interior at least MIN_INTERIOR_POINT_DIST apart),
+ * then carve a 3-tile-wide path: L→P1 (H then V), P1→P2 (V then H), P2→R (H then V).
+ * Interior points are kept CORRIDOR_EDGE_INSET tiles away from the cell boundary.
+ * All coordinates are global grid indices. rng() returns [0, 1).
+ */
+export function generateCorridorCell(grid, originGx, originGy, cellW, cellH, rng) {
+  stampRect(grid, originGx, originGy, cellW, cellH, WALL);
+
+  // Round the four corners: clear tiles outside each quarter-circle (rounded rect outline)
+  const r = Math.min(CORRIDOR_CORNER_RADIUS, Math.floor(cellW / 2), Math.floor(cellH / 2));
+  const rSq = r * r;
+  for (let dy = 0; dy < cellH; dy++) {
+    const gy = originGy + dy;
+    if (gy < 0 || gy >= grid.length) continue;
+    const ty = gy + 0.5;
+    for (let dx = 0; dx < cellW; dx++) {
+      const gx = originGx + dx;
+      if (gx < 0 || gx >= (grid[0]?.length ?? 0)) continue;
+      const tx = gx + 0.5;
+      let clear = false;
+      // top-left: quarter-circle center at (originGx+r, originGy+r)
+      if (gx < originGx + r && gy < originGy + r) {
+        const cx = originGx + r + 0.5, cy = originGy + r + 0.5;
+        if ((tx - cx) * (tx - cx) + (ty - cy) * (ty - cy) > rSq) clear = true;
+      }
+      // top-right: center at (originGx+cellW-1-r, originGy+r)
+      else if (gx >= originGx + cellW - r && gy < originGy + r) {
+        const cx = originGx + cellW - r - 0.5, cy = originGy + r + 0.5;
+        if ((tx - cx) * (tx - cx) + (ty - cy) * (ty - cy) > rSq) clear = true;
+      }
+      // bottom-left: center at (originGx+r, originGy+cellH-1-r)
+      else if (gx < originGx + r && gy >= originGy + cellH - r) {
+        const cx = originGx + r + 0.5, cy = originGy + cellH - r - 0.5;
+        if ((tx - cx) * (tx - cx) + (ty - cy) * (ty - cy) > rSq) clear = true;
+      }
+      // bottom-right: center at (originGx+cellW-1-r, originGy+cellH-1-r)
+      else if (gx >= originGx + cellW - r && gy >= originGy + cellH - r) {
+        const cx = originGx + cellW - r - 0.5, cy = originGy + cellH - r - 0.5;
+        if ((tx - cx) * (tx - cx) + (ty - cy) * (ty - cy) > rSq) clear = true;
+      }
+      if (clear) grid[gy][gx] = FLOOR;
+    }
+  }
+
+  const leftX = originGx;
+  const leftY = originGy + Math.floor(rng() * cellH);
+  const rightX = originGx + cellW - 1;
+  const rightY = originGy + Math.floor(rng() * cellH);
+
+  const inset = CORRIDOR_EDGE_INSET;
+  const interiorW = Math.max(1, cellW - 2 * inset);
+  const interiorH = Math.max(1, cellH - 2 * inset);
+
+  // Point constraints (after L and R are chosen):
+  // - P1 must be >= MIN_AXIS_SEP away from L in both axes (|dx|>=5 AND |dy|>=5) and also >=9 manhattan from L.
+  // - P2 must be >= MIN_AXIS_SEP away from P1 and from R in both axes, and also >=9 manhattan from R.
+  // - P1 and P2 must lie inside the cell with CORRIDOR_EDGE_INSET margin from the edge.
+  let p1x, p1y, p2x, p2y;
+  let attempts = 0;
+  do {
+    p1x = originGx + inset + Math.floor(rng() * interiorW);
+    p1y = originGy + inset + Math.floor(rng() * interiorH);
+    p2x = originGx + inset + Math.floor(rng() * interiorW);
+    p2y = originGy + inset + Math.floor(rng() * interiorH);
+
+    const p1dxL = Math.abs(p1x - leftX);
+    const p1dyL = Math.abs(p1y - leftY);
+    const dL = p1dxL + p1dyL;
+    if (p1dxL < MIN_AXIS_SEP || p1dyL < MIN_AXIS_SEP) { attempts++; continue; }
+    if (dL < MIN_FROM_EDGE_POINT_DIST) { attempts++; continue; }
+
+    const d12 = Math.abs(p1x - p2x) + Math.abs(p1y - p2y);
+    const p2dx1 = Math.abs(p2x - p1x);
+    const p2dy1 = Math.abs(p2y - p1y);
+    if (p2dx1 < MIN_AXIS_SEP || p2dy1 < MIN_AXIS_SEP) { attempts++; continue; }
+    if (d12 < MIN_INTERIOR_POINT_DIST) { attempts++; continue; }
+
+    const p2dxR = Math.abs(p2x - rightX);
+    const p2dyR = Math.abs(p2y - rightY);
+    const dR = p2dxR + p2dyR;
+    if (p2dxR < MIN_AXIS_SEP || p2dyR < MIN_AXIS_SEP) { attempts++; continue; }
+    if (dR < MIN_FROM_EDGE_POINT_DIST) { attempts++; continue; }
+
+    break;
+  } while (attempts < MAX_INTERIOR_ATTEMPTS);
+
+  const carve = (x0, y0, x1, y1) => stampCorridor(grid, x0, y0, x1, y1, CORRIDOR_WIDTH, FLOOR);
+
+  // Segment 1: left → P1 (horizontal first, then vertical)
+  carve(leftX, leftY, p1x, leftY);
+  carve(p1x, leftY, p1x, p1y);
+
+  // Segment 2: P1 → P2 (vertical first, then horizontal)
+  carve(p1x, p1y, p1x, p2y);
+  carve(p1x, p2y, p2x, p2y);
+
+  // Segment 3: P2 → right (horizontal first, then vertical)
+  carve(p2x, p2y, rightX, p2y);
+  carve(rightX, p2y, rightX, rightY);
+
+  return { p1: { gx: p1x, gy: p1y }, p2: { gx: p2x, gy: p2y } };
+}
+
 // -------- Preset configs --------
 
 export const PRESET_SMALL = {
@@ -377,5 +497,22 @@ export const PRESET_LARGE = {
     roomStampCount: 5,
     roomMinSize: 3,
     roomMaxSize: 6,
+  },
+};
+
+/** 120x120 tile biome (4x4 grid): middle two rows = 8 cells (start/exit/corridors/etc.), top/bottom rows = 1–2 random cells each, rest walled. Corridor constrained to middle rows. */
+export const PRESET_BIOME = {
+  W: 120,
+  H: 120,
+  config: {
+    borderThickness: 1,
+    corridorWidth: 10,
+    waypointCount: 6,
+    blockerCount: 0,
+    roomStampCount: 0,
+    roomMinSize: 2,
+    roomMaxSize: 5,
+    waypointYMin: 30,
+    waypointYMax: 89,
   },
 };

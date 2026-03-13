@@ -14,6 +14,10 @@ const SKILL_SLOT_UNLOCK = { 1: 0, 2: 1, 3: 3, 4: 5 };
 let skillLibraryPickerTarget = null;
 let selectedRunSlot = -1;
 
+function isHubActive() {
+  return document.body.classList.contains("home-base-active");
+}
+
 const BUILD_PATHS = [
   {
     name: "Storm Gunner",
@@ -71,7 +75,12 @@ export function closeSkillLibrary() {
   const overlay = document.getElementById("skill-library-overlay");
   if (overlay) overlay.classList.add("hidden");
   const mainMenu = document.getElementById("main-menu");
-  if (mainMenu) mainMenu.classList.remove("hidden");
+  if (isHubActive()) {
+    if (mainMenu) mainMenu.classList.add("hidden");
+    document.querySelector(".game-root")?.classList.remove("hidden");
+  } else if (mainMenu) {
+    mainMenu.classList.remove("hidden");
+  }
 }
 
 export function openInstructions() {

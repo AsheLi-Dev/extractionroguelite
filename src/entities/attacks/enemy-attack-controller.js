@@ -130,6 +130,7 @@ export class EnemyAttackController {
         this.state = "windup";
         this.timer = (attack.telegraph?.windup ?? 0.5) / (this.rageUntil && game.time < this.rageUntil ? 1.2 : 1);
         this.targetSnapshot = { x: px, y: py };
+        this.comboShotIndex = attack.execute?.comboShots ? 0 : undefined;
         // 5px horizontal dead zone to avoid rapid left/right flipping when player is centered on enemy
         if (px >= ex + 5) enemy.facingRight = true;
         else if (px <= ex - 5) enemy.facingRight = false;
@@ -138,6 +139,11 @@ export class EnemyAttackController {
     }
 
     if (this.state === "windup") {
+      if (this.currentAttack?.kind === "projectile" && this.timer > 0.2 && this.timer - dt <= 0.2) {
+        const px = player.position.x + player.size / 2;
+        const py = player.position.y + player.size / 2;
+        this.targetSnapshot = { x: px, y: py };
+      }
       this.timer -= dt;
       if (this.timer <= 0) {
         this._execute(game);
@@ -149,12 +155,49 @@ export class EnemyAttackController {
     }
 
     if (this.state === "active") {
-      this.timer -= dt;
+      const backstep = enemy._attackBackstepChainState;
+      if (backstep) {
+        if (this.timer > 0.5) {
+          const movePerSec = backstep.backstepDist / Math.max(0.01, backstep.backstepDuration);
+          enemy.position.x -= backstep.dirX * movePerSec * dt;
+          enemy.position.y -= backstep.dirY * movePerSec * dt;
+        }
+        const prevTimer = this.timer;
+        this.timer -= dt;
+        if (prevTimer > 1.5 && this.timer <= 1.5 && !backstep.shot2Fired && game.spawnEnemyProjectile) {
+          backstep.shot2Fired = true;
+          const ex = enemy.position.x + enemy.size / 2;
+          const ey = enemy.position.y + enemy.size / 2;
+          const vx = Math.cos(Math.atan2(backstep.dirY, backstep.dirX)) * backstep.speed;
+          const vy = Math.sin(Math.atan2(backstep.dirY, backstep.dirX)) * backstep.speed;
+          game.spawnEnemyProjectile(ex, ey, vx, vy, backstep.baseDmg, backstep.size, backstep.color, backstep.execute, enemy);
+        }
+        if (this.timer <= 0) {
+          enemy._attackBackstepChainState = null;
+        }
+      } else {
+        this.timer -= dt;
+      }
       if (this.timer <= 0) {
-        this.state = "recover";
-        this.timer = (this.currentAttack.recover ?? 0.2) * (this.attackScale > 1.2 ? 0.9 : 1);
-        this.cooldowns[this.currentAttack.id] = (this.currentAttack.cooldown ?? 1.5) * (this.rageUntil && game.time < this.rageUntil ? 0.7 : 1);
-        this.currentAttack = null;
+        const comboShots = this.currentAttack?.execute?.comboShots;
+        const comboIndex = this.comboShotIndex ?? 0;
+        if (comboShots != null && comboIndex + 1 < comboShots) {
+          this.comboShotIndex = comboIndex + 1;
+          this.state = "windup";
+          this.timer = (this.currentAttack.telegraph?.windup ?? 0.5) / (this.rageUntil && game.time < this.rageUntil ? 1.2 : 1);
+          if (game.player) {
+            const px = game.player.position.x + game.player.size / 2;
+            const py = game.player.position.y + game.player.size / 2;
+            this.targetSnapshot = { x: px, y: py };
+          }
+        } else {
+          this.state = "recover";
+          const recoverTime = this.currentAttack?.execute?.chainRecover ?? this.currentAttack?.recover ?? 0.2;
+          this.timer = recoverTime * (this.attackScale > 1.2 ? 0.9 : 1);
+          this.cooldowns[this.currentAttack.id] = (this.currentAttack.cooldown ?? 1.5) * (this.rageUntil && game.time < this.rageUntil ? 0.7 : 1);
+          this.currentAttack = null;
+          this.comboShotIndex = undefined;
+        }
       }
       return;
     }
@@ -188,14 +231,20 @@ export class EnemyAttackController {
     switch (a.kind) {
       case "cone": {
         const range = a.execute?.range ?? 80;
-        const arc = ((a.execute?.arc ?? 90) * Math.PI) / 180;
-        const px = player.position.x + player.size / 2;
-        const py = player.position.y + player.size / 2;
-        const pr = Math.max(2, (player.size || 0) * 0.5);
-        if (this._isCircleInCone(ex, ey, dirAngle, range, arc, px, py, pr)) {
-          game.onPlayerDamaged(baseDmg, true);
-          game.lastDamagingEnemy = enemy;
-          this._applyDebuffs(game, a);
+        const arc = a.execute?.arc ?? 90;
+        if (typeof game.spawnEnemyConeHitbox === "function") {
+          game.spawnEnemyConeHitbox(enemy, ex, ey, dirX, dirY, range, arc, baseDmg, a.id);
+          if (a.id !== "banshee_scream") this._applyDebuffs(game, a);
+        } else {
+          const arcRad = (arc * Math.PI) / 180;
+          const px = player.position.x + player.size / 2;
+          const py = player.position.y + player.size / 2;
+          const pr = Math.max(2, (player.size || 0) * 0.5);
+          if (this._isCircleInCone(ex, ey, dirAngle, range, arcRad, px, py, pr)) {
+            game.onPlayerDamaged(baseDmg, true);
+            game.lastDamagingEnemy = enemy;
+            this._applyDebuffs(game, a);
+          }
         }
         break;
       }
@@ -205,6 +254,7 @@ export class EnemyAttackController {
         const delay = a.execute?.delay ?? 0;
         const impactX = a.execute?.atTarget ? tx : ex;
         const impactY = a.execute?.atTarget ? ty : ey;
+        const useHitbox = typeof game.spawnEnemyCircleHitbox === "function";
         if ((delayedCount > 1 || delay > 0) && game.addDelayedEnemyImpact) {
           const count = Math.max(1, delayedCount);
           for (let i = 0; i < count; i++) {
@@ -212,8 +262,13 @@ export class EnemyAttackController {
             const ix = impactX + (Math.random() - 0.5) * jitter * 2;
             const iy = impactY + (Math.random() - 0.5) * jitter * 2;
             const atTime = game.time + (count > 1 ? delay * (i + 1) : delay);
-            game.addDelayedEnemyImpact(atTime, ix, iy, r, Math.round(baseDmg / count), enemy);
+            game.addDelayedEnemyImpact(atTime, ix, iy, r, Math.round(baseDmg / count), enemy, !!a.execute?.slowZone, a.execute?.slowDuration ?? 1.5, useHitbox ? a.id : null);
           }
+        } else if (useHitbox) {
+          game.spawnEnemyCircleHitbox(enemy, impactX, impactY, r, baseDmg, a.id, {
+            slowZone: !!a.execute?.slowZone,
+            slowDuration: a.execute?.slowDuration ?? 2
+          });
         } else {
           const px = player.position.x + player.size / 2;
           const py = player.position.y + player.size / 2;
@@ -233,30 +288,44 @@ export class EnemyAttackController {
         const outer = a.execute?.outerRadius ?? 100;
         const impactX = a.execute?.atTarget ? tx : ex;
         const impactY = a.execute?.atTarget ? ty : ey;
-        const px = player.position.x + player.size / 2;
-        const py = player.position.y + player.size / 2;
-        const d2 = (px - impactX) ** 2 + (py - impactY) ** 2;
-        if (d2 >= inner * inner && d2 <= outer * outer) {
-          game.onPlayerDamaged(baseDmg, true);
-          game.lastDamagingEnemy = enemy;
-          this._applyDebuffs(game, a);
-        }
-        if (a.execute?.slowZone && game.hazardSystem) {
-          game.hazardSystem.addTemporaryPatch("slowZone", impactX, impactY, outer, a.execute.slowDuration ?? 2, 0, false, 0.6);
+        const useHitbox = typeof game.spawnEnemyRingHitbox === "function";
+        if (useHitbox) {
+          game.spawnEnemyRingHitbox(enemy, impactX, impactY, inner, outer, baseDmg, a.id, {
+            slowZone: !!a.execute?.slowZone,
+            slowDuration: a.execute?.slowDuration ?? 2
+          });
+        } else {
+          const px = player.position.x + player.size / 2;
+          const py = player.position.y + player.size / 2;
+          const d2 = (px - impactX) ** 2 + (py - impactY) ** 2;
+          if (d2 >= inner * inner && d2 <= outer * outer) {
+            game.onPlayerDamaged(baseDmg, true);
+            game.lastDamagingEnemy = enemy;
+            this._applyDebuffs(game, a);
+          }
+          if (a.execute?.slowZone && game.hazardSystem) {
+            game.hazardSystem.addTemporaryPatch("slowZone", impactX, impactY, outer, a.execute.slowDuration ?? 2, 0, false, 0.6);
+          }
         }
         break;
       }
       case "line": {
         const len = a.execute?.length ?? 120;
-        const halfW = (a.execute?.width ?? 30) / 2;
-        const px = player.position.x + player.size / 2;
-        const py = player.position.y + player.size / 2;
-        const t = (px - ex) * dirX + (py - ey) * dirY;
-        const perp = Math.abs((px - ex) * dirY - (py - ey) * dirX);
-        if (t >= 0 && t <= len && perp <= halfW + player.size / 2) {
-          game.onPlayerDamaged(baseDmg, true);
-          game.lastDamagingEnemy = enemy;
+        const lineWidth = a.execute?.width ?? 30;
+        if (typeof game.spawnEnemyRectHitbox === "function") {
+          game.spawnEnemyRectHitbox(enemy, ex, ey, dirX, dirY, len, lineWidth, baseDmg, a.id);
           this._applyDebuffs(game, a);
+        } else {
+          const halfW = lineWidth / 2;
+          const px = player.position.x + player.size / 2;
+          const py = player.position.y + player.size / 2;
+          const t = (px - ex) * dirX + (py - ey) * dirY;
+          const perp = Math.abs((px - ex) * dirY - (py - ey) * dirX);
+          if (t >= 0 && t <= len && perp <= halfW + player.size / 2) {
+            game.onPlayerDamaged(baseDmg, true);
+            game.lastDamagingEnemy = enemy;
+            this._applyDebuffs(game, a);
+          }
         }
         break;
       }
@@ -275,6 +344,10 @@ export class EnemyAttackController {
           traveled: 0,
           homingTurnRate: Math.max(0, Number(a.execute?.homingTurnRate) || 0)
         };
+        if (typeof game.spawnEnemyDashHitbox === "function") {
+          const durationMs = Math.max(500, (dashDist / Math.max(1, dashSpeed)) * 1000 + 400);
+          game.spawnEnemyDashHitbox(enemy, baseDmg, a.id, durationMs);
+        }
         break;
       }
       case "roll": {
@@ -321,24 +394,117 @@ export class EnemyAttackController {
         const size = a.execute?.size ?? 12;
         const burstCount = Math.max(1, Number(a.execute?.burstCount) || 1);
         const burstInterval = Math.max(0, Number(a.execute?.burstInterval) || 0.1);
-        for (let b = 0; b < burstCount; b++) {
-          const shotAt = game.time + burstInterval * b;
-          for (let i = 0; i < count; i++) {
-            let angle = dirAngle;
-            if (count > 1) {
-              const offset = (i - (count - 1) / 2) * spread;
-              angle = dirAngle + offset;
-            }
-            const vx = Math.cos(angle) * speed;
-            const vy = Math.sin(angle) * speed;
-            if (b === 0) {
-              game.spawnEnemyProjectile(ex, ey, vx, vy, baseDmg, size, color, a.execute, enemy);
-            } else if (typeof game.addDelayedEnemyProjectile === "function") {
-              game.addDelayedEnemyProjectile(shotAt, ex, ey, vx, vy, baseDmg, size, color, a.execute, enemy);
+        const volleyCount = a.execute?.volleyCount;
+        const randomSpreadDeg = a.execute?.randomSpreadDeg ?? 0;
+        const arcSpreadDeg = a.execute?.arcSpreadDeg;
+        const spiralOpposite = a.execute?.spiralOpposite;
+        const spiralSpreadDeg = a.execute?.spiralSpreadDeg;
+        const backstepChain = a.execute?.backstepChain;
+
+        if (backstepChain) {
+          enemy._attackBackstepChainState = {
+            dirX,
+            dirY,
+            backstepDist: a.execute.backstepDist ?? 100,
+            backstepDuration: a.execute.backstepDuration ?? 1,
+            attack: a,
+            baseDmg,
+            speed,
+            size,
+            color,
+            execute: a.execute,
+            shot2Fired: false
+          };
+          this._activeDurationOverride = (a.execute.backstepDuration ?? 1) * 2 + (a.execute.chainRecover ?? 0.5);
+        }
+
+        const spawnOne = (sx, sy, angle, dmg, opts, atTime) => {
+          const vx = Math.cos(angle) * speed;
+          const vy = Math.sin(angle) * speed;
+          const useHitbox = opts?.useHitbox === true && typeof game.spawnEnemyProjectileHitbox === "function";
+          if (atTime == null || atTime <= 0) {
+            if (useHitbox) {
+              game.spawnEnemyProjectileHitbox(sx, sy, Math.cos(angle), Math.sin(angle), dmg, opts, enemy);
             } else {
-              game.spawnEnemyProjectile(ex, ey, vx, vy, baseDmg, size, color, a.execute, enemy);
+              game.spawnEnemyProjectile(sx, sy, vx, vy, dmg, size, color, opts, enemy);
+            }
+          } else if (typeof game.addDelayedEnemyProjectile === "function") {
+            game.addDelayedEnemyProjectile(game.time + atTime, sx, sy, vx, vy, dmg, size, color, opts, enemy, useHitbox ? { useHitbox: true } : {});
+          } else {
+            if (useHitbox) {
+              game.spawnEnemyProjectileHitbox(sx, sy, Math.cos(angle), Math.sin(angle), dmg, opts, enemy);
+            } else {
+              game.spawnEnemyProjectile(sx, sy, vx, vy, dmg, size, color, opts, enemy);
             }
           }
+        };
+
+        if (volleyCount && randomSpreadDeg > 0) {
+          const halfSpreadRad = (randomSpreadDeg * 0.5 * Math.PI) / 180;
+          const burstSize = Math.max(1, Number(a.execute?.volleyBurstSize) || volleyCount);
+          const burstInterval = Number(a.execute?.volleyBurstInterval) || 0;
+          for (let i = 0; i < volleyCount; i++) {
+            const angle = dirAngle + (Math.random() - 0.5) * 2 * halfSpreadRad;
+            const burstIndex = Math.floor(i / burstSize);
+            const delay = burstInterval * burstIndex;
+            spawnOne(ex, ey, angle, baseDmg, a.execute, delay);
+          }
+        } else if (spiralOpposite && count === 2) {
+          const opts0 = { ...a.execute, movementType: "spiral", spiralDirection: 1 };
+          const opts1 = { ...a.execute, movementType: "spiral", spiralDirection: -1 };
+          spawnOne(ex, ey, dirAngle, baseDmg, opts0, 0);
+          spawnOne(ex, ey, dirAngle, baseDmg, opts1, 0);
+        } else if (spiralSpreadDeg != null && count === 2) {
+          const offsetRad = (spiralSpreadDeg * Math.PI) / 180;
+          const opts0 = { ...a.execute, movementType: "spiral", spiralDirection: 1 };
+          const opts1 = { ...a.execute, movementType: "spiral", spiralDirection: -1 };
+          spawnOne(ex, ey, dirAngle + offsetRad, baseDmg, opts0, 0);
+          spawnOne(ex, ey, dirAngle - offsetRad, baseDmg, opts1, 0);
+        } else if (arcSpreadDeg != null && count > 1) {
+          const arcRad = (arcSpreadDeg * Math.PI) / 180;
+          const startAngle = dirAngle - arcRad * 0.5;
+          const step = count > 1 ? arcRad / (count - 1) : 0;
+          for (let i = 0; i < count; i++) {
+            const angle = startAngle + step * i;
+            spawnOne(ex, ey, angle, baseDmg, a.execute, 0);
+          }
+        } else if (a.execute?.comboShots) {
+          spawnOne(ex, ey, dirAngle, baseDmg, a.execute, 0);
+        } else {
+          const useHitbox = a.execute?.useHitbox === true && typeof game.spawnEnemyProjectileHitbox === "function";
+          for (let b = 0; b < burstCount; b++) {
+            const shotAt = burstInterval * b;
+            for (let i = 0; i < count; i++) {
+              let angle = dirAngle;
+              if (count > 1 && spread > 0) {
+                const offset = (i - (count - 1) / 2) * spread;
+                angle = dirAngle + offset;
+              }
+              const vx = Math.cos(angle) * speed;
+              const vy = Math.sin(angle) * speed;
+              if (b === 0) {
+                if (useHitbox) {
+                  game.spawnEnemyProjectileHitbox(ex, ey, Math.cos(angle), Math.sin(angle), baseDmg, a.execute, enemy);
+                } else {
+                  game.spawnEnemyProjectile(ex, ey, vx, vy, baseDmg, size, color, a.execute, enemy);
+                }
+              } else if (typeof game.addDelayedEnemyProjectile === "function") {
+                game.addDelayedEnemyProjectile(game.time + shotAt, ex, ey, vx, vy, baseDmg, size, color, a.execute, enemy, useHitbox ? { useHitbox: true } : {});
+              } else {
+                if (useHitbox) {
+                  game.spawnEnemyProjectileHitbox(ex, ey, Math.cos(angle), Math.sin(angle), baseDmg, a.execute, enemy);
+                } else {
+                  game.spawnEnemyProjectile(ex, ey, vx, vy, baseDmg, size, color, a.execute, enemy);
+                }
+              }
+            }
+          }
+        }
+
+        if (backstepChain) {
+          const state = enemy._attackBackstepChainState;
+          if (state) state.dirX = dirX;
+          if (state) state.dirY = dirY;
         }
         break;
       }
@@ -527,11 +693,13 @@ export class EnemyAttackController {
     enemy.position.y += dash.dirY * move;
     dash.traveled += move;
 
-    if (!this.dashHitApplied && enemy.intersects(game.player)) {
-      this.dashHitApplied = true;
-      const dmg = Math.round((this.currentAttack?.execute?.damage ?? 1) * this.attackScale * (enemy.attack ?? 10) / 10);
-      game.onPlayerDamaged(dmg, true);
-      game.lastDamagingEnemy = enemy;
+    if (typeof game.spawnEnemyDashHitbox !== "function") {
+      if (!this.dashHitApplied && enemy.intersects(game.player)) {
+        this.dashHitApplied = true;
+        const dmg = Math.round((this.currentAttack?.execute?.damage ?? 1) * this.attackScale * (enemy.attack ?? 10) / 10);
+        game.onPlayerDamaged(dmg, true);
+        game.lastDamagingEnemy = enemy;
+      }
     }
 
     if (dash.traveled >= dash.dist) {
@@ -554,7 +722,11 @@ export class EnemyAttackController {
     const ex = enemy.position.x + enemy.size / 2;
     const ey = enemy.position.y + enemy.size / 2;
     const coneAngle = timedState.baseDirAngle + ((coneDef.angleOffsetDeg || 0) * Math.PI / 180);
-    if (this._isPlayerInCone(game, ex, ey, coneAngle, coneDef.range, coneDef.arc)) {
+    const dirX = Math.cos(coneAngle);
+    const dirY = Math.sin(coneAngle);
+    if (typeof game.spawnEnemyConeHitbox === "function") {
+      game.spawnEnemyConeHitbox(enemy, ex, ey, dirX, dirY, coneDef.range, coneDef.arc, timedState.damage, "monster_slasher_full_combo");
+    } else if (this._isPlayerInCone(game, ex, ey, coneAngle, coneDef.range, coneDef.arc)) {
       game.onPlayerDamaged(timedState.damage, true);
       game.lastDamagingEnemy = enemy;
       this._applyDebuffs(game, this.currentAttack || {});
@@ -717,12 +889,16 @@ export class EnemyAttackController {
       enemy.position.x = x - enemy.size / 2;
       enemy.position.y = y - enemy.size / 2;
     } else {
-      const px = game.player.position.x + game.player.size / 2;
-      const py = game.player.position.y + game.player.size / 2;
-      if ((px - js.targetX) ** 2 + (py - js.targetY) ** 2 <= js.radius * js.radius) {
-        const dmg = Math.round((this.currentAttack?.execute?.damage ?? 1) * this.attackScale * (enemy.attack ?? 10) / 10);
-        game.onPlayerDamaged(dmg, true);
-        game.lastDamagingEnemy = enemy;
+      const dmg = Math.round((this.currentAttack?.execute?.damage ?? 1) * this.attackScale * (enemy.attack ?? 10) / 10);
+      if (typeof game.spawnEnemyCircleHitbox === "function") {
+        game.spawnEnemyCircleHitbox(enemy, js.targetX, js.targetY, js.radius, dmg, this.currentAttack?.id || "jump_slam");
+      } else {
+        const px = game.player.position.x + game.player.size / 2;
+        const py = game.player.position.y + game.player.size / 2;
+        if ((px - js.targetX) ** 2 + (py - js.targetY) ** 2 <= js.radius * js.radius) {
+          game.onPlayerDamaged(dmg, true);
+          game.lastDamagingEnemy = enemy;
+        }
       }
       game.hazardSystem?.addTemporaryPatch?.("slamGround", js.targetX, js.targetY, js.radius * 0.5, 0.5, 0, false);
       if ((js.recoverAnimDuration || 0) > 0 && enemy.enemyTypeId === "m_5v_monsteryfly") {
@@ -766,12 +942,16 @@ export class EnemyAttackController {
       cyclone.hitTimer += cyclone.hitInterval;
       const ex = enemy.position.x + enemy.size / 2;
       const ey = enemy.position.y + enemy.size / 2;
-      const px = game.player.position.x + game.player.size / 2;
-      const py = game.player.position.y + game.player.size / 2;
-      if ((px - ex) ** 2 + (py - ey) ** 2 <= cyclone.radius * cyclone.radius) {
-        const tickDamage = Math.max(1, Math.round(cyclone.dps * cyclone.hitInterval));
-        game.onPlayerDamaged(tickDamage, true);
-        game.lastDamagingEnemy = enemy;
+      const tickDamage = Math.max(1, Math.round(cyclone.dps * cyclone.hitInterval));
+      if (typeof game.spawnEnemyCircleHitbox === "function") {
+        game.spawnEnemyCircleHitbox(enemy, ex, ey, cyclone.radius, tickDamage, "mercenary_cyclone");
+      } else {
+        const px = game.player.position.x + game.player.size / 2;
+        const py = game.player.position.y + game.player.size / 2;
+        if ((px - ex) ** 2 + (py - ey) ** 2 <= cyclone.radius * cyclone.radius) {
+          game.onPlayerDamaged(tickDamage, true);
+          game.lastDamagingEnemy = enemy;
+        }
       }
     }
 

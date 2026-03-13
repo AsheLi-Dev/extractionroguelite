@@ -48,12 +48,6 @@ export const ARMOUR_WEIGHT_MULT = {
 /** Extra gold per socket on buy price. */
 export const SOCKET_PRICE_PREMIUM = 30;
 
-/** Cost in gold for each LP purchase at extraction (index = legacyPointsEarnedThisRun). */
-export const LP_CONVERSION_COSTS = [80, 140, 220, 320, 440];
-
-/** Maximum LP that can be bought per run at extraction. */
-export const LP_MAX_PER_RUN = 5;
-
 /** Reroll one modifier service: base cost, increment per prior use on same item, cap. */
 export const REROLL_MOD_SERVICE = { baseCost: 40, increment: 20, cap: 120 };
 

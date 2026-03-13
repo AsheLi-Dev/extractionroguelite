@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file Pillar and blessing data definitions.
  */
 
@@ -92,28 +92,50 @@ export const PILLARS = Object.freeze([
     iconKey: 'pillar.deep',
     blessingsLevel1: [
       {
-        id: 'the_deep_forge_resolve',
+        id: 'pillar.deep.two_heads',
         pillarId: 'the_deep',
-        displayName: 'Quiet Hands',
-        description: 'If you have not dealt damage in the last 6 seconds, chest opening speed is increased by 50%.',
+        displayName: 'Two Heads',
+        description: 'Gain an additional helmet slot. Both equipped helmets are active and grant their normal effects.',
         tier: BLESSING_TIER.LEVEL_1,
         unlockedByDefault: true,
         available: true,
         tags: ['core'],
-        effectKey: 'pillar.deep.quiet_hands'
+        effectKey: 'pillar.deep.two_heads'
+      },
+      {
+        id: 'pillar.deep.polluting_presence',
+        pillarId: 'the_deep',
+        displayName: 'Polluting Presence',
+        description: 'Lose 5% max HP per second and deal the same amount as damage per second to nearby enemies.',
+        tier: BLESSING_TIER.LEVEL_1,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['core'],
+        effectKey: 'pillar.deep.polluting_presence'
       }
     ],
     blessingsLevel2: [
       {
-        id: 'the_deep_ancient_pressure',
+        id: 'pillar.deep.tentacles',
         pillarId: 'the_deep',
-        displayName: 'Tentacles of the Deep',
-        description: 'Reserved for a future special combat effect. Runtime hook is not implemented yet.',
+        displayName: 'Tentacles',
+        description: 'Ring slots are disabled. Every 20 seconds, gain 2 random portable enemy modifiers for 20 seconds.',
         tier: BLESSING_TIER.LEVEL_2,
         unlockedByDefault: true,
         available: true,
-        tags: ['core'],
+        tags: ['core', 'chaos'],
         effectKey: 'pillar.deep.tentacles'
+      },
+      {
+        id: 'pillar.deep.twisted_belief',
+        pillarId: 'the_deep',
+        displayName: 'Twisted Belief',
+        description: 'Gain Proof of Eldritch: +3 Level 1 capacity, same-pillar duplicates allowed, and further Level 2 allocation is blocked.',
+        tier: BLESSING_TIER.LEVEL_2,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['core', 'topology'],
+        effectKey: 'pillar.deep.twisted_belief'
       }
     ]
   },
@@ -124,28 +146,50 @@ export const PILLARS = Object.freeze([
     iconKey: 'pillar.havoc',
     blessingsLevel1: [
       {
-        id: 'the_havoc_unchecked_stride',
+        id: 'pillar.havoc.chain_detonation',
         pillarId: 'the_havoc',
-        displayName: 'Ruin Runner',
-        description: 'Reserved for a future movement/combat interaction. Runtime hook is not implemented yet.',
+        displayName: 'Chain Detonation',
+        description: 'Destroyed enemies and breakables explode, dealing 20% of the destroyed target max HP as damage.',
         tier: BLESSING_TIER.LEVEL_1,
         unlockedByDefault: true,
         available: true,
         tags: ['aggressive'],
-        effectKey: 'pillar.havoc.ruin_runner'
-      }
-    ],
-    blessingsLevel2: [
+        effectKey: 'pillar.havoc.chain_detonation'
+      },
       {
-        id: 'the_havoc_fearless_chain',
+        id: 'pillar.havoc.momentum_of_ruin',
         pillarId: 'the_havoc',
         displayName: 'Momentum of Ruin',
         description: 'Destroying an object grants a temporary move speed and attack speed boost.',
-        tier: BLESSING_TIER.LEVEL_2,
+        tier: BLESSING_TIER.LEVEL_1,
         unlockedByDefault: true,
         available: true,
         tags: ['aggressive'],
         effectKey: 'pillar.havoc.momentum_of_ruin'
+      }
+    ],
+    blessingsLevel2: [
+      {
+        id: 'pillar.havoc.unmake_the_world',
+        pillarId: 'the_havoc',
+        displayName: 'Unmake the World',
+        description: 'Supported world objects become destructible with hidden HP, except protected critical objects.',
+        tier: BLESSING_TIER.LEVEL_2,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['aggressive', 'world'],
+        effectKey: 'pillar.havoc.unmake_the_world'
+      },
+      {
+        id: 'pillar.havoc.fury_of_havoc',
+        pillarId: 'the_havoc',
+        displayName: 'Fury of Havoc',
+        description: 'Destroying an object costs 5% max HP and grants 1 Fury. At 10 Fury, destroy all safely destructible objects currently on screen, then reset Fury.',
+        tier: BLESSING_TIER.LEVEL_2,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['aggressive', 'chaos'],
+        effectKey: 'pillar.havoc.fury_of_havoc'
       }
     ]
   },
@@ -156,7 +200,7 @@ export const PILLARS = Object.freeze([
     iconKey: 'pillar.weapon_master',
     blessingsLevel1: [
       {
-        id: 'weapon_master_steady_hand',
+        id: 'pillar.weapon_master.perfect_craft',
         pillarId: 'weapon_master',
         displayName: 'Perfect Craft',
         description: 'Weapon items grant 25% increased stats.',
@@ -165,11 +209,33 @@ export const PILLARS = Object.freeze([
         available: true,
         tags: ['combat'],
         effectKey: 'pillar.weapon_master.perfect_craft'
+      },
+      {
+        id: 'pillar.weapon_master.dual_technique',
+        pillarId: 'weapon_master',
+        displayName: 'Dual Technique',
+        description: 'Equip two basic attacks and execute both from one input. Basic-attack damage is scaled to 40%.',
+        tier: BLESSING_TIER.LEVEL_1,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['combat'],
+        effectKey: 'pillar.weapon_master.dual_technique'
       }
     ],
     blessingsLevel2: [
       {
-        id: 'weapon_master_fatal_recall',
+        id: 'pillar.weapon_master.living_arsenal',
+        pillarId: 'weapon_master',
+        displayName: 'Living Arsenal',
+        description: 'All equipment slots become weapon-compatible. With 4+ equipped weapons, attacks repeat 4 times at 25% damage each.',
+        tier: BLESSING_TIER.LEVEL_2,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['combat', 'equipment'],
+        effectKey: 'pillar.weapon_master.living_arsenal'
+      },
+      {
+        id: 'pillar.weapon_master.perfect_hybridization',
         pillarId: 'weapon_master',
         displayName: 'Perfect Hybridization',
         description: 'Reserved for future melee/ranged reinterpretation logic.',
@@ -188,7 +254,7 @@ export const PILLARS = Object.freeze([
     iconKey: 'pillar.limitless',
     blessingsLevel1: [
       {
-        id: 'the_limitless_wide_scope',
+        id: 'pillar.limitless.endless_possibilities',
         pillarId: 'the_limitless',
         displayName: 'Endless Possibilities',
         description: 'Gain 3 rerolls whenever level-up choices are shown.',
@@ -197,19 +263,41 @@ export const PILLARS = Object.freeze([
         available: true,
         tags: ['utility'],
         effectKey: 'pillar.limitless.endless_possibilities'
+      },
+      {
+        id: 'pillar.limitless.exponential_growth',
+        pillarId: 'the_limitless',
+        displayName: 'Exponential Growth',
+        description: 'Whenever you gain stacks of a buff/debuff, gain 2x stacks instead.',
+        tier: BLESSING_TIER.LEVEL_1,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['utility'],
+        effectKey: 'pillar.limitless.exponential_growth'
       }
     ],
     blessingsLevel2: [
       {
-        id: 'the_limitless_unbound_thought',
+        id: 'pillar.limitless.no_limits',
         pillarId: 'the_limitless',
         displayName: 'No Limits',
-        description: 'Reserved for future cap/stack override behavior.',
+        description: 'Player buffs and debuffs ignore normal stack caps (effective cap: 999).',
         tier: BLESSING_TIER.LEVEL_2,
         unlockedByDefault: true,
         available: true,
-        tags: ['utility'],
+        tags: ['utility', 'stacking'],
         effectKey: 'pillar.limitless.no_limits'
+      },
+      {
+        id: 'pillar.limitless.ascended_growth',
+        pillarId: 'the_limitless',
+        displayName: 'Ascended Growth',
+        description: 'On level up, choose 3 upgrade picks. Pick effectiveness scales by order: 80%, 50%, then 30%.',
+        tier: BLESSING_TIER.LEVEL_2,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['utility', 'growth'],
+        effectKey: 'pillar.limitless.ascended_growth'
       }
     ]
   },
@@ -220,28 +308,50 @@ export const PILLARS = Object.freeze([
     iconKey: 'pillar.void',
     blessingsLevel1: [
       {
-        id: 'the_void_cold_step',
+        id: 'pillar.void.void_discrimination',
         pillarId: 'the_void',
-        displayName: 'Cold Step',
-        description: 'Reserved for future void movement behavior.',
+        displayName: 'Void Discrimination',
+        description: 'Receive only 50% damage from non-minion enemies. Deal 20% damage to minions.',
         tier: BLESSING_TIER.LEVEL_1,
         unlockedByDefault: true,
         available: true,
-        tags: ['defensive'],
-        effectKey: 'pillar.void.cold_step'
+        tags: ['defensive', 'control'],
+        effectKey: 'pillar.void.void_discrimination'
+      },
+      {
+        id: 'pillar.void.untouchable_dash',
+        pillarId: 'the_void',
+        displayName: 'Untouchable Dash',
+        description: 'While dashing, avoid all damage and non-boss enemies stop chasing you.',
+        tier: BLESSING_TIER.LEVEL_1,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['defensive', 'mobility'],
+        effectKey: 'pillar.void.untouchable_dash'
       }
     ],
     blessingsLevel2: [
       {
-        id: 'the_void_event_horizon',
+        id: 'pillar.void.skill_singularity',
         pillarId: 'the_void',
-        displayName: 'Event Horizon',
-        description: 'Reserved for future void combat behavior.',
+        displayName: 'Skill Singularity',
+        description: 'Basic attacks are disabled. All skills gain +2 charges.',
         tier: BLESSING_TIER.LEVEL_2,
         unlockedByDefault: true,
         available: true,
         tags: ['defensive'],
-        effectKey: 'pillar.void.event_horizon'
+        effectKey: 'pillar.void.skill_singularity'
+      },
+      {
+        id: 'pillar.void.void_walker',
+        pillarId: 'the_void',
+        displayName: 'Void Walker',
+        description: 'Dash has infinite charges. Max HP is reduced by 50%. Lose 5 HP when you dash.',
+        tier: BLESSING_TIER.LEVEL_2,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['defensive'],
+        effectKey: 'pillar.void.void_walker'
       }
     ]
   },
@@ -252,28 +362,50 @@ export const PILLARS = Object.freeze([
     iconKey: 'pillar.pacifier',
     blessingsLevel1: [
       {
-        id: 'the_pacifier_somber_heart',
+        id: 'pillar.pacifier.gentle_presence',
         pillarId: 'the_pacifier',
-        displayName: 'Somber Heart',
-        description: 'Reserved for future rules/control interaction.',
+        displayName: 'Gentle Presence',
+        description: 'Minions and elites ignore you until you damage them (bosses excluded).',
         tier: BLESSING_TIER.LEVEL_1,
         unlockedByDefault: true,
         available: true,
         tags: ['control'],
-        effectKey: 'pillar.pacifier.somber_heart'
+        effectKey: 'pillar.pacifier.gentle_presence'
+      },
+      {
+        id: 'pillar.pacifier.quiet_hands',
+        pillarId: 'the_pacifier',
+        displayName: 'Quiet Hands',
+        description: 'If you have not dealt damage in the last 6 seconds, chest opening speed is increased by 50%.',
+        tier: BLESSING_TIER.LEVEL_1,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['control'],
+        effectKey: 'pillar.pacifier.quiet_hands'
       }
     ],
     blessingsLevel2: [
       {
-        id: 'the_pacifier_woven_gentle',
+        id: 'pillar.pacifier.false_peace',
         pillarId: 'the_pacifier',
-        displayName: 'Woven Gentle',
-        description: 'Reserved for future advanced pacifier behavior.',
+        displayName: 'False Peace',
+        description: 'If you have not dealt damage for 6 seconds, refresh all skill cooldowns. Your next damage dealt gains +1000%.',
         tier: BLESSING_TIER.LEVEL_2,
         unlockedByDefault: true,
         available: true,
         tags: ['control'],
-        effectKey: 'pillar.pacifier.woven_gentle'
+        effectKey: 'pillar.pacifier.false_peace'
+      },
+      {
+        id: 'pillar.pacifier.harmony_of_stillness',
+        pillarId: 'the_pacifier',
+        displayName: 'Harmony of Stillness',
+        description: 'After 6s without dealing damage, gain move speed/defense/max HP scaling and gain 10 XP when opening chests.',
+        tier: BLESSING_TIER.LEVEL_2,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['control', 'growth'],
+        effectKey: 'pillar.pacifier.harmony_of_stillness'
       }
     ]
   },
@@ -284,7 +416,7 @@ export const PILLARS = Object.freeze([
     iconKey: 'pillar.collector',
     blessingsLevel1: [
       {
-        id: 'the_collector_precise_memoir',
+        id: 'pillar.collector.merchant_instinct',
         pillarId: 'the_collector',
         displayName: 'Merchant Instinct',
         description: 'You can sell equippable inventory items at any time. Equipment Collector quotes are doubled.',
@@ -293,18 +425,40 @@ export const PILLARS = Object.freeze([
         available: true,
         tags: ['utility', 'growth'],
         effectKey: 'pillar.collector.merchant_instinct'
+      },
+      {
+        id: 'pillar.collector.hoarders_arsenal',
+        pillarId: 'the_collector',
+        displayName: 'Hoarder\u2019s Arsenal',
+        description: 'Inventory item categories grant chest speed, movement speed, breakable damage, and passive gold income bonuses.',
+        tier: BLESSING_TIER.LEVEL_1,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['utility', 'growth'],
+        effectKey: 'pillar.collector.hoarders_arsenal'
       }
     ],
     blessingsLevel2: [
       {
-        id: 'the_collector_endless_archive',
+        id: 'pillar.collector.ring_vault',
         pillarId: 'the_collector',
-        displayName: 'Grand Bazaar',
-        description: 'Reserved for future NPC economy expansion.',
+        displayName: 'Ring Vault',
+        description: 'Gain up to 10 ring slots. Ring effects are -90% plus +10% per ring in inventory (equipped rings excluded), up to +100%.',
         tier: BLESSING_TIER.LEVEL_2,
         unlockedByDefault: true,
         available: true,
-        tags: ['utility', 'growth'],
+        tags: ['utility', 'equipment'],
+        effectKey: 'pillar.collector.ring_vault'
+      },
+      {
+        id: 'pillar.collector.grand_bazaar',
+        pillarId: 'the_collector',
+        displayName: 'Grand Bazaar',
+        description: 'NPC map spawn cap increases up to 15 and NPC service costs are doubled.',
+        tier: BLESSING_TIER.LEVEL_2,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['utility', 'economy'],
         effectKey: 'pillar.collector.grand_bazaar'
       }
     ]
@@ -316,28 +470,50 @@ export const PILLARS = Object.freeze([
     iconKey: 'pillar.cascade',
     blessingsLevel1: [
       {
-        id: 'the_cascade_looping_draw',
+        id: 'pillar.cascade.amplified_triggers',
         pillarId: 'the_cascade',
-        displayName: 'Looping Draw',
-        description: 'Reserved for future skill-chain runtime behavior.',
+        displayName: 'Amplified Triggers',
+        description: 'Trigger chance is increased by 50%.',
         tier: BLESSING_TIER.LEVEL_1,
         unlockedByDefault: true,
         available: true,
         tags: ['resource'],
-        effectKey: 'pillar.cascade.looping_draw'
+        effectKey: 'pillar.cascade.amplified_triggers'
+      },
+      {
+        id: 'pillar.cascade.chain_reaction',
+        pillarId: 'the_cascade',
+        displayName: 'Chain Reaction',
+        description: 'Triggered casts can chain into the next skill with diminishing chance.',
+        tier: BLESSING_TIER.LEVEL_1,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['resource'],
+        effectKey: 'pillar.cascade.chain_reaction'
       }
     ],
     blessingsLevel2: [
       {
-        id: 'the_cascade_requiem_drop',
+        id: 'pillar.cascade.grand_finale',
         pillarId: 'the_cascade',
-        displayName: 'Requiem Drop',
-        description: 'Reserved for future cascade conversion behavior.',
+        displayName: 'Grand Finale',
+        description: 'After all four skills trigger once, all four trigger again (guarded against infinite loops).',
         tier: BLESSING_TIER.LEVEL_2,
         unlockedByDefault: true,
         available: true,
         tags: ['resource'],
-        effectKey: 'pillar.cascade.requiem_drop'
+        effectKey: 'pillar.cascade.grand_finale'
+      },
+      {
+        id: 'pillar.cascade.wild_cascade',
+        pillarId: 'the_cascade',
+        displayName: 'Wild Cascade',
+        description: 'When a skill is triggered, trigger one eligible random skill with strict proc safety limits.',
+        tier: BLESSING_TIER.LEVEL_2,
+        unlockedByDefault: true,
+        available: true,
+        tags: ['resource', 'chaos'],
+        effectKey: 'pillar.cascade.wild_cascade'
       }
     ]
   }

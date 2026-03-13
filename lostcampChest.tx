@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<template>
+ <tileset firstgid="1" source="Extra Prop.tsx"/>
+ <object gid="49" width="32" height="32">
+  <properties>
+   <property name="ifChest" value="yes"/>
+  </properties>
+ </object>
+</template>

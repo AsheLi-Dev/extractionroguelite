@@ -3,7 +3,8 @@
 // This module adds methods to Game.prototype when imported
 
 import { refreshMainMenuLP } from '../ui/main-menu.js';
-import { loadSavedCharacters, addConquerorBonusItem, addToLegacyCubeStash, addToLegacyAncestorStash, ETERNAL_ITEMS_ON_DEFEAT_KEY } from '../ui/save-system.js';
+import { loadSavedCharacters, addConquerorBonusItem, addToLegacyCubeStash, addToLegacyAncestorStash, ETERNAL_ITEMS_ON_DEFEAT_KEY, SAVE_KEY, updateSavedCharacter } from '../ui/save-system.js';
+import { getDefaultAttributes, WOUND_MAX_STACKS } from '../data/character-attributes.js';
 import { renderHallOfChampions } from '../ui/hall-of-champions.js';
 import { hasTalent } from '../data/talents.js';
 import {
@@ -12,13 +13,7 @@ import {
   rollLocalStatScaleValueForDifficulty,
   rollModifierValueForDifficulty
 } from '../data/loot-data.js';
-import {
-  getGold,
-  getNextLPConversionCost,
-  canBuyLegacyPointAtExtraction,
-  buyLegacyPointAtExtraction
-} from './economy.js';
-import { LP_MAX_PER_RUN } from '../data/economy-config.js';
+import { getGold } from './economy.js';
 import { handleArchivistOnExtraction, handleHeirloomOnDefeat } from './ring-effects.js';
 import { stopBgm } from '../audio.js';
 
@@ -61,7 +56,7 @@ export function applyGameVictoryMixin(Game) {
     },
 
     applyLootTranscendenceOnExtraction() {
-      if (!hasTalent("cardTranscendence")) return;
+      if (!this.hasCharacterTalent("lootTranscendence")) return;
       const diff = Math.min(5, Math.max(1, this.difficulty ?? 1));
       const tryUpgrade = (item) => {
         if (!item || item.type === "Upgrade Card" || item.type === "Cube") return;
@@ -70,6 +65,7 @@ export function applyGameVictoryMixin(Game) {
         const upgradeToRare = rarity === "magic" && Math.random() < 0.1;
         if (!upgradeToMagic && !upgradeToRare) return;
 
+        if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("lootTranscendence", `Extraction: item rarity upgraded to ${upgradeToRare ? "rare" : "magic"}`);
         item.rarity = upgradeToRare ? "rare" : "magic";
         item.modifiers = item.modifiers || [];
         const pool = getModifierPoolForType(item.type) || [];
@@ -117,6 +113,18 @@ export function applyGameVictoryMixin(Game) {
           localStorage.setItem(ETERNAL_ITEMS_ON_DEFEAT_KEY, JSON.stringify(existing));
         } catch (_) {}
       }
+
+      const charIndex = this.runConfig?.selectedCharacterIndex;
+      if (charIndex != null && typeof charIndex === "number") {
+        const saved = loadSavedCharacters();
+        const char = saved[charIndex];
+        if (char && !char.dead) {
+          const currentWounds = Math.max(0, Number(char.wounds) || 0);
+          const newWounds = Math.min(WOUND_MAX_STACKS, currentWounds + 1);
+          const isDead = newWounds >= WOUND_MAX_STACKS;
+          updateSavedCharacter(charIndex, { wounds: newWounds, dead: isDead });
+        }
+      }
       
       // Update game over panel stats
       if (this.gameOverMapsEl) {
@@ -159,41 +167,9 @@ export function applyGameVictoryMixin(Game) {
 
     populateVictorySummary() {
       const gold = getGold(this);
-      const earned = this.legacyPointsEarnedThisRun ?? 0;
-      const nextCost = getNextLPConversionCost(this);
-      const canBuy = canBuyLegacyPointAtExtraction(this);
 
       const goldEl = document.getElementById("victory-gold");
       if (goldEl) goldEl.textContent = `Gold: ${gold}`;
-
-      const lpEl = document.getElementById("victory-lp-earned");
-      if (lpEl) lpEl.textContent = earned > 0 ? `${earned} Legacy Point${earned !== 1 ? "s" : ""} bought this run` : "Convert gold to Legacy Points below";
-
-      const lpSection = document.getElementById("victory-lp-section");
-      if (lpSection) {
-        lpSection.innerHTML = "";
-        if (earned < LP_MAX_PER_RUN && nextCost != null) {
-          const btn = document.createElement("button");
-          btn.className = "victory-lp-buy-btn";
-          btn.textContent = `Buy 1 LP (${nextCost} gold)`;
-          btn.disabled = !canBuy;
-          btn.addEventListener("click", () => {
-            if (buyLegacyPointAtExtraction(this)) {
-              this.populateVictorySummary();
-              refreshMainMenuLP();
-            }
-          });
-          lpSection.appendChild(btn);
-          const capEl = document.createElement("p");
-          capEl.className = "victory-lp-cap";
-          capEl.textContent = `${earned} / ${LP_MAX_PER_RUN} LP this run`;
-          lpSection.appendChild(capEl);
-        } else if (earned >= LP_MAX_PER_RUN) {
-          const p = document.createElement("p");
-          p.textContent = "LP limit reached for this run.";
-          lpSection.appendChild(p);
-        }
-      }
 
       const equippedEl = document.getElementById("victory-equipped");
       const statsEl = document.getElementById("victory-stats");
@@ -224,7 +200,7 @@ export function applyGameVictoryMixin(Game) {
     },
 
     applyCuratorCubeUpgradeOnExtraction() {
-      if (!hasTalent("curator")) return;
+      if (!this.hasCharacterTalent("curator")) return;
       if (!this.cubeInventory) return;
       const snapshot = Object.entries(this.cubeInventory);
       const addMap = {};
@@ -243,6 +219,7 @@ export function applyGameVictoryMixin(Game) {
           if (Math.random() < chance) upgrades++;
         }
         if (upgrades <= 0) continue;
+        if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("curator", `Extraction: ${upgrades} cube(s) upgraded T${tier}→T${tier + 1}`);
         const toKey = `${base}T${tier + 1}`;
         subMap[key] = (subMap[key] || 0) + upgrades;
         addMap[toKey] = (addMap[toKey] || 0) + upgrades;
@@ -268,6 +245,10 @@ export function applyGameVictoryMixin(Game) {
         name,
         level: this.level,
         difficulty: this.difficulty,
+        attributes: getDefaultAttributes(),
+        wounds: 0,
+        dead: false,
+        talents: [],
         equipment: JSON.parse(JSON.stringify(this.equipment)),
         inventory: JSON.parse(JSON.stringify(this.inventory)),
         cubeInventory: JSON.parse(JSON.stringify(this.cubeInventory)),
@@ -275,21 +256,39 @@ export function applyGameVictoryMixin(Game) {
         savedAt: Date.now()
       };
       const saved = loadSavedCharacters();
-      saved.push(saveData);
-      localStorage.setItem("spaceShooter_characters", JSON.stringify(saved));
-      if (hasTalent("conqueror") && this.difficulty >= 4) {
-        const def = this.lootSystem.getLootDefinition(0.9);
-        addConquerorBonusItem({ name: def.name, type: def.type, stats: def.stats || {}, weight: def.weight || null });
+      const charIndex = this.runConfig?.selectedCharacterIndex;
+      if (charIndex != null && typeof charIndex === "number" && saved[charIndex] && !saved[charIndex].dead) {
+        const char = saved[charIndex];
+        const newWounds = Math.max(0, (Number(char.wounds) || 0) - 1);
+        updateSavedCharacter(charIndex, {
+          name,
+          level: this.level,
+          difficulty: this.difficulty,
+          equipment: saveData.equipment,
+          inventory: saveData.inventory,
+          cubeInventory: saveData.cubeInventory,
+          stats: saveData.stats,
+          savedAt: saveData.savedAt,
+          wounds: newWounds
+        });
+      } else {
+        saved.push(saveData);
+        localStorage.setItem(SAVE_KEY, JSON.stringify(saved));
       }
-
       this.destroy();
       stopBgm();
-      document.getElementById("victory-overlay").classList.add("hidden");
-      document.getElementById("main-menu").classList.remove("hidden");
-      document.querySelector(".game-root").classList.add("hidden");
+      document.getElementById("victory-overlay")?.classList.add("hidden");
+      const onReturnToHomeBase = this.runConfig?.onReturnToHomeBase;
+      if (typeof onReturnToHomeBase === "function") {
+        onReturnToHomeBase({ reason: "victory" });
+        return;
+      }
+
+      document.getElementById("main-menu")?.classList.remove("hidden");
+      document.querySelector(".game-root")?.classList.add("hidden");
       refreshMainMenuLP();
-      document.getElementById("pause-toggle").classList.add("hidden");
-      document.getElementById("dev-toggle").classList.add("hidden");
+      document.getElementById("pause-toggle")?.classList.add("hidden");
+      document.getElementById("dev-toggle")?.classList.add("hidden");
       renderHallOfChampions();
     }
   });
