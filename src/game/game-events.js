@@ -83,7 +83,8 @@ export function applyGameEventsMixin(Game) {
         btn.className = "event-choice-btn";
         btn.textContent = c.label;
         btn.onclick = () => {
-          this.closeEventOverlay();
+          const keepOpen = !!c.keepOpen;
+          if (!keepOpen) this.closeEventOverlay();
           c.onPick?.();
         };
         choicesEl.appendChild(btn);
@@ -280,10 +281,13 @@ export function applyGameEventsMixin(Game) {
     },
 
     grantRestRoomAttribute(obj, attributeId) {
-      if (!obj || obj.used || !attributeId) return false;
+      if (!obj || !attributeId) return false;
+      const availablePoints = Math.max(0, Number(this.runAttributePoints) || 0);
+      if (availablePoints <= 0) return false;
       this.runCharacterAttributes = this.runCharacterAttributes || {};
       const current = Math.max(0, Number(this.runCharacterAttributes[attributeId]) || 0);
       this.runCharacterAttributes[attributeId] = current + 1;
+      this.runAttributePoints = availablePoints - 1;
       if (attributeId === "brutality") {
         this.baseStats.attack = Math.max(1, Number(this.baseStats.attack) || 0) + 1;
       } else if (attributeId === "agility") {
@@ -297,7 +301,6 @@ export function applyGameEventsMixin(Game) {
       } else if (attributeId === "luck") {
         this.lootSystem?.setPlayerLuck?.(Math.max(0, Number(this.runCharacterAttributes.luck) || 0));
       }
-      obj.used = true;
       this.recalculateStats?.();
       this.updateMapUI?.();
       if (typeof this.addFloatingText === "function") {
@@ -310,16 +313,42 @@ export function applyGameEventsMixin(Game) {
     },
 
     openRestRoomAttributes(obj) {
-      if (!obj || obj.used) return;
+      if (!obj) return;
+      const availablePoints = Math.max(0, Number(this.runAttributePoints) || 0);
+      if (availablePoints <= 0) {
+        if (typeof this.addFloatingText === "function") {
+          const px = (this.player?.position?.x || 0) + (this.player?.size || 0) / 2;
+          const py = (this.player?.position?.y || 0) + (this.player?.size || 0) / 2;
+          this.addFloatingText(px, py, "No Attribute Points", "damage");
+        }
+        return;
+      }
       this.openNpcChoiceCard(
         "Attributes",
-        "Gain 1 run-only attribute point.",
-        META_ATTRIBUTES.map((meta) => ({
-          label: `+1 ${meta.name}`,
-          onPick: () => {
-            this.grantRestRoomAttribute(obj, meta.id);
-          }
-        })),
+        `Spend 1 attribute point. Available: ${availablePoints}.`,
+        META_ATTRIBUTES.map((meta) => {
+          const current = Math.max(0, Number(this.runCharacterAttributes?.[meta.id]) || 0);
+          const deltaLabel = meta.id === "brutality"
+            ? "+1 Attack"
+            : meta.id === "agility"
+              ? "+10 Speed"
+              : meta.id === "vitality"
+                ? "+5 Max HP"
+                : "+1 Luck";
+          return {
+            label: `+1 ${meta.name} (${current} -> ${current + 1}, ${deltaLabel})`,
+            keepOpen: true,
+            onPick: () => {
+              const applied = this.grantRestRoomAttribute(obj, meta.id);
+              if (!applied) return;
+              if ((Number(this.runAttributePoints) || 0) > 0) {
+                this.openRestRoomAttributes(obj);
+              } else {
+                this.closeEventOverlay();
+              }
+            }
+          };
+        }),
         "Leave"
       );
     },

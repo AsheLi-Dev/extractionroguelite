@@ -1,5 +1,5 @@
 import { TALENTS_KEY } from './constants.js';
-import { loadSavedCharacters, updateSavedCharacter } from '../ui/save-system.js';
+import { addGlobalTalentCrystal, getGlobalTalentCrystals, spendGlobalTalentCrystal } from './crystals.js';
 
 export const TALENT_TREE = {
   Brutality: [
@@ -81,6 +81,14 @@ export const TALENT_TREE = {
 };
 
 let _cachedTalentIdSet = null;
+let _cachedTalentNodeMap = null;
+const BRANCH_TO_CRYSTAL = Object.freeze({
+  Brutality: "orange",
+  Agility: "green",
+  Vitality: "red",
+  Luck: "yellow"
+});
+
 export function getAllTalentIdSet() {
   if (_cachedTalentIdSet) return _cachedTalentIdSet;
   const set = new Set();
@@ -89,6 +97,38 @@ export function getAllTalentIdSet() {
   }
   _cachedTalentIdSet = set;
   return set;
+}
+
+export function getTalentNodeById(talentId) {
+  if (_cachedTalentNodeMap) return _cachedTalentNodeMap.get(talentId) || null;
+  const map = new Map();
+  for (const [branchName, nodes] of Object.entries(TALENT_TREE)) {
+    for (const node of nodes) {
+      map.set(node.id, { ...node, branchName });
+    }
+  }
+  _cachedTalentNodeMap = map;
+  return _cachedTalentNodeMap.get(talentId) || null;
+}
+
+export function getTalentCrystalId(talentId) {
+  const node = getTalentNodeById(talentId);
+  return node ? (BRANCH_TO_CRYSTAL[node.branchName] || null) : null;
+}
+
+export function getTalentBranchName(talentId) {
+  return getTalentNodeById(talentId)?.branchName || null;
+}
+
+export function canPurchaseTalent(id) {
+  const purchased = getPurchasedTalents();
+  if (purchased.includes(id)) return false;
+  const node = getTalentNodeById(id);
+  if (!node) return false;
+  const crystalId = getTalentCrystalId(id);
+  if (!crystalId) return false;
+  const crystals = getGlobalTalentCrystals();
+  return (crystals[crystalId] || 0) >= Math.max(0, Number(node.cost) || 0);
 }
 
 export function getPurchasedTalents() {
@@ -103,6 +143,11 @@ export function getPurchasedTalents() {
 export function purchaseTalent(id, cost) {
   const purchased = getPurchasedTalents();
   if (purchased.includes(id)) return false;
+  const crystalId = getTalentCrystalId(id);
+  const node = getTalentNodeById(id);
+  const finalCost = Math.max(0, Number(cost ?? node?.cost) || 0);
+  if (!crystalId) return false;
+  if (!spendGlobalTalentCrystal(crystalId, finalCost)) return false;
   purchased.push(id);
   localStorage.setItem(TALENTS_KEY, JSON.stringify(purchased));
   return true;
@@ -115,77 +160,27 @@ export function hasTalent(id, purchased) {
 
 /** Get talent ids for a saved character (per-character trees). */
 export function getTalentsForCharacter(char) {
-  const list = Array.isArray(char?.talents) ? char.talents : [];
-  const valid = getAllTalentIdSet();
-  return list.filter((id) => valid.has(id));
+  return getPurchasedTalents();
 }
 
 /** True if any saved character has the given talent (for menu context e.g. legacy vault). */
 export function hasAnyCharacterTalent(id) {
-  const saved = loadSavedCharacters();
-  return saved.some((char) => getTalentsForCharacter(char).includes(id));
+  return hasTalent(id);
 }
 
 /** Purchase a talent for a character by index. */
 export function purchaseTalentForCharacter(charIndex, id, cost) {
-  const saved = loadSavedCharacters();
-  const char = saved[charIndex];
-  if (!char) return false;
-  const purchased = getTalentsForCharacter(char);
-  if (purchased.includes(id)) return false;
-  const next = [...purchased, id];
-  updateSavedCharacter(charIndex, { talents: next });
-  return true;
+  return purchaseTalent(id, cost);
 }
 
 /** Refund a talent for a character by index. */
 export function refundTalentForCharacter(charIndex, talentId) {
-  const saved = loadSavedCharacters();
-  const char = saved[charIndex];
-  if (!char) return false;
-  const purchased = getTalentsForCharacter(char);
-  if (!purchased.includes(talentId)) return false;
-  let cost = 0;
-  for (const nodes of Object.values(TALENT_TREE)) {
-    const node = nodes.find((n) => n.id === talentId);
-    if (node) { cost = node.cost; break; }
-  }
-  if (cost === 0) return false;
-  if (!canRefundTalent(talentId, purchased)) return false;
-  const next = purchased.filter((id) => id !== talentId);
-  updateSavedCharacter(charIndex, { talents: next });
-  return true;
+  return refundTalent(talentId);
 }
 
 /** Refund all talents in a branch for a character. */
 export function refundBranchForCharacter(charIndex, branchName) {
-  const nodes = TALENT_TREE[branchName];
-  if (!nodes || !Array.isArray(nodes)) return 0;
-  const branchIds = new Set(nodes.map((n) => n.id));
-  let count = 0;
-  let saved = loadSavedCharacters();
-  let char = saved[charIndex];
-  if (!char) return 0;
-  let purchased = getTalentsForCharacter(char);
-  let inBranch = purchased.filter((id) => branchIds.has(id));
-  while (inBranch.length > 0) {
-    let refundedOne = false;
-    for (const id of inBranch) {
-      if (canRefundTalent(id, purchased)) {
-        if (refundTalentForCharacter(charIndex, id)) {
-          saved = loadSavedCharacters();
-          char = saved[charIndex];
-          purchased = getTalentsForCharacter(char);
-          inBranch = purchased.filter((pid) => branchIds.has(pid));
-          count++;
-          refundedOne = true;
-          break;
-        }
-      }
-    }
-    if (!refundedOne) break;
-  }
-  return count;
+  return refundBranch(branchName);
 }
 
 export function canRefundTalent(talentId, purchased) {
@@ -214,18 +209,14 @@ export function canRefundTalent(talentId, purchased) {
 export function refundTalent(talentId) {
   const purchased = getPurchasedTalents();
   if (!purchased.includes(talentId)) return false;
-  let cost = 0;
-  for (const nodes of Object.values(TALENT_TREE)) {
-    const node = nodes.find((n) => n.id === talentId);
-    if (node) {
-      cost = node.cost;
-      break;
-    }
-  }
+  const node = getTalentNodeById(talentId);
+  const cost = Math.max(0, Number(node?.cost) || 0);
   if (cost === 0) return false;
   if (!canRefundTalent(talentId, purchased)) return false;
   const next = purchased.filter((id) => id !== talentId);
   localStorage.setItem(TALENTS_KEY, JSON.stringify(next));
+  const crystalId = getTalentCrystalId(talentId);
+  if (crystalId) addGlobalTalentCrystal(crystalId, cost);
   return true;
 }
 

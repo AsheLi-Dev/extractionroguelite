@@ -191,7 +191,7 @@ export class Game {
     this.runConfig = runConfig;
     this.restRoomEnabled = true;
     this.pendingRestRoomExit = null;
-    this.characterTalents = Array.isArray(runConfig.selectedCharacter?.talents) ? runConfig.selectedCharacter.talents : [];
+    this.characterTalents = getPurchasedTalents();
     this.difficulty = runConfig.difficulty ?? 1;
     this.conditions = enforceConditionLimits(runConfig.conditions ?? []);
     this.skills = runConfig.skills || [null, null, null, null];
@@ -199,6 +199,7 @@ export class Game {
     this.snackUsesRemaining = Math.max(0, Number(getSnackById(this.runSnackId)?.maxUses) || 0);
     this.snackEspressoUntil = 0;
     this.snackHerbalTeaUntil = 0;
+    this.runAttributePoints = Math.max(0, Number(runConfig.runAttributePoints) || 0);
     const knownAttackTypes = new Set((ATTACK_TYPES || []).map((entry) => String(entry?.id || "")));
     const defaultAttackType = ATTACK_TYPES?.[0]?.id || "projectile";
     const requestedPrimaryAttackType = String(runConfig.attackType || defaultAttackType);

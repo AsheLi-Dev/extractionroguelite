@@ -1522,7 +1522,7 @@ export function applyGameMapMixin(Game) {
       const lootQual = targetMap.lootQuality;
       this.lootSystem.setMapLootQuality(lootQual);
       this.lootSystem.setDifficulty(this.difficulty);
-      this.lootSystem.setPlayerLuck(Math.max(0, Number(this.runConfig?.selectedCharacter?.attributes?.luck) || 0));
+      this.lootSystem.setPlayerLuck(Math.max(0, Number(this.runCharacterAttributes?.luck) || 0));
 
       if (this.hasCharacterTalent("immortal")) this.immortalShield = 30;
 

@@ -8,7 +8,7 @@ import {
   getAttributePointsForLevel,
   getAvailableAttributePoints
 } from '../data/character-attributes.js';
-import { openTalentTreeForCharacter } from './talent-tree-ui.js';
+import { openTalentTree } from './talent-tree-ui.js';
 
 export function renderHallOfChampions() {
   const container = document.getElementById("hall-of-champions");
@@ -102,7 +102,7 @@ function buildChampionCard(char, index) {
   if (talentTreeBtn) {
     talentTreeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      openTalentTreeForCharacter(index);
+      openTalentTree();
     });
   }
 

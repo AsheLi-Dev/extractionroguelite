@@ -124,7 +124,12 @@ export function applyGameUIMixin(Game) {
 
       if (this.xpBarFillEl) this.xpBarFillEl.style.width = `${Math.round(pct * 100)}%`;
       if (this.xpLabelEl) this.xpLabelEl.textContent = this.level >= 99 ? "MAX" : `${Math.floor(xpInLevel)} / ${Math.floor(xpNeeded)} XP`;
-      if (this.playerLevelEl) this.playerLevelEl.textContent = `Level ${this.level}`;
+      if (this.playerLevelEl) {
+        const attributePoints = Math.max(0, Number(this.runAttributePoints) || 0);
+        this.playerLevelEl.textContent = attributePoints > 0
+          ? `Level ${this.level} | AP ${attributePoints}`
+          : `Level ${this.level}`;
+      }
     },
 
     updateBossHealthBar() {

@@ -2,15 +2,11 @@
 
 import { escapeHtml } from '../utils.js';
 import {
-  TALENT_TREE, getPurchasedTalents, getTalentsForCharacter, purchaseTalent,
-  purchaseTalentForCharacter, canRefundTalent, refundTalent, refundTalentForCharacter,
-  refundBranch, refundBranchForCharacter
+  TALENT_TREE, canPurchaseTalent, getPurchasedTalents, getTalentCrystalId, purchaseTalent,
+  canRefundTalent, refundTalent, refundBranch
 } from '../data/talents.js';
-import { CRYSTAL_TYPES, getCrystalsForCharacter } from '../data/crystals.js';
+import { getGlobalTalentCrystals } from '../data/crystals.js';
 import { refreshMainMenuLP } from './main-menu.js';
-import { loadSavedCharacters } from './save-system.js';
-
-let _talentTreeCharIndex = null;
 
 const DETAILS_PLACEHOLDER_HTML = '<div class="talent-tree-details-placeholder">Hover over a talent to see details.</div>';
 
@@ -28,31 +24,20 @@ function isHubActive() {
 }
 
 export function openTalentTree() {
-  _talentTreeCharIndex = null;
-  renderTalentTree();
-  const overlay = document.getElementById("talent-tree-overlay");
-  const mainMenu = document.getElementById("main-menu");
-  if (overlay) overlay.classList.remove("hidden");
-  if (mainMenu) mainMenu.classList.add("hidden");
-}
-
-export function openTalentTreeForCharacter(charIndex) {
-  _talentTreeCharIndex = charIndex;
   renderTalentTree();
   const overlay = document.getElementById("talent-tree-overlay");
   const mainMenu = document.getElementById("main-menu");
   if (overlay) overlay.classList.remove("hidden");
   if (mainMenu) mainMenu.classList.add("hidden");
   const titleEl = document.querySelector("#talent-tree-overlay .talent-tree-title");
-  if (titleEl) {
-    const saved = loadSavedCharacters();
-    const char = saved[charIndex];
-    titleEl.textContent = char ? `Talent Tree — ${char.name || "Champion"}` : "Talent Tree";
-  }
+  if (titleEl) titleEl.textContent = "Talent Tree";
+}
+
+export function openTalentTreeForCharacter(_charIndex) {
+  openTalentTree();
 }
 
 export function closeTalentTree() {
-  _talentTreeCharIndex = null;
   const overlay = document.getElementById("talent-tree-overlay");
   if (overlay) overlay.classList.add("hidden");
   const mainMenu = document.getElementById("main-menu");
@@ -71,30 +56,20 @@ export function renderTalentTree() {
   const content = document.getElementById("talent-tree-content");
   const crystalsEl = document.getElementById("talent-tree-crystals");
   if (!content) return;
-
-  const isCharacterTree = _talentTreeCharIndex != null && typeof _talentTreeCharIndex === "number";
-  const saved = isCharacterTree ? loadSavedCharacters() : [];
-  const char = isCharacterTree && saved[_talentTreeCharIndex] ? saved[_talentTreeCharIndex] : null;
-  const purchased = isCharacterTree && char ? getTalentsForCharacter(char) : getPurchasedTalents();
-  const charIndex = isCharacterTree ? _talentTreeCharIndex : null;
+  const purchased = getPurchasedTalents();
+  const crystals = getGlobalTalentCrystals();
 
   // Flat map of talent id -> { name, desc, cost } for details panel
   const talentMap = {};
   for (const nodes of Object.values(TALENT_TREE)) {
-    for (const n of nodes) talentMap[n.id] = { name: n.name, desc: n.desc ?? "", cost: n.cost };
+    for (const n of nodes) talentMap[n.id] = { id: n.id, name: n.name, desc: n.desc ?? "", cost: n.cost };
   }
 
-  // Show crystals only for a character's tree (from allocated attributes)
   if (crystalsEl) {
-    if (isCharacterTree && char) {
-      crystalsEl.classList.remove("hidden");
-      const crystals = getCrystalsForCharacter(char);
-      for (const { id } of CRYSTAL_TYPES) {
-        const span = document.getElementById(`talent-tree-crystal-${id}`);
-        if (span) span.textContent = crystals[id] ?? 0;
-      }
-    } else {
-      crystalsEl.classList.add("hidden");
+    crystalsEl.classList.remove("hidden");
+    for (const crystalId of ["orange", "green", "red", "yellow"]) {
+      const span = document.getElementById(`talent-tree-crystal-${crystalId}`);
+      if (span) span.textContent = String(Math.max(0, Number(crystals?.[crystalId]) || 0));
     }
   }
 
@@ -115,15 +90,17 @@ export function renderTalentTree() {
         const node = nodes[i];
         const isPurchased = purchased.includes(node.id);
         const prevPurchased = i === 0 || purchased.includes(nodes[i - 1].id);
-        const isAvailable = !isPurchased && prevPurchased;
+        const isAvailable = !isPurchased && prevPurchased && canPurchaseTalent(node.id);
         const state = isPurchased ? "purchased" : isAvailable ? "available" : "locked";
         const canRefund = isPurchased && canRefundTalent(node.id, purchased);
         const tooltip = node.desc || "";
-        const title = tooltip + (canRefund ? " Click to refund." : "");
-        branchesHtml += `<div class="talent-tree-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" title="${escapeHtml(title)}"${canRefund ? ' data-refundable="true"' : ""}>
+        const crystalId = getTalentCrystalId(node.id) || "";
+        const affordable = canPurchaseTalent(node.id);
+        const title = tooltip + (canRefund ? " Click to refund." : (!affordable && !isPurchased ? " Not enough crystals." : ""));
+        branchesHtml += `<div class="talent-tree-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" data-crystal-id="${escapeHtml(crystalId)}" title="${escapeHtml(title)}"${canRefund ? ' data-refundable="true"' : ""}>
           <div class="talent-tree-node-name">${escapeHtml(node.name)}</div>
           <div class="talent-tree-node-desc">${escapeHtml(node.desc)}</div>
-          <div class="talent-tree-node-cost">${isPurchased ? "\u2713 Purchased" : `${node.cost} LP`}</div>
+          <div class="talent-tree-node-cost">${isPurchased ? "\u2713 Purchased" : `${node.cost} ${crystalId || "crystal"}`}</div>
         </div>`;
       }
       branchesHtml += `</div></div><div class="talent-tree-details-panel">${DETAILS_PLACEHOLDER_HTML}</div></div></div>`;
@@ -134,7 +111,8 @@ export function renderTalentTree() {
 
   function setDetails(panelEl, talent) {
     if (!panelEl) return;
-    panelEl.innerHTML = `<div class="talent-tree-details-content"><div class="talent-tree-details-name">${escapeHtml(talent.name)}</div><div class="talent-tree-details-desc">${escapeHtml(talent.desc)}</div><div class="talent-tree-details-cost">Cost: ${escapeHtml(String(talent.cost))} crystals</div></div>`;
+    const crystalId = getTalentCrystalId(talent.id) || "crystal";
+    panelEl.innerHTML = `<div class="talent-tree-details-content"><div class="talent-tree-details-name">${escapeHtml(talent.name)}</div><div class="talent-tree-details-desc">${escapeHtml(talent.desc)}</div><div class="talent-tree-details-cost">Cost: ${escapeHtml(String(talent.cost))} ${escapeHtml(crystalId)}</div></div>`;
   }
   function setDetailsPlaceholder(panelEl) {
     if (!panelEl) return;
@@ -163,9 +141,7 @@ export function renderTalentTree() {
     el.addEventListener("click", () => {
       const id = el.dataset.talentId;
       const cost = Number(el.dataset.cost);
-      const ok = charIndex != null
-        ? purchaseTalentForCharacter(charIndex, id, cost)
-        : purchaseTalent(id, cost);
+      const ok = purchaseTalent(id, cost);
       if (ok) renderTalentTree();
     });
   });
@@ -173,7 +149,7 @@ export function renderTalentTree() {
   content.querySelectorAll(".talent-tree-node.purchased").forEach((el) => {
     const id = el.dataset.talentId;
     el.addEventListener("click", () => {
-      const ok = charIndex != null ? refundTalentForCharacter(charIndex, id) : refundTalent(id);
+      const ok = refundTalent(id);
       if (ok) renderTalentTree();
     });
   });
@@ -184,12 +160,11 @@ export function renderTalentTree() {
       const branch = btn.dataset.branch;
       if (!branch) return;
       const nodes = TALENT_TREE[branch];
-      const currentPurchased = charIndex != null ? getTalentsForCharacter(loadSavedCharacters()[charIndex] || {}) : getPurchasedTalents();
+      const currentPurchased = getPurchasedTalents();
       const count = nodes ? nodes.filter((n) => currentPurchased.includes(n.id)).length : 0;
       if (count === 0) return;
       if (!confirm(`Refund all ${count} talent(s) in ${branch}?`)) return;
-      if (charIndex != null) refundBranchForCharacter(charIndex, branch);
-      else refundBranch(branch);
+      refundBranch(branch);
       renderTalentTree();
     });
   });
@@ -208,11 +183,12 @@ function renderBranchGrid(branchName, cssClass, position, nodes, purchased) {
     const parentsAny = node.parentsAny || [];
     const hasAll = parentsAll.length === 0 || parentsAll.every((p) => purchased.includes(p));
     const hasAny = parentsAny.length === 0 || parentsAny.some((p) => purchased.includes(p));
-    const canUnlock = !isPurchased && hasAll && hasAny;
+    const canUnlock = !isPurchased && hasAll && hasAny && canPurchaseTalent(node.id);
     const state = isPurchased ? "purchased" : canUnlock ? "available" : "locked";
     const canRefund = isPurchased && canRefundTalent(node.id, purchased);
     const tooltip = node.desc || "";
-    const title = tooltip + (canRefund ? " Click to refund." : "");
+    const crystalId = getTalentCrystalId(node.id) || "";
+    const title = tooltip + (canRefund ? " Click to refund." : (!canPurchaseTalent(node.id) && !isPurchased ? " Not enough crystals." : ""));
     
     // Add sprite sheet data attributes for branches that use icon grid (agility, vitality)
     let spriteAttrs = "";
@@ -222,11 +198,11 @@ function renderBranchGrid(branchName, cssClass, position, nodes, purchased) {
     
     const iconUrl = normalizeTalentIconUrl(node.icon);
     const iconHtml = iconUrl ? `<img class="talent-tree-node-icon" src="${escapeHtml(iconUrl)}" alt="" loading="lazy" decoding="async" />` : "";
-    gridHtml += `<div class="talent-tree-node ${cssClass}-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" title="${escapeHtml(title)}"${canRefund ? ' data-refundable="true"' : ""}${spriteAttrs} style="grid-row:${pos.row};grid-column:${pos.col};">
+    gridHtml += `<div class="talent-tree-node ${cssClass}-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" data-crystal-id="${escapeHtml(crystalId)}" title="${escapeHtml(title)}"${canRefund ? ' data-refundable="true"' : ""}${spriteAttrs} style="grid-row:${pos.row};grid-column:${pos.col};">
       ${iconHtml}
       <div class="talent-tree-node-name">${escapeHtml(node.name)}</div>
       <div class="talent-tree-node-desc">${escapeHtml(node.desc)}</div>
-      <div class="talent-tree-node-cost">${isPurchased ? "\u2713 Purchased" : `${node.cost} LP`}</div>
+      <div class="talent-tree-node-cost">${isPurchased ? "\u2713 Purchased" : `${node.cost} ${crystalId || "crystal"}`}</div>
     </div>`;
   }
 
@@ -510,16 +486,16 @@ function renderIconTreeBranch({ branchName, cssBranchClass, nodes, purchased, po
     const parentsAny = node.parentsAny || [];
     const hasAll = parentsAll.length === 0 || parentsAll.every((p) => purchased.includes(p));
     const hasAny = parentsAny.length === 0 || parentsAny.some((p) => purchased.includes(p));
-    const canUnlock = !isPurchased && hasAll && hasAny;
+    const canUnlock = !isPurchased && hasAll && hasAny && canPurchaseTalent(node.id);
     const state = isPurchased ? "purchased" : canUnlock ? "available" : "locked";
     const canRefund = isPurchased && canRefundTalent(node.id, purchased);
-
-    const costLine = isPurchased ? "\u2713 Purchased" : `${node.cost} LP`;
-    const refundHint = canRefund ? "Click to refund." : "";
+    const crystalId = getTalentCrystalId(node.id) || "";
+    const costLine = isPurchased ? "\u2713 Purchased" : `${node.cost} ${crystalId || "crystal"}`;
+    const refundHint = canRefund ? "Click to refund." : (!canPurchaseTalent(node.id) && !isPurchased ? "Not enough crystals." : "");
     const iconUrl = normalizeTalentIconUrl(node.icon);
     const iconHtml = iconUrl ? `<img class="talent-tree-node-icon" src="${escapeHtml(iconUrl)}" alt="" loading="lazy" decoding="async" />` : "";
 
-    nodesHtml += `<div class="talent-tree-node ${cssBranchClass}-node ${cssBranchClass}-icon-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" data-sprite-row="${pos.spriteRow}" data-sprite-col="${pos.spriteCol}"${canRefund ? ' data-refundable="true"' : ""} style="grid-row:${pos.row + 1};grid-column:${pos.col + 1};">
+    nodesHtml += `<div class="talent-tree-node ${cssBranchClass}-node ${cssBranchClass}-icon-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" data-crystal-id="${escapeHtml(crystalId)}" data-sprite-row="${pos.spriteRow}" data-sprite-col="${pos.spriteCol}"${canRefund ? ' data-refundable="true"' : ""} style="grid-row:${pos.row + 1};grid-column:${pos.col + 1};">
       ${iconHtml}
       <div class="${cssBranchClass}-icon-tooltip talent-icon-tooltip" role="tooltip">
         <div class="talent-icon-tooltip-name">${escapeHtml(node.name)}</div>

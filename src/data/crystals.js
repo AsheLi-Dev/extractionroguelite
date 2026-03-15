@@ -1,7 +1,8 @@
 // -------- Crystal currency for talents --------
-// Characters earn crystals from allocated attributes: 1 crystal per 2 attributes.
-// Brutality → Orange, Agility → Green, Vitality → Red, Luck → Yellow.
-// Talents can require crystals (costCrystals) — design added later.
+// Global meta crystals are earned from successful extraction.
+// Brutality -> Orange, Agility -> Green, Vitality -> Red, Luck -> Yellow.
+
+import { TALENT_CRYSTALS_KEY } from './constants.js';
 
 export const CRYSTAL_TYPES = [
   { id: "orange", name: "Orange", attributeId: "brutality", color: "#ea580c" },
@@ -10,28 +11,76 @@ export const CRYSTAL_TYPES = [
   { id: "yellow", name: "Yellow", attributeId: "luck", color: "#ca8a04" }
 ];
 
-/** Attribute id → crystal id. */
 export const ATTRIBUTE_TO_CRYSTAL = Object.fromEntries(
-  CRYSTAL_TYPES.map((c) => [c.attributeId, c.id])
+  CRYSTAL_TYPES.map((entry) => [entry.attributeId, entry.id])
 );
 
-/** Default crystal counts (all zero). */
 export function getEmptyCrystals() {
   return { orange: 0, green: 0, red: 0, yellow: 0 };
 }
 
-/**
- * Crystals available for a character: one per 2 allocated attributes (of that color).
- * If char.crystals is set (e.g. dev override), those values are used instead.
- * @param {object} char - Saved character with attributes: { brutality, agility, vitality, luck }
- * @returns {{ orange: number, green: number, red: number, yellow: number }}
- */
+export function getGlobalTalentCrystals() {
+  try {
+    const raw = localStorage.getItem(TALENT_CRYSTALS_KEY);
+    if (!raw) return getEmptyCrystals();
+    const parsed = JSON.parse(raw);
+    const out = getEmptyCrystals();
+    for (const { id } of CRYSTAL_TYPES) {
+      const value = Number(parsed?.[id]);
+      if (!Number.isNaN(value) && value >= 0) out[id] = Math.floor(value);
+    }
+    return out;
+  } catch {
+    return getEmptyCrystals();
+  }
+}
+
+export function setGlobalTalentCrystals(crystals) {
+  const out = getEmptyCrystals();
+  for (const { id } of CRYSTAL_TYPES) {
+    const value = Number(crystals?.[id]);
+    if (!Number.isNaN(value) && value >= 0) out[id] = Math.floor(value);
+  }
+  localStorage.setItem(TALENT_CRYSTALS_KEY, JSON.stringify(out));
+  return out;
+}
+
+export function addGlobalTalentCrystal(crystalId, amount = 1) {
+  const next = getGlobalTalentCrystals();
+  if (!Object.prototype.hasOwnProperty.call(next, crystalId)) return next;
+  next[crystalId] = Math.max(0, (next[crystalId] || 0) + Math.max(0, Math.floor(Number(amount) || 0)));
+  return setGlobalTalentCrystals(next);
+}
+
+export function spendGlobalTalentCrystal(crystalId, amount = 1) {
+  const next = getGlobalTalentCrystals();
+  if (!Object.prototype.hasOwnProperty.call(next, crystalId)) return null;
+  const cost = Math.max(0, Math.floor(Number(amount) || 0));
+  if ((next[crystalId] || 0) < cost) return null;
+  next[crystalId] = Math.max(0, (next[crystalId] || 0) - cost);
+  return setGlobalTalentCrystals(next);
+}
+
+export function getHighestAttributeCrystalReward(attributes) {
+  if (!attributes || typeof attributes !== "object") return null;
+  const ranked = CRYSTAL_TYPES.map((entry) => ({
+    attributeId: entry.attributeId,
+    crystalId: entry.id,
+    value: Math.max(0, Number(attributes[entry.attributeId]) || 0)
+  }));
+  const maxValue = ranked.reduce((max, entry) => Math.max(max, entry.value), 0);
+  const tied = ranked.filter((entry) => entry.value === maxValue);
+  if (!tied.length) return null;
+  return tied[Math.floor(Math.random() * tied.length)] || null;
+}
+
+// Compatibility helpers kept for older UI paths until they are migrated fully.
 export function getCrystalsForCharacter(char) {
   const out = getEmptyCrystals();
   if (char?.crystals && typeof char.crystals === "object") {
     for (const { id } of CRYSTAL_TYPES) {
-      const v = Number(char.crystals[id]);
-      if (!Number.isNaN(v) && v >= 0) out[id] = Math.floor(v);
+      const value = Number(char.crystals[id]);
+      if (!Number.isNaN(value) && value >= 0) out[id] = Math.floor(value);
     }
     return out;
   }
@@ -43,10 +92,6 @@ export function getCrystalsForCharacter(char) {
   return out;
 }
 
-/**
- * Whether the character has at least the required crystals (for future talent costs).
- * cost is { orange?, green?, red?, yellow? } with non-negative numbers.
- */
 export function canAffordCrystalCost(char, cost) {
   if (!cost || typeof cost !== "object") return true;
   const have = getCrystalsForCharacter(char);

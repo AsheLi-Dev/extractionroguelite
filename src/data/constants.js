@@ -11,6 +11,7 @@ export const SHOW_DEV_CONTROLS = !DEMO_BUILD;
 export const SHOW_DEV_MENU = !DEMO_BUILD;
 
 export const TALENTS_KEY = "spaceShooter_talents";
+export const TALENT_CRYSTALS_KEY = "spaceShooter_talentCrystals";
 export const SKILL_UNLOCKS_KEY = "spaceShooter_skillUnlocks";
 export const SKILL_LEVELS_KEY = "spaceShooter_skillLevels";
 export const SKILL_MOD_SOCKETS_KEY = "spaceShooter_skillModSockets";

@@ -5,6 +5,7 @@
 import { refreshMainMenuLP } from '../ui/main-menu.js';
 import { loadSavedCharacters, addConquerorBonusItem, addToLegacyCubeStash, addToLegacyAncestorStash, ETERNAL_ITEMS_ON_DEFEAT_KEY, SAVE_KEY, updateSavedCharacter } from '../ui/save-system.js';
 import { getDefaultAttributes, WOUND_MAX_STACKS } from '../data/character-attributes.js';
+import { addGlobalTalentCrystal, getHighestAttributeCrystalReward } from '../data/crystals.js';
 import { renderHallOfChampions } from '../ui/hall-of-champions.js';
 import { hasTalent } from '../data/talents.js';
 import {
@@ -16,6 +17,13 @@ import {
 import { getGold } from './economy.js';
 import { handleArchivistOnExtraction, handleHeirloomOnDefeat } from './ring-effects.js';
 import { stopBgm } from '../audio.js';
+
+function formatCrystalRewardText(reward) {
+  if (!reward?.crystalId || !reward?.attributeId) return "Crystal Reward: None";
+  const crystalName = String(reward.crystalId).charAt(0).toUpperCase() + String(reward.crystalId).slice(1);
+  const attributeName = String(reward.attributeId).charAt(0).toUpperCase() + String(reward.attributeId).slice(1);
+  return `Crystal Reward: +1 ${crystalName} Crystal (${attributeName})`;
+}
 
 export function applyGameVictoryMixin(Game) {
   Object.assign(Game.prototype, {
@@ -167,9 +175,14 @@ export function applyGameVictoryMixin(Game) {
 
     populateVictorySummary() {
       const gold = getGold(this);
+      const reward = this._previewTalentCrystalReward
+        || getHighestAttributeCrystalReward(this.runCharacterAttributes || this.runConfig?.selectedCharacter?.attributes || null);
+      this._previewTalentCrystalReward = reward || null;
 
       const goldEl = document.getElementById("victory-gold");
       if (goldEl) goldEl.textContent = `Gold: ${gold}`;
+      const crystalRewardEl = document.getElementById("victory-crystal-reward");
+      if (crystalRewardEl) crystalRewardEl.textContent = formatCrystalRewardText(reward);
 
       const equippedEl = document.getElementById("victory-equipped");
       const statsEl = document.getElementById("victory-stats");
@@ -233,10 +246,22 @@ export function applyGameVictoryMixin(Game) {
       }
     },
 
+    grantTalentCrystalOnExtraction() {
+      if (this._extractionTalentCrystalGranted) return null;
+      const reward = this._previewTalentCrystalReward
+        || getHighestAttributeCrystalReward(this.runCharacterAttributes || this.runConfig?.selectedCharacter?.attributes || null);
+      if (!reward?.crystalId) return null;
+      addGlobalTalentCrystal(reward.crystalId, 1);
+      this._previewTalentCrystalReward = reward;
+      this._extractionTalentCrystalGranted = true;
+      return reward;
+    },
+
     saveCharacterAndReturnToMenu() {
       handleArchivistOnExtraction(this);
       this.applyCuratorCubeUpgradeOnExtraction();
       this.applyLootTranscendenceOnExtraction();
+      this.grantTalentCrystalOnExtraction();
       this.transferRunCubesToLegacyVaultOnExtraction();
       this.transferRunAncestorsToLegacyVaultOnExtraction();
       const nameInput = document.getElementById("victory-char-name");

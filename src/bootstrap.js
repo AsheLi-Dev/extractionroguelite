@@ -1,7 +1,6 @@
 // -------- Application Bootstrap --------
 // Entry point for the application
 
-import { renderHallOfChampions } from "./ui/hall-of-champions.js";
 import {
   refreshMainMenuLP, openInstructions, closeInstructions,
   openOptions, closeOptions, applyResolutionPreset, initOptionsSettings,
@@ -19,7 +18,7 @@ import {
 import {
   openSkillLibrary, closeSkillLibrary
 } from "./ui/skill-library.js";
-import { closeTalentTree } from "./ui/talent-tree-ui.js";
+import { closeTalentTree, openTalentTree } from "./ui/talent-tree-ui.js";
 import {
   openFriends, closeFriends
 } from "./ui/friends-ui.js";
@@ -150,7 +149,6 @@ function openLegacyMenuFromHubImmediate() {
   document.getElementById("main-menu")?.classList.remove("hidden");
   document.querySelector(".game-root")?.classList.add("hidden");
   refreshMainMenuLP();
-  renderHallOfChampions();
 }
 
 function openLegacyMenuFromHub() {
@@ -402,7 +400,6 @@ function bootstrap() {
     mainMenu.classList.remove("hidden");
     gameRoot.classList.add("hidden");
     setRunHudVisibility(false);
-    renderHallOfChampions();
 
     const newGameBtn = document.getElementById("main-menu-new-game");
     if (newGameBtn) {
@@ -487,6 +484,10 @@ function bootstrap() {
     const legacyVaultBtn = document.getElementById("main-menu-legacy-vault");
     if (legacyVaultBtn) {
       legacyVaultBtn.addEventListener("click", openLegacyVault);
+    }
+    const talentsBtn = document.getElementById("main-menu-talents");
+    if (talentsBtn) {
+      talentsBtn.addEventListener("click", openTalentTree);
     }
 
     const talentTreeCloseBtn = document.getElementById("talent-tree-close");

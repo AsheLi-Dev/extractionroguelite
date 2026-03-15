@@ -893,6 +893,7 @@ export function applyGameLevelUpMixin(Game) {
 
         this.level++;
         leveled = true;
+        this.runAttributePoints = Math.max(0, Number(this.runAttributePoints) || 0) + 1;
         onRingLevelUp(this);
         if (typeof playSfx === "function") playSfx("levelUp");
         this.levelUpVfxStartTime = this.time;

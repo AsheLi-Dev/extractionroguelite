@@ -17,6 +17,7 @@
         <button id="main-menu-options" class="main-menu-btn main-menu-btn-secondary">Options</button>
         <button id="main-menu-dev-mode" class="main-menu-btn main-menu-btn-secondary">Dev Mode</button>
         <button id="main-menu-legacy-vault" class="main-menu-btn main-menu-btn-secondary">Legacy Vault</button>
+        <button id="main-menu-talents" class="main-menu-btn main-menu-btn-secondary">Talent Tree</button>
         <button id="main-menu-skill-library" class="main-menu-btn main-menu-btn-secondary">Skill Library</button>
         <button id="main-menu-pillars" class="main-menu-btn main-menu-btn-secondary">Pillars</button>
         <button id="main-menu-friends" class="main-menu-btn main-menu-btn-secondary">Friends</button>
@@ -26,10 +27,6 @@
             <button id="main-menu-dev-999-crystals" class="main-menu-dev-btn" type="button">Give all characters 999 crystals</button>
           </div>
         </div>
-        <section class="hall-of-champions-section">
-          <h2>Hall of Champions</h2>
-          <div id="hall-of-champions" class="hall-of-champions"></div>
-        </section>
       </div>
     </div>
 
@@ -94,6 +91,7 @@
         <h1>Victory!</h1>
         <p class="victory-message">Your character has been saved!</p>
         <p class="victory-gold" id="victory-gold">Gold: 0</p>
+        <p class="victory-gold" id="victory-crystal-reward">Crystal Reward: None</p>
         <div class="victory-summary">
           <div class="victory-summary-section">
             <h3>Equipped Items</h3>
@@ -107,7 +105,7 @@
         <div class="victory-save-section">
           <label for="victory-char-name">Character Name</label>
           <input type="text" id="victory-char-name" placeholder="Enter your champion's name" maxlength="24" />
-          <button id="victory-save-btn" class="victory-save-btn">Save to Hall of Champions</button>
+          <button id="victory-save-btn" class="victory-save-btn">Save Champion</button>
         </div>
       </div>
     </div>
