@@ -900,7 +900,8 @@ export function applyGameMapMixin(Game) {
                 const roll = Math.random();
                 const type = rareTypes[Math.floor(Math.random() * rareTypes.length)];
                 const diff = this.difficulty ?? null;
-                const equipOpts = diff != null ? { difficulty: diff } : {};
+                const luck = Math.max(0, Number(this.runCharacterAttributes?.luck ?? this.runConfig?.selectedCharacter?.attributes?.luck) || 0);
+                const equipOpts = diff != null ? { difficulty: diff, luck } : { luck };
                 if (roll < 0.10) {
                   prop.pendingLootDefs = [generateEquipmentItem(type, 1, 0.8, "rare", equipOpts)];
                 } else if (roll < 0.60) {
@@ -1012,7 +1013,8 @@ export function applyGameMapMixin(Game) {
           );
         if (!overlap && !this.overlapsTileWall(px, py, w, h)) {
           const diff = this.difficulty ?? null;
-          const equipOpts = diff != null ? { difficulty: diff, forceMinBaseStats: true } : { forceMinBaseStats: true };
+          const luck = Math.max(0, Number(this.runCharacterAttributes?.luck ?? this.runConfig?.selectedCharacter?.attributes?.luck) || 0);
+          const equipOpts = diff != null ? { difficulty: diff, forceMinBaseStats: true, luck } : { forceMinBaseStats: true, luck };
           const weapon = generateEquipmentItem("Weapon", 0, 0, "common", equipOpts);
           const armourChoices = ["Helmet", "Body Armour", "Boots"];
           for (let i = armourChoices.length - 1; i > 0; i--) {
@@ -1486,6 +1488,7 @@ export function applyGameMapMixin(Game) {
       const lootQual = targetMap.lootQuality;
       this.lootSystem.setMapLootQuality(lootQual);
       this.lootSystem.setDifficulty(this.difficulty);
+      this.lootSystem.setPlayerLuck(Math.max(0, Number(this.runConfig?.selectedCharacter?.attributes?.luck) || 0));
 
       if (this.hasCharacterTalent("immortal")) this.immortalShield = 30;
 

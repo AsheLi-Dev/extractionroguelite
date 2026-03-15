@@ -97,6 +97,7 @@ import { refreshMainMenuLP } from '../ui/main-menu.js';
 import { consumeLegacyCubeStash, loadSavedCharacters, addConquerorBonusItem, addToLegacyCubeStash, SAVE_KEY, updateSavedCharacter } from '../ui/save-system.js';
 import { getDefaultAttributes, getWoundMultipliers } from '../data/character-attributes.js';
 import { getAttackEvolutionById } from '../data/attack-evolutions.js';
+import { getSnackById } from '../data/snack.js';
 import { computeSoulSiphonBeamStats } from './soul-siphon-stats.js';
 import {
   getSoulSiphonEvolutionState as getSoulSiphonEvolutionStateFromData,
@@ -192,6 +193,10 @@ export class Game {
     this.difficulty = runConfig.difficulty ?? 1;
     this.conditions = enforceConditionLimits(runConfig.conditions ?? []);
     this.skills = runConfig.skills || [null, null, null, null];
+    this.runSnackId = runConfig.snackId || null;
+    this.snackUsesRemaining = Math.max(0, Number(getSnackById(this.runSnackId)?.maxUses) || 0);
+    this.snackEspressoUntil = 0;
+    this.snackHerbalTeaUntil = 0;
     const knownAttackTypes = new Set((ATTACK_TYPES || []).map((entry) => String(entry?.id || "")));
     const defaultAttackType = ATTACK_TYPES?.[0]?.id || "projectile";
     const requestedPrimaryAttackType = String(runConfig.attackType || defaultAttackType);
@@ -233,6 +238,9 @@ export class Game {
     this.soulSiphonEvolutionSecond = null;
     this.elementalShotEvolutionFirst = null;
     this.elementalShotEvolutionSecond = null;
+    this.bladeBlastTier1EvolutionId = null;
+    this.bladeBlastTier2EvolutionId = null;
+    this.bladeBlastAttackPhase = 0;
     this.soulSiphonReaperWindup = 0;
     this.soulSiphonReaperLastFire = 0;
     this.skillChargeSlot = null;
@@ -494,6 +502,9 @@ export class Game {
     this.loggedEvolutionAvailability = {};
     this.tier1EvolutionId = null;
     this.tier2EvolutionId = null;
+    this.bladeBlastTier1EvolutionId = null;
+    this.bladeBlastTier2EvolutionId = null;
+    this.bladeBlastAttackPhase = 0;
     this.tier2EvolutionPending = false;
     this.tier2DelayRemaining = 0;
     this.clearedMaps = new Set();
@@ -649,6 +660,7 @@ export class Game {
     const lootQual = this.currentMap.lootQuality;
     this.lootSystem.setMapLootQuality(lootQual);
     this.lootSystem.setDifficulty(this.difficulty);
+    this.lootSystem.setPlayerLuck(Math.max(0, Number(this.runConfig?.selectedCharacter?.attributes?.luck) || 0));
 
     // Initialize mapInteractables before spawnObstacles (which checks for overlaps)
     this.mapInteractables = [];
@@ -1004,6 +1016,7 @@ export class Game {
       if (k === "3" && !e.repeat) this.tryCastSkill(2);
       if (k === "4" && !e.repeat) this.tryCastSkill(3);
       if (k === "e" && !e.repeat) this.tryPickupNearestLoot();
+      if (k === "f" && !e.repeat) this.consumeSnack();
     });
     this.addManagedListener(window, "keyup", (e) => {
       const k = e.key.toLowerCase();
@@ -1404,8 +1417,13 @@ export class Game {
       }
 
       const formatCategory = (cat) => (cat ? cat.charAt(0).toUpperCase() + (cat.slice(1) || "") : "—");
-      const first = this.attackType === "projectile" ? (this.elementalShotEvolutionFirst || null) : null;
-      const second = this.attackType === "projectile" ? (this.elementalShotEvolutionSecond || null) : null;
+      const formatEvolution = (evolutionId) => getAttackEvolutionById(evolutionId)?.name || "â€”";
+      const first = this.attackType === "projectile"
+        ? (this.elementalShotEvolutionFirst || null)
+        : (this.attackType === "bladeBlast" ? formatEvolution(this.bladeBlastTier1EvolutionId) : null);
+      const second = this.attackType === "projectile"
+        ? (this.elementalShotEvolutionSecond || null)
+        : (this.attackType === "bladeBlast" ? formatEvolution(this.bladeBlastTier2EvolutionId) : null);
       const li1 = document.createElement("li");
       li1.className = "build-log-evolution";
       li1.innerHTML = `<span class="build-log-name">First evolution</span><span class="build-log-effect">${formatCategory(first)}</span>`;
@@ -1414,6 +1432,10 @@ export class Game {
       li2.className = "build-log-evolution";
       li2.innerHTML = `<span class="build-log-name">Second evolution</span><span class="build-log-effect">${formatCategory(second)}</span>`;
       evolutionEl.appendChild(li2);
+      const liSnack = document.createElement("li");
+      liSnack.className = "build-log-evolution";
+      liSnack.innerHTML = `<span class="build-log-name">Snack</span><span class="build-log-effect">${this.runSnackId || "None"}</span>`;
+      evolutionEl.appendChild(liSnack);
     };
 
     const devForceUpgrade = document.getElementById("dev-force-upgrade");
@@ -3050,6 +3072,7 @@ export class Game {
     if (this.hasCharacterTalent("berserkerRage") && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth <= 0.4) effectiveSpeed *= 1.15;
     if (this.playerSlowUntil > this.time) effectiveSpeed *= (this.playerSlowMult ?? 0.7);
     if (this.playerHasteUntil > this.time) effectiveSpeed *= (this.playerHasteMult ?? 1);
+    if ((this.snackEspressoUntil || 0) > this.time) effectiveSpeed *= 1.2;
     // Frenzy buff: 40% movement speed
     if (this.frenzyBuffUntil > this.time) {
       effectiveSpeed *= 1.4;
@@ -4116,6 +4139,7 @@ export class Game {
     const lootQual = targetMap.lootQuality;
     this.lootSystem.setMapLootQuality(lootQual);
     this.lootSystem.setDifficulty(this.difficulty);
+    this.lootSystem.setPlayerLuck(Math.max(0, Number(this.runConfig?.selectedCharacter?.attributes?.luck) || 0));
 
     if (this.hasCharacterTalent("immortal")) this.immortalShield = 30;
 
@@ -4987,7 +5011,15 @@ export class Game {
     if ((this.frenzyBuffUntil || 0) > this.time) {
       atkSpdMult *= 1.3;
     }
-    atkSpdMult *= 1 + (primaryAttackType === "projectile" ? this.getAttackUpgradeValue("attack_speed") : this.getAttackUpgradeValue("attackSpeed"));
+    if (primaryAttackType === "projectile") {
+      atkSpdMult *= 1 + this.getAttackUpgradeValue("attack_speed");
+    } else if (primaryAttackType === "bladeBlast") {
+      atkSpdMult *= 1 + this.getAttackUpgradeValue("blade_blast_attack_speed");
+      const bladeBlastEvolution = this.getBladeBlastEvolutionOverrides?.();
+      if (bladeBlastEvolution?.attackSpeedMult != null) atkSpdMult *= bladeBlastEvolution.attackSpeedMult;
+    } else {
+      atkSpdMult *= 1 + this.getAttackUpgradeValue("attackSpeed");
+    }
     atkSpdMult *= 1 - this.getAttackPenaltyValue("speedPenalty");
     if (primaryAttackType === "projectile") {
       const evo = this.getProjectileShotEvolutionOverrides();
@@ -5217,6 +5249,57 @@ export class Game {
       const surgeDist = this.player.size * 0.5;
       this.dashStrikeState = { phase: "surge", startX: this.player.position.x, startY: this.player.position.y, dirX, dirY, dist: surgeDist, traveled: 0, damage: attackDamage };
       this.skillEffects.push({ type: "dashStrikeSurge", x: px, y: py, dirX, dirY, t: 0, duration: 0.25 });
+      return true;
+    }
+
+    if (resolvedAttackType === "bladeBlast") {
+      if (!suppressSfx) playSfx("playerAttack");
+      const evo = this.getBladeBlastEvolutionOverrides?.() || {};
+      const phase = Number(this.bladeBlastAttackPhase || 0) % 2;
+      this.bladeBlastAttackPhase = phase === 0 ? 1 : 0;
+
+      if (phase === 0) {
+        const rangeMult = Math.max(0.7, Number(evo.rangeMult || 1)) * (1 + this.getAttackUpgradeValue("orbit_control"));
+        const fanRange = Math.round(170 * rangeMult);
+        const facingAngle = Math.atan2(dirY, dirX);
+        spawnFanStrikeVfx({ x: px, y: py, facingAngle, range: fanRange, telegraph: true, halfAngleDeg: 55 });
+        createHitbox(PLAYER_FAN_CONE_DEF, {
+          x: px,
+          y: py,
+          dirX,
+          dirY,
+          createdAt: this.time,
+          faction: 'player',
+          ownerId: 'player',
+          damage: Math.round(attackDamage * 1.05),
+          radius: fanRange,
+          coneAngleRad: (55 * Math.PI) / 180
+        });
+        const breakHit = this.breakablesInCone(px, py, dirX, dirY, fanRange, 55);
+        for (const b of breakHit) {
+          this.dealDamageToBreakable(b, Math.round(attackDamage * 1.05), { sourceType: "player_basic_attack" });
+        }
+        return true;
+      }
+
+      const projectileCount = Math.max(
+        3,
+        5
+          + (this.hasAttackUpgrade("chain_fragments") ? this.getAttackUpgradeStackCount("chain_fragments") : 0)
+          + (Number(evo.bladeCount || 1) > 1 ? Number(evo.bladeCount || 1) - 1 : 0)
+      );
+      const spreadDeg = Math.max(18, 34 - this.getAttackUpgradeValue("combo_window"));
+      const spreadRad = (spreadDeg * Math.PI) / 180;
+      const pelletDamageMult = Math.max(0.22, 0.32 + this.getAttackUpgradeValue("blast_payload") * 0.35);
+      for (let i = 0; i < projectileCount; i++) {
+        const offset = projectileCount > 1
+          ? (i - (projectileCount - 1) / 2) * (spreadRad / Math.max(1, projectileCount - 1))
+          : 0;
+        this.firePlayerProjectile(targetX, targetY, pelletDamageMult, {
+          attackTypeOverride: "bladeBlast",
+          angleOffsetRad: offset
+        });
+      }
       return true;
     }
 
@@ -8645,6 +8728,9 @@ export class Game {
         this.logTalentTrigger("endurance", "Damage during dash DR: 30% reduced");
         record.finalAmount = Math.max(1, Math.round(record.finalAmount * 0.7));
       }
+      if ((this.snackHerbalTeaUntil || 0) > this.time) {
+        record.finalAmount = Math.max(1, Math.round(record.finalAmount * 0.85));
+      }
       if (this.hasCharacterTalent("stoneSkin") && record.finalAmount > (this.currentStats?.maxHealth || 1) * 0.2) {
         this.logTalentTrigger("stoneSkin", "Large hit: 30% reduction on excess over 20% max HP");
         const excess = record.finalAmount - (this.currentStats?.maxHealth || 1) * 0.2;
@@ -11440,6 +11526,7 @@ export class Game {
             faction: 'player',
             ownerId: 'player',
             damage: eff.damage,
+            stunDuration: eff.stunDuration,
             durationMs: 80
           });
           const breakHit = this.breakablesInRadius(eff.x, eff.y, eff.radius);
@@ -11451,6 +11538,13 @@ export class Game {
               damageClass: "object",
               tags: ["skill", "pulse_strike"]
             });
+          }
+          if (eff.slowDuration > 0 && eff.slowMult != null) {
+            const hit = this.enemiesInRadius(eff.x, eff.y, eff.radius);
+            for (const enemy of hit) {
+              enemy.slowUntil = this.time + eff.slowDuration;
+              enemy.slowMult = eff.slowMult;
+            }
           }
           this.skillEffects.push({ type: "pulseDetonation", x: eff.x, y: eff.y, radius: eff.radius, t: 0, duration: 0.25 });
         }
@@ -12139,6 +12233,10 @@ export class Game {
         const stacks = this.getAttackUpgradeStackCount("burn_hunter");
         if (stacks > 0) dmg *= 1 + this.getAttackUpgradeValue("burn_hunter");
       }
+    } else if (this.attackType === "bladeBlast") {
+      dmg *= 1 + this.getAttackUpgradeValue("blade_blast_damage");
+      const evo = this.getBladeBlastEvolutionOverrides?.();
+      if (evo?.damageMult != null) dmg *= evo.damageMult;
     } else {
       dmg += this.getAttackUpgradeValue("flatDamage");
       dmg *= 1 + this.getAttackUpgradeValue("damageBoost");
@@ -15284,15 +15382,3 @@ applyGameCollisionMixin(Game);
 applyGameMapMixin(Game);
 applyGameEventsMixin(Game);
 applyGameEnemyAttacksMixin(Game);
-
-
-
-
-
-
-
-
-
-
-
-

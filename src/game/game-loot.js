@@ -8,6 +8,7 @@ import { SearchableProp } from '../entities/searchable-prop.js';
 import { BLESSING_DEFS } from '../data/cubes-data.js';
 import { HUMAN_SQUAD_DROP, SQUAD_WIPE_BONUS } from '../data/human-squad-data.js';
 import { MODIFIER_CUBES, UPGRADE_CUBES, LEGENDARY_CUBES } from '../data/cubes-data.js';
+import { MINIBOSS_EXTRA_BASE, rollEquipmentDropOutcome } from '../data/equipment-drop-tables.js';
 import { getSkillUnlocks, setSkillUnlock } from '../data/constants.js';
 import { hasTalent } from '../data/talents.js';
 import { generateEquipmentItem, getModifierPoolForType, LOCAL_STAT_SCALE_MOD_IDS, rollLocalStatScaleValueForDifficulty, rollModifierValueForDifficulty } from '../data/loot-data.js';
@@ -115,7 +116,8 @@ export function applyGameLootMixin(Game) {
         else this.lootSystem.spawnCubeAt(ex, ey, cubeKey);
         }
         const diff = Math.min(5, Math.max(1, this.difficulty ?? 1));
-        const equipOpts = { qualityEye: false, socketSense: false, difficulty: diff };
+        const luck = Math.max(0, Number(this.runCharacterAttributes?.luck ?? this.runConfig?.selectedCharacter?.attributes?.luck) || 0);
+        const equipOpts = { qualityEye: false, socketSense: false, difficulty: diff, luck };
         const lootQual = this.currentMap?.lootQuality ?? 0.5;
         const types = ["Helmet", "Boots", "Body Armour", "Weapon", "Ring"];
         if (Math.random() < HUMAN_SQUAD_DROP.equipmentMagicChance) {
@@ -212,7 +214,8 @@ export function applyGameLootMixin(Game) {
           const types = ["Helmet", "Boots", "Body Armour", "Weapon", "Ring"];
           const type = types[Math.floor(Math.random() * types.length)];
           const diff = Math.min(5, Math.max(1, this.difficulty ?? 1));
-          const def = generateEquipmentItem(type, 1, 0.8, null, { difficulty: diff });
+          const luck = Math.max(0, Number(this.runCharacterAttributes?.luck ?? this.runConfig?.selectedCharacter?.attributes?.luck) || 0);
+          const def = generateEquipmentItem(type, 1, 0.8, null, { difficulty: diff, luck });
           const item = new LootItem(this.lootSystem.nextId++, ex - 10, ey - 10, def, ex, ey);
           this.lootSystem.items.push(item);
           this.grantXP(80);
@@ -241,7 +244,8 @@ export function applyGameLootMixin(Game) {
       const types = ["Helmet", "Boots", "Body Armour", "Weapon", "Ring"];
       const lootQual = this.currentMap?.lootQuality ?? 0.5;
       const difficulty = Math.min(5, Math.max(1, this.difficulty ?? 1));
-      const equipOpts = { qualityEye: false, socketSense: false, difficulty };
+      const luck = Math.max(0, Number(this.runCharacterAttributes?.luck ?? this.runConfig?.selectedCharacter?.attributes?.luck) || 0);
+      const equipOpts = { qualityEye: false, socketSense: false, difficulty, luck };
 
       // Mimics drop any loot they stole when defeated
       if (typeof this.isMimicLooter === "function" && this.isMimicLooter(enemy)) {
@@ -274,7 +278,8 @@ export function applyGameLootMixin(Game) {
       if (this.tutorialMode && !this.tutorialFirstEnemyKilled) {
         this.tutorialFirstEnemyKilled = true;
         const difficulty = Math.min(5, Math.max(1, this.difficulty ?? 1));
-        const equipOpts = { qualityEye: false, socketSense: false, difficulty };
+        const tutorialLuck = Math.max(0, Number(this.runCharacterAttributes?.luck ?? this.runConfig?.selectedCharacter?.attributes?.luck) || 0);
+        const equipOpts = { qualityEye: false, socketSense: false, difficulty, luck: tutorialLuck };
         const def = generateEquipmentItem("Weapon", lootQual, 0, "common", equipOpts);
         emitEquipment(def);
 
@@ -295,38 +300,42 @@ export function applyGameLootMixin(Game) {
       }
       const bandMult = enemy.dropChanceMult ?? 1;
       if (tier === "minion") {
-        if (Math.random() < 0.05 * dropMult * equipDropMult * bandMult) {
+        const outcome = rollEquipmentDropOutcome("minion", 0, dropMult, equipDropMult, bandMult);
+        if (outcome) {
           if (this.hasCharacterTalent("keenEye") && typeof this.logTalentTrigger === "function") this.logTalentTrigger("keenEye", "Equipment dropped: +15% chance applied");
           const type = types[Math.floor(Math.random() * types.length)];
-          const def = generateEquipmentItem(type, lootQual, 0, "common", equipOpts);
+          const def = generateEquipmentItem(type, lootQual, outcome.qualityBonus, null, equipOpts);
           emitEquipment(def);
         }
       } else if (tier === "elite") {
-        if (Math.random() < 0.2 * dropMult * equipDropMult * bandMult) {
+        const outcome = rollEquipmentDropOutcome("elite", 0, dropMult, equipDropMult, bandMult);
+        if (outcome) {
           if (this.hasCharacterTalent("keenEye") && typeof this.logTalentTrigger === "function") this.logTalentTrigger("keenEye", "Equipment dropped: +15% chance applied");
           const type = types[Math.floor(Math.random() * types.length)];
-          const def = generateEquipmentItem(type, Math.min(1, lootQual + 0.35), 0.3, "magic", equipOpts);
-          emitEquipment(def);
-        }
-        if (Math.random() < 0.05 * bandMult * dropMult * equipDropMult) {
-          if (this.hasCharacterTalent("keenEye") && typeof this.logTalentTrigger === "function") this.logTalentTrigger("keenEye", "Equipment dropped: +15% chance applied");
-          const type = types[Math.floor(Math.random() * types.length)];
-          const def = generateEquipmentItem(type, Math.min(1, lootQual + 0.5), 0.55, "rare", equipOpts);
+          const def = generateEquipmentItem(type, lootQual, outcome.qualityBonus, null, equipOpts);
           emitEquipment(def);
         }
       } else if (tier === "special") {
-        if (Math.random() < 0.35 * dropMult * equipDropMult * bandMult) {
+        const outcome = rollEquipmentDropOutcome("special", 0, dropMult, equipDropMult, bandMult);
+        if (outcome) {
           const type = types[Math.floor(Math.random() * types.length)];
-          const def = generateEquipmentItem(type, Math.min(1, lootQual + 0.5), 0.55, "rare", equipOpts);
+          const def = generateEquipmentItem(type, lootQual, outcome.qualityBonus, null, equipOpts);
           emitEquipment(def);
         }
       } else if (tier === "miniBoss") {
-        const type = types[Math.floor(Math.random() * types.length)];
-        const def = generateEquipmentItem(type, 1, 0.8, "rare", equipOpts);
-        emitEquipment(def);
-        if (Math.random() < 0.1 * bandMult * dropMult * equipDropMult) {
+        const outcome = rollEquipmentDropOutcome("miniBoss", 0, dropMult, equipDropMult, bandMult);
+        if (outcome) {
+          const type = types[Math.floor(Math.random() * types.length)];
+          const def = generateEquipmentItem(type, lootQual, outcome.qualityBonus, null, equipOpts);
+          emitEquipment(def);
+        }
+        const extraChance = Math.max(
+          0,
+          Math.min(1, (MINIBOSS_EXTRA_BASE.chance || 0) * dropMult * equipDropMult * bandMult)
+        );
+        if (Math.random() < extraChance) {
           const type2 = types[Math.floor(Math.random() * types.length)];
-          const def2 = generateEquipmentItem(type2, 1, 0.8, "rare", equipOpts);
+          const def2 = generateEquipmentItem(type2, lootQual, MINIBOSS_EXTRA_BASE.qualityBonus, null, equipOpts);
           emitEquipment(def2);
         }
         if (this.hasCharacterTalent("philosophersStone") && Math.random() < 0.05) {

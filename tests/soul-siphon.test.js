@@ -50,13 +50,13 @@ describe("Soul Siphon – derived stats / geometry", () => {
   });
 
   it("Long Reach: one stack increases beam length by 15%", async () => {
-    const { computeSoulSiphonBeamStats, BASE_LENGTH } = await getStats();
+    const { computeSoulSiphonBeamStats, BASE_LENGTH, BASE_WIDTH } = await getStats();
     const ctx = createHarnessContext({
       runAttackUpgrades: [{ id: "long_reach", level: 1 }]
     });
     const out = computeSoulSiphonBeamStats(ctx, 0.8);
     assert.strictEqual(out.length, BASE_LENGTH * 1.15);
-    assert.strictEqual(out.width, 80);
+    assert.strictEqual(out.width, BASE_WIDTH);
   });
 
   it("Long Reach: stacked values scale correctly", async () => {

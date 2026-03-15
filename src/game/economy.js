@@ -31,7 +31,13 @@ export function roundToNearest5(n) {
 
 export function addGold(game, amount, reason, context = {}) {
   if (amount <= 0) return;
-  game.gold = (game.gold ?? 0) + amount;
+  const luckAttr = Math.max(
+    0,
+    Number(game?.runCharacterAttributes?.luck ?? game?.runConfig?.selectedCharacter?.attributes?.luck) || 0
+  );
+  const adjustedAmount = Math.max(0, Math.round(Number(amount) * (1 + luckAttr * 0.01)) || 0);
+  if (adjustedAmount <= 0) return;
+  game.gold = (game.gold ?? 0) + adjustedAmount;
 }
 
 export function getGold(game) {
@@ -165,4 +171,3 @@ export function socketDrillService(game, itemId) {
   item.sockets = sockets + 1;
   return true;
 }
-

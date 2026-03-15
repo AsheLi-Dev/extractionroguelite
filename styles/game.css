@@ -159,6 +159,16 @@
   display: none;
 }
 
+.snack-display {
+  font-size: 12px;
+  color: #fbbf24;
+  margin-top: 4px;
+}
+
+.snack-display.hidden {
+  display: none;
+}
+
 .escort-quest-indicator {
   display: flex;
   align-items: center;

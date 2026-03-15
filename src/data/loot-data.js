@@ -299,21 +299,23 @@ export function getEquipmentSpriteCell(type, name, weight = null) {
 // Mutable global luck value
 export let GLOBAL_LUCK = 0;
 export function setGlobalLuck(val) { GLOBAL_LUCK = val; }
+export const LUCK_BIAS_PER_POINT = 0.02;
 
 export function rollModifierValue() {
   return 0.1 + Math.random() * 0.4;
 }
 
-export function getRarityRoll(lootQuality, qualityBonus) {
+export function getRarityRoll(lootQuality, qualityBonus, luck = 0) {
   const roll = Math.random();
-  const bias = Math.min(1, lootQuality + GLOBAL_LUCK + qualityBonus);
+  const perCallLuckBias = Math.max(0, Number(luck) || 0) * LUCK_BIAS_PER_POINT;
+  const bias = Math.min(1, lootQuality + GLOBAL_LUCK + qualityBonus + perCallLuckBias);
   if (roll < 0.02 + bias * 0.08) return "rare";
   if (roll < 0.15 + bias * 0.25) return "magic";
   return "common";
 }
 
 export function generateEquipmentItem(type, lootQuality, qualityBonus = 0, forceRarity = null, options = {}) {
-  const rarity = forceRarity || getRarityRoll(lootQuality, qualityBonus);
+  const rarity = forceRarity || getRarityRoll(lootQuality, qualityBonus, options.luck);
   if (type === "Ring") {
     const rollRange = (min, max) => min + Math.random() * (max - min);
     const pickRarity = String(rarity || "common");

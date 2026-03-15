@@ -6,6 +6,34 @@
 
 export const SOUL_SIPHON_CATEGORIES = ["power", "tempo", "control", "spiritcraft"];
 
+export const SOUL_SIPHON_FIRST_EVOLUTION_NAMES = {
+  power: "Reaper Form",
+  tempo: "Wind Form",
+  control: "Earth Form",
+  spiritcraft: "Ancestral Form"
+};
+
+export const SOUL_SIPHON_FIRST_EVOLUTION_DESCRIPTIONS = {
+  power: "Heavy delayed beam shots with stronger damage and a fireball-focused spirit.",
+  tempo: "A thinner, faster beam with speed-focused spirit support.",
+  control: "Cursor-area control pulses backed by a ground-slam spirit.",
+  spiritcraft: "A spirit-forward form with faster charging and access to all spirit abilities."
+};
+
+export const SOUL_SIPHON_SECOND_EVOLUTION_NAMES = {
+  power: "Power Path",
+  tempo: "Tempo Path",
+  control: "Control Path",
+  spiritcraft: "Spiritcraft Path"
+};
+
+export const SOUL_SIPHON_SECOND_EVOLUTION_DESCRIPTIONS = {
+  power: "Push Soul Siphon further into raw beam damage and finishing power.",
+  tempo: "Lean into attack cadence, chaining, and faster spirit triggers.",
+  control: "Strengthen crowd control, debuffs, and field effects.",
+  spiritcraft: "Double down on spirit commands, support, and companion synergy."
+};
+
 /** Spirit pool id → list of ability ids for runtime (fireball, ground_slam, speed_buff). */
 const SPIRIT_POOL_TO_ABILITIES = {
   fireball_only: ["fireball"],
@@ -25,6 +53,26 @@ export function getSpiritAbilityListFromPool(spiritPool) {
     return ["fireball", "ground_slam", "speed_buff"];
   }
   return [...SPIRIT_POOL_TO_ABILITIES[spiritPool]];
+}
+
+export function getSoulSiphonFirstEvolutionOptions() {
+  return SOUL_SIPHON_CATEGORIES.map((category) => ({
+    stage: "first",
+    category,
+    name: SOUL_SIPHON_FIRST_EVOLUTION_NAMES[category] || category,
+    description: SOUL_SIPHON_FIRST_EVOLUTION_DESCRIPTIONS[category] || ""
+  }));
+}
+
+export function getSoulSiphonSecondEvolutionOptions(firstCategory) {
+  return SOUL_SIPHON_CATEGORIES
+    .filter((category) => category && category !== firstCategory)
+    .map((category) => ({
+      stage: "second",
+      category,
+      name: SOUL_SIPHON_SECOND_EVOLUTION_NAMES[category] || category,
+      description: SOUL_SIPHON_SECOND_EVOLUTION_DESCRIPTIONS[category] || ""
+    }));
 }
 
 /**

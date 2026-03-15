@@ -10,6 +10,31 @@ import { getRingTempBuffs } from './ring-effects.js';
 
 export function applyGameUIMixin(Game) {
   Object.assign(Game.prototype, {
+    consumeSnack() {
+      if (!this.runSnackId) return false;
+      const uses = Math.max(0, Number(this.snackUsesRemaining) || 0);
+      if (uses <= 0) return false;
+      const px = (this.player?.position?.x || 0) + (this.player?.size || 0) / 2;
+      const py = (this.player?.position?.y || 0) + (this.player?.size || 0) / 2;
+      this.snackUsesRemaining = uses - 1;
+      if (this.runSnackId === "bread" && typeof this.healPlayer === "function") {
+        const maxHp = Math.max(1, Number(this.currentStats?.maxHealth) || 1);
+        this.healPlayer(Math.max(1, Math.round(maxHp * 0.1)));
+      } else if (this.runSnackId === "espresso") {
+        this.snackEspressoUntil = (this.time || 0) + 10;
+        if (typeof this.addFloatingText === "function") {
+          this.addFloatingText(px, py, "Espresso!", "skill");
+        }
+      } else if (this.runSnackId === "herbal_tea") {
+        this.snackHerbalTeaUntil = (this.time || 0) + 10;
+        if (typeof this.addFloatingText === "function") {
+          this.addFloatingText(px, py, "Herbal Tea!", "skill");
+        }
+      }
+      this.updateMapUI();
+      return true;
+    },
+
     showNotification(title, message) {
       const overlay = document.getElementById("notification-overlay");
       const titleEl = document.getElementById("notification-title");
@@ -50,6 +75,24 @@ export function applyGameUIMixin(Game) {
             : `Souls: ${souls}`;
         } else {
           soulsEl.classList.add("hidden");
+        }
+      }
+      const snackEl = document.getElementById("snack-display");
+      if (snackEl) {
+        if (this.runSnackId) {
+          const label = String(this.runSnackId)
+            .split("_")
+            .map((part) => part ? part.charAt(0).toUpperCase() + part.slice(1) : "")
+            .join(" ");
+          const uses = Math.max(0, Number(this.snackUsesRemaining) || 0);
+          const isEspressoActive = this.runSnackId === "espresso" && (this.snackEspressoUntil || 0) > this.time;
+          const isHerbalTeaActive = this.runSnackId === "herbal_tea" && (this.snackHerbalTeaUntil || 0) > this.time;
+          const activeSuffix = isEspressoActive || isHerbalTeaActive ? " [Active]" : "";
+          snackEl.textContent = `Snack: ${label} (${uses})${activeSuffix}`;
+          snackEl.classList.remove("hidden");
+        } else {
+          snackEl.textContent = "Snack: None";
+          snackEl.classList.add("hidden");
         }
       }
       this.updateEscortQuestUI();

@@ -27,6 +27,14 @@ export function applyGameDevMixin(Game) {
         return;
       }
 
+      if (this.devToggleEl) {
+        this.devToggleEl.style.display = "";
+        this.devToggleEl.classList.remove("hidden");
+      }
+      if (this.devPanelEl && !this.devPanelEl.classList.contains("dev-panel-hidden")) {
+        this.devPanelEl.classList.add("dev-panel-hidden");
+      }
+
       if (this.devToggleEl && this.devPanelEl) {
         this.addManagedListener(this.devToggleEl, "click", () => this.toggleDevPanel());
       }
@@ -366,7 +374,8 @@ export function applyGameDevMixin(Game) {
           if (!ringId) return;
           const ringDef = getRingDefById(ringId);
           if (!ringDef) return;
-          const def = generateEquipmentItem("Ring", this.currentMap?.lootQuality ?? 0.6, 0.8, null, {});
+          const luck = Math.max(0, Number(this.runCharacterAttributes?.luck ?? this.runConfig?.selectedCharacter?.attributes?.luck) || 0);
+          const def = generateEquipmentItem("Ring", this.currentMap?.lootQuality ?? 0.6, 0.8, null, { luck });
           def.ringId = ringDef.ringId;
           def.name = ringDef.name;
           def.rarity = ringDef.rarity === "Normal" ? "common" : ringDef.rarity.toLowerCase();
@@ -505,7 +514,8 @@ export function applyGameDevMixin(Game) {
       const forceRarity = Math.random() < 0.5 ? "magic" : "rare";
       const lootQuality = this.currentMap?.lootQuality ?? 0.5;
       const diff = Math.min(5, Math.max(1, this.difficulty ?? 1));
-      const def = generateEquipmentItem(type, lootQuality, 0.5, forceRarity, { difficulty: diff });
+      const luck = Math.max(0, Number(this.runCharacterAttributes?.luck ?? this.runConfig?.selectedCharacter?.attributes?.luck) || 0);
+      const def = generateEquipmentItem(type, lootQuality, 0.5, forceRarity, { difficulty: diff, luck });
       this.inventory.push({
         id: 70000 + Math.floor(Math.random() * 10000),
         name: def.name,

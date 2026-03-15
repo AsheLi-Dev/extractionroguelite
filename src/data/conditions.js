@@ -36,6 +36,7 @@ export const ATTACK_TYPES = [
   { id: "pulseShot", name: "Pulse Shot", illustration: "assets/UI/Pulse Shot.png", desc: "Call down an area strike at the cursor location. Damages all enemies in a small circle after a brief delay.", tags: ["ranged", "area"] },
   { id: "thrustStrike", name: "Thrust Strike", illustration: "assets/UI/Thrust Strike.png", desc: "Fast precise thrust in cursor direction. Hits only the first enemy in line for 60% increased damage.", tags: ["melee"] },
   { id: "dashStrike", name: "Dash Strike", illustration: "assets/UI/Dash Strike.png", desc: "Surge forward through enemies, then perform a quick 90 fan strike at your destination.", tags: ["melee", "utility"] },
+  { id: "bladeBlast", name: "Blade & Blast", illustration: "assets/UI/Blade Storm.png", desc: "A hybrid blade style that chains cutting strikes into explosive follow-through. Evolves through damage, rhythm, control, and on-hit build paths.", tags: ["melee", "hybrid"] },
   { id: "soulSiphon", name: "Soul Siphon", illustration: "assets/UI/Projectile Shot.png", desc: "Channel a beam toward the cursor. Kills grant souls; at 10 souls, summon a Spirit that can be charged by the beam and assists you.", tags: ["ranged", "beam"] }
 ];
 

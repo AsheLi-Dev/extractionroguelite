@@ -115,9 +115,12 @@ export class Obstacle {
         ctx.imageSmoothingEnabled = false;
         if (this._spriteFlipH) {
           ctx.save();
-          ctx.translate(floorDrawX + drawW, floorDrawY);
+          const centerX = floorDrawX + drawW / 2;
+          const centerY = floorDrawY + drawH / 2;
+          ctx.translate(centerX, centerY);
           ctx.scale(-1, 1);
-          ctx.drawImage(this._spriteImage, -drawW, 0, drawW, drawH);
+          ctx.translate(-centerX, -centerY);
+          ctx.drawImage(this._spriteImage, floorDrawX, floorDrawY, drawW, drawH);
           ctx.restore();
         } else {
           ctx.drawImage(this._spriteImage, floorDrawX, floorDrawY, drawW, drawH);

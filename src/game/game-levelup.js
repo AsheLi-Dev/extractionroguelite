@@ -6,6 +6,8 @@ import { markSkillEncountered, addSkillXp } from '../data/constants.js';
 import {
   createEmptyCategoryCounts,
   getAttackUpgradeDefById,
+  getBladeBlastDominantCategories,
+  getBladeBlastUpgradeCategoryCounts,
   getBuildUpgradePoolForAttackType,
   getBuildUpgradeQuotaTotalForAttack,
   getElementalShotUpgradeCategoryCounts,
@@ -14,11 +16,17 @@ import {
 } from '../data/level-up-data.js';
 import { getElementalShotEvolutionState, getElementalShotProfile } from '../data/elemental-shot-evolution.js';
 import {
+  BLADE_BLAST_BASE_WEAPON_ID,
   getAttackEvolutionById,
+  getBladeBlastTier1EvolutionOptions,
+  getBladeBlastTier2EvolutionOptions,
   getTier1EvolutionOptions,
   getTier2EvolutionOptions
 } from '../data/attack-evolutions.js';
-import { resolveSoulSiphonDominantCategories } from '../data/soul-siphon-evolution.js';
+import {
+  getSoulSiphonFirstEvolutionOptions,
+  getSoulSiphonSecondEvolutionOptions
+} from '../data/soul-siphon-evolution.js';
 import { onRingLevelUp } from './ring-effects.js';
 
 const PROJECTILE_BASE_WEAPON_ID = "ProjectileShot";
@@ -160,6 +168,10 @@ export function applyGameLevelUpMixin(Game) {
       return this.getSelectedAttackEvolution(PROJECTILE_BASE_WEAPON_ID);
     },
 
+    getBladeBlastEvolution() {
+      return this.getSelectedAttackEvolution(BLADE_BLAST_BASE_WEAPON_ID);
+    },
+
     getProjectileShotEvolutionOverrides() {
       if (this.attackType === "projectile") {
         const profile = typeof getElementalShotProfile === "function" ? getElementalShotProfile(getElementalShotEvolutionState(this)) : null;
@@ -190,6 +202,11 @@ export function applyGameLevelUpMixin(Game) {
         };
       }
       return this.getProjectileShotEvolution()?.overrides || null;
+    },
+
+    getBladeBlastEvolutionOverrides() {
+      if (this.attackType !== "bladeBlast") return null;
+      return this.getBladeBlastEvolution()?.overrides || null;
     },
 
     hasAttackUpgrade(id) {
@@ -388,17 +405,27 @@ export function applyGameLevelUpMixin(Game) {
       if (evoDef.tier === 1) {
         state.tier1Id = evoDef.id;
         state.tier2Id = null;
-        this.tier1EvolutionId = evoDef.id;
-        this.tier2EvolutionId = null;
-        this.tier2EvolutionPending = false;
-        this.tier2DelayRemaining = 0;
+        if (baseWeaponId === BLADE_BLAST_BASE_WEAPON_ID) {
+          this.bladeBlastTier1EvolutionId = evoDef.id;
+          this.bladeBlastTier2EvolutionId = null;
+        } else {
+          this.tier1EvolutionId = evoDef.id;
+          this.tier2EvolutionId = null;
+          this.tier2EvolutionPending = false;
+          this.tier2DelayRemaining = 0;
+        }
       } else {
         state.tier1Id = state.tier1Id || evoDef.parentEvolutionId || null;
         state.tier2Id = evoDef.id;
-        this.tier1EvolutionId = state.tier1Id;
-        this.tier2EvolutionId = evoDef.id;
-        this.tier2EvolutionPending = false;
-        this.tier2DelayRemaining = 0;
+        if (baseWeaponId === BLADE_BLAST_BASE_WEAPON_ID) {
+          this.bladeBlastTier1EvolutionId = state.tier1Id;
+          this.bladeBlastTier2EvolutionId = evoDef.id;
+        } else {
+          this.tier1EvolutionId = state.tier1Id;
+          this.tier2EvolutionId = evoDef.id;
+          this.tier2EvolutionPending = false;
+          this.tier2DelayRemaining = 0;
+        }
       }
       this.weaponEvolutionState[baseWeaponId] = state;
       this.weaponEvolutions[baseWeaponId] = state.tier2Id || state.tier1Id || null;
@@ -503,17 +530,40 @@ export function applyGameLevelUpMixin(Game) {
       );
     },
 
+    getBladeBlastTier1EvolutionChoiceDefs() {
+      const counts = getBladeBlastUpgradeCategoryCounts(this);
+      const dominant = getDominantCategories(counts);
+      const categories = dominant.length > 0 ? dominant : CATEGORY_ORDER;
+      return getBladeBlastTier1EvolutionOptions(categories, BLADE_BLAST_BASE_WEAPON_ID);
+    },
+
+    getBladeBlastTier2EvolutionChoiceDefs() {
+      if (!this.bladeBlastTier1EvolutionId) return [];
+      const counts = getBladeBlastUpgradeCategoryCounts(this);
+      const [first, second] = getBladeBlastDominantCategories(counts);
+      const firstEvoDef = getAttackEvolutionById(this.bladeBlastTier1EvolutionId);
+      const categories = [first, second, firstEvoDef?.sourceCategory]
+        .filter((category, index, arr) => category && arr.indexOf(category) === index);
+      return getBladeBlastTier2EvolutionOptions(
+        this.bladeBlastTier1EvolutionId,
+        categories.length > 0 ? categories : CATEGORY_ORDER,
+        BLADE_BLAST_BASE_WEAPON_ID
+      );
+    },
+
     openEvolutionPrompt(context, evolutionDefs, options = {}) {
       if (!Array.isArray(evolutionDefs) || evolutionDefs.length === 0) return false;
       this.levelUpChoices = evolutionDefs.map((evoDef) => ({
         type: "evolution",
         evolutionId: evoDef.id,
+        baseWeaponId: evoDef.baseWeaponId || options.baseWeaponId || context.baseWeaponId || PROJECTILE_BASE_WEAPON_ID,
         name: evoDef.name,
         description: evoDef.summary,
         tier: evoDef.tier
       }));
       this.levelUpChoiceContext = {
         ...context,
+        baseWeaponId: options.baseWeaponId || context.baseWeaponId || evolutionDefs[0]?.baseWeaponId || PROJECTILE_BASE_WEAPON_ID,
         delayAllowed: !!options.delayAllowed
       };
 
@@ -622,6 +672,61 @@ export function applyGameLevelUpMixin(Game) {
       return true;
     },
 
+    openSoulSiphonEvolutionPrompt(context, choices) {
+      if (!Array.isArray(choices) || choices.length === 0) return false;
+      this.levelUpChoices = choices.map((choice) => ({
+        type: "soulSiphonEvolution",
+        stage: choice.stage,
+        category: choice.category,
+        name: choice.name,
+        description: choice.description || ""
+      }));
+      this.levelUpChoiceContext = { ...context, delayAllowed: false };
+
+      const overlay = document.getElementById("level-up-overlay");
+      const titleEl = overlay?.querySelector(".level-up-title");
+      const subtitleEl = overlay?.querySelector(".level-up-subtitle");
+      const choicesEl = document.getElementById("level-up-choices");
+      const rerollBtn = document.getElementById("level-up-reroll");
+      if (!overlay || !titleEl || !subtitleEl || !choicesEl) return false;
+
+      titleEl.textContent = context.title || "Evolution";
+      subtitleEl.textContent = context.subtitle || "";
+      choicesEl.innerHTML = "";
+      for (const choice of this.levelUpChoices) {
+        const btn = document.createElement("button");
+        btn.className = "level-up-card level-up-card-unique";
+        btn.innerHTML = `
+          <div class="level-up-card-inner">
+            <div class="level-up-card-upgrade">
+              <strong>${choice.name}</strong><br>
+              <span class="level-up-card-desc">${choice.description || ""}</span>
+            </div>
+          </div>
+        `;
+        btn.addEventListener("click", () => this.applyLevelUpChoice(choice, btn));
+        choicesEl.appendChild(btn);
+      }
+
+      if (rerollBtn) {
+        rerollBtn.classList.add("hidden");
+        rerollBtn.onclick = null;
+      }
+
+      overlay.classList.remove("hidden");
+      this.paused = true;
+      if (this.pauseToggleEl) {
+        this.pauseToggleEl.textContent = "Resume";
+        this.pauseToggleEl.classList.add("paused");
+      }
+      const buildLogPanel = document.getElementById("build-log-panel");
+      if (buildLogPanel) {
+        buildLogPanel.classList.remove("hidden");
+        if (this.buildLogRefresh) this.buildLogRefresh();
+      }
+      return true;
+    },
+
     getElementalShotDominantCategoriesForEvolution() {
       const counts = getElementalShotUpgradeCategoryCounts(this);
       const [first, second] = getElementalShotDominantCategories(counts);
@@ -668,6 +773,54 @@ export function applyGameLevelUpMixin(Game) {
       }, choices);
     },
 
+    maybeOpenBladeBlastFirstEvolutionPrompt() {
+      if (this.attackType !== "bladeBlast") return false;
+      if (this.bladeBlastTier1EvolutionId) return false;
+      if (this.level !== 9) return false;
+      const choices = this.getBladeBlastTier1EvolutionChoiceDefs();
+      return this.openEvolutionPrompt({
+        type: "bladeBlastTier1",
+        baseWeaponId: BLADE_BLAST_BASE_WEAPON_ID,
+        title: "Blade & Blast - First Evolution",
+        subtitle: "Your hybrid style is ready to specialize."
+      }, choices, { baseWeaponId: BLADE_BLAST_BASE_WEAPON_ID, delayAllowed: false });
+    },
+
+    maybeOpenBladeBlastSecondEvolutionPrompt() {
+      if (this.attackType !== "bladeBlast") return false;
+      if (!this.bladeBlastTier1EvolutionId || this.bladeBlastTier2EvolutionId) return false;
+      if (this.level !== 16) return false;
+      const choices = this.getBladeBlastTier2EvolutionChoiceDefs();
+      return this.openEvolutionPrompt({
+        type: "bladeBlastTier2",
+        baseWeaponId: BLADE_BLAST_BASE_WEAPON_ID,
+        title: "Blade & Blast - Final Evolution",
+        subtitle: "Choose the form your hybrid attack will take."
+      }, choices, { baseWeaponId: BLADE_BLAST_BASE_WEAPON_ID, delayAllowed: false });
+    },
+
+    maybeOpenSoulSiphonFirstEvolutionPrompt() {
+      if (this.attackType !== "soulSiphon") return false;
+      if (this.soulSiphonEvolutionFirst) return false;
+      if (this.level !== 9) return false;
+      return this.openSoulSiphonEvolutionPrompt({
+        type: "soulSiphonFirst",
+        title: "Soul Siphon - First Evolution",
+        subtitle: "Choose the first direction for your beam and spirit."
+      }, getSoulSiphonFirstEvolutionOptions());
+    },
+
+    maybeOpenSoulSiphonSecondEvolutionPrompt() {
+      if (this.attackType !== "soulSiphon") return false;
+      if (!this.soulSiphonEvolutionFirst || this.soulSiphonEvolutionSecond) return false;
+      if (this.level !== 16) return false;
+      return this.openSoulSiphonEvolutionPrompt({
+        type: "soulSiphonSecond",
+        title: "Soul Siphon - Final Evolution",
+        subtitle: "Choose how Soul Siphon finishes evolving."
+      }, getSoulSiphonSecondEvolutionOptions(this.soulSiphonEvolutionFirst));
+    },
+
     delayTier2Evolution() {
       this.tier2EvolutionPending = true;
       this.tier2DelayRemaining = 3;
@@ -681,6 +834,7 @@ export function applyGameLevelUpMixin(Game) {
     maybeOpenTier1EvolutionPrompt() {
       if (this.attackType === "soulSiphon") return false;
       if (this.attackType === "projectile") return false;
+      if (this.attackType === "bladeBlast") return false;
       if (this.tier1EvolutionId || this.level !== 7) return false;
       const choices = this.getTier1EvolutionChoiceDefs();
       return this.openEvolutionPrompt({
@@ -692,6 +846,7 @@ export function applyGameLevelUpMixin(Game) {
 
     maybeOpenTier2EvolutionPrompt(options = {}) {
       if (this.attackType === "projectile") return false;
+      if (this.attackType === "bladeBlast") return false;
       if (!this.tier1EvolutionId || this.tier2EvolutionId) return false;
       const choices = this.getTier2EvolutionChoiceDefs();
       if (choices.length === 0) return false;
@@ -724,17 +879,12 @@ export function applyGameLevelUpMixin(Game) {
         onRingLevelUp(this);
         this.updateXpUI();
 
-        if (this.attackType === "soulSiphon" && this.level === 7 && !this.soulSiphonEvolutionFirst) {
-          const [first] = resolveSoulSiphonDominantCategories(this.categoryCounts || {});
-          this.soulSiphonEvolutionFirst = first || "power";
-        }
-        if (this.attackType === "soulSiphon" && this.level >= 13 && this.soulSiphonEvolutionFirst && !this.soulSiphonEvolutionSecond) {
-          const [first, second] = resolveSoulSiphonDominantCategories(this.categoryCounts || {});
-          this.soulSiphonEvolutionSecond = second || first;
-        }
-
         if (this.maybeOpenElementalShotFirstEvolutionPrompt()) break;
         if (this.maybeOpenElementalShotSecondEvolutionPrompt()) break;
+        if (this.maybeOpenBladeBlastFirstEvolutionPrompt()) break;
+        if (this.maybeOpenBladeBlastSecondEvolutionPrompt()) break;
+        if (this.maybeOpenSoulSiphonFirstEvolutionPrompt()) break;
+        if (this.maybeOpenSoulSiphonSecondEvolutionPrompt()) break;
 
         if (this.maybeOpenTier1EvolutionPrompt()) {
           break;
@@ -749,6 +899,14 @@ export function applyGameLevelUpMixin(Game) {
 
         // Elemental Shot evolutions consume the level-up at 9 and 16 (no upgrade granted).
         if ((this.attackType === "projectile" && this.level === 9) || (this.attackType === "projectile" && this.level === 16)) {
+          this.finalizeLevelUpState();
+          continue;
+        }
+        if ((this.attackType === "bladeBlast" && this.level === 9) || (this.attackType === "bladeBlast" && this.level === 16)) {
+          this.finalizeLevelUpState();
+          continue;
+        }
+        if ((this.attackType === "soulSiphon" && this.level === 9) || (this.attackType === "soulSiphon" && this.level === 16)) {
           this.finalizeLevelUpState();
           continue;
         }
@@ -877,9 +1035,29 @@ export function applyGameLevelUpMixin(Game) {
         return;
       }
 
+      if (choice?.type === "soulSiphonEvolution") {
+        const cat = choice.category;
+        if (!["power", "tempo", "control", "spiritcraft"].includes(cat)) return;
+        if (choice.stage === "first") {
+          this.soulSiphonEvolutionFirst = cat;
+          this.soulSiphonEvolutionSecond = null;
+        } else if (choice.stage === "second") {
+          this.soulSiphonEvolutionSecond = cat;
+        } else {
+          return;
+        }
+        if (cardEl) cardEl.classList.add("level-up-card-selected");
+        setTimeout(() => {
+          closeLevelUpOverlay(this);
+          this.finalizeLevelUpState();
+          this.checkLevelUp();
+        }, cardEl ? 220 : 0);
+        return;
+      }
+
       if (choice?.type !== "evolution" || !choice.evolutionId) return;
       this.applyTransformChoice({
-        baseWeaponId: PROJECTILE_BASE_WEAPON_ID,
+        baseWeaponId: choice.baseWeaponId || this.levelUpChoiceContext?.baseWeaponId || PROJECTILE_BASE_WEAPON_ID,
         evolutionId: choice.evolutionId
       });
 

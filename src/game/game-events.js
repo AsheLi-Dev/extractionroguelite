@@ -123,11 +123,12 @@ export function applyGameEventsMixin(Game) {
     offerMysteriousOldWomanItems(obj) {
       const types = ["Weapon", "Ring", "Helmet", "Body Armour", "Boots"];
       const diff = Math.min(5, Math.max(1, this.difficulty ?? 1));
+      const luck = Math.max(0, Number(this.runCharacterAttributes?.luck ?? this.runConfig?.selectedCharacter?.attributes?.luck) || 0);
       const options = [];
       for (let i = 0; i < 3; i++) {
         const type = types[Math.floor(Math.random() * types.length)];
         const rarity = Math.random() < 0.5 ? "magic" : "rare";
-        options.push(generateEquipmentItem(type, this.currentMap?.lootQuality ?? 0.4, 0.45, rarity, { difficulty: diff }));
+        options.push(generateEquipmentItem(type, this.currentMap?.lootQuality ?? 0.4, 0.45, rarity, { difficulty: diff, luck }));
       }
       this.openNpcChoiceCard(
         "Mysterious Old Woman",
@@ -276,7 +277,8 @@ export function applyGameEventsMixin(Game) {
       const types = ["Weapon", "Ring", "Helmet", "Body Armour", "Boots"];
             const type = types[Math.floor(Math.random() * types.length)];
             const diff = Math.min(5, Math.max(1, this.difficulty ?? 1));
-            const def = generateEquipmentItem(type, this.currentMap?.lootQuality ?? 0.4, 0.25, rarity, { difficulty: diff });
+            const luck = Math.max(0, Number(this.runCharacterAttributes?.luck ?? this.runConfig?.selectedCharacter?.attributes?.luck) || 0);
+            const def = generateEquipmentItem(type, this.currentMap?.lootQuality ?? 0.4, 0.25, rarity, { difficulty: diff, luck });
             obj.interactionCount = (obj.interactionCount || 0) + 1;
             this.addEquipmentDefToInventory(def);
             this.updateMapUI();
@@ -597,7 +599,8 @@ export function applyGameEventsMixin(Game) {
       const types = ["Helmet", "Boots", "Body Armour", "Weapon", "Ring"];
       const type = types[Math.floor(Math.random() * types.length)];
       const diff = Math.min(5, Math.max(1, this.difficulty ?? 1));
-      const def = generateEquipmentItem(type, this.currentMap?.lootQuality ?? 0.5, 0.65, null, { difficulty: diff });
+      const luck = Math.max(0, Number(this.runCharacterAttributes?.luck ?? this.runConfig?.selectedCharacter?.attributes?.luck) || 0);
+      const def = generateEquipmentItem(type, this.currentMap?.lootQuality ?? 0.5, 0.65, null, { difficulty: diff, luck });
       this.inventory.push({
         id: 50000 + Math.floor(Math.random() * 10000),
         name: def.name,
@@ -1031,4 +1034,3 @@ export function applyGameEventsMixin(Game) {
     }
   });
 }
-

@@ -146,6 +146,38 @@ export const ATTACK_UPGRADE_DEFS = {
   pulseShot: { standardUpgrades: [], standardPenalties: [], uniqueUpgrades: [], uniquePenalties: [] },
   thrustStrike: { standardUpgrades: [], standardPenalties: [], uniqueUpgrades: [], uniquePenalties: [] },
   dashStrike: { standardUpgrades: [], standardPenalties: [], uniqueUpgrades: [], uniquePenalties: [] },
+  bladeBlast: {
+    standardUpgrades: [
+      { id: "blade_blast_damage", name: "Blade Damage", rarity: "common", category: "damage", description: "Blade & Blast damage +10%.", maxLevel: 5, valueRange: { min: 10, max: 10, percent: true }, buildSelectable: true },
+      { id: "blast_payload", name: "Blast Payload", rarity: "common", category: "damage", description: "Blast damage +12%.", maxLevel: 4, valueRange: { min: 12, max: 12, percent: true }, buildSelectable: true },
+      { id: "keen_edges", name: "Keen Edges", rarity: "common", category: "damage", description: "Blade crit damage +15%.", maxLevel: 4, valueRange: { min: 15, max: 15, percent: true }, buildSelectable: true },
+      { id: "blade_blast_attack_speed", name: "Blade Tempo", rarity: "common", category: "rhythm", description: "Blade & Blast attack speed +8%.", maxLevel: 5, valueRange: { min: 8, max: 8, percent: true }, buildSelectable: true },
+      { id: "return_speed", name: "Return Speed", rarity: "common", category: "rhythm", description: "Returning blades move 12% faster.", maxLevel: 4, valueRange: { min: 12, max: 12, percent: true }, buildSelectable: true },
+      { id: "combo_window", name: "Combo Window", rarity: "common", category: "rhythm", description: "Combo timing is 10% more forgiving.", maxLevel: 4, valueRange: { min: 10, max: 10, percent: true }, buildSelectable: true },
+      { id: "blast_radius", name: "Blast Radius", rarity: "common", category: "control", description: "Blast radius +15%.", maxLevel: 4, valueRange: { min: 15, max: 15, percent: true }, buildSelectable: true },
+      { id: "orbit_control", name: "Orbit Control", rarity: "common", category: "control", description: "Blade reach +12%.", maxLevel: 4, valueRange: { min: 12, max: 12, percent: true }, buildSelectable: true },
+      { id: "impact_slow", name: "Impact Slow", rarity: "common", category: "control", description: "Blast hits slow enemies by 10%.", maxLevel: 3, valueRange: { min: 10, max: 10, percent: true }, buildSelectable: true },
+      { id: "runic_sparks", name: "Runic Sparks", rarity: "common", category: "onhit", description: "Blade hits have a 10% chance to trigger a small burst.", maxLevel: 4, valueRange: { min: 10, max: 10, percent: true }, buildSelectable: true },
+      { id: "chain_fragments", name: "Chain Fragments", rarity: "common", category: "onhit", description: "Explosions release 1 additional fragment.", maxLevel: 3, valueRange: { min: 1, max: 1, integer: true }, buildSelectable: true },
+      { id: "finisher_mark", name: "Finisher Mark", rarity: "common", category: "onhit", description: "Marked enemies take 10% more blast damage.", maxLevel: 4, valueRange: { min: 10, max: 10, percent: true }, buildSelectable: true },
+      { id: "whirl_finisher", name: "Whirl Finisher", rarity: "uncommon", category: "damage", description: "Finishers deal 25% more damage.", maxLevel: 2, valueRange: { min: 25, max: 25, percent: true }, buildSelectable: true },
+      { id: "rapid_recall", name: "Rapid Recall", rarity: "uncommon", category: "rhythm", description: "Blade recall speed +20%.", maxLevel: 2, valueRange: { min: 20, max: 20, percent: true }, buildSelectable: true },
+      { id: "stagger_blast", name: "Stagger Blast", rarity: "uncommon", category: "control", description: "Blasts briefly stagger enemies.", maxLevel: 1, buildSelectable: true },
+      { id: "volatile_chain", name: "Volatile Chain", rarity: "uncommon", category: "onhit", description: "On-hit bursts can chain one additional time.", maxLevel: 2, buildSelectable: true },
+      { id: "storm_lattice", name: "Storm Lattice", rarity: "rare", category: "damage", description: "Blade storms gain a powerful finishing detonation.", maxLevel: 1, buildSelectable: true },
+      { id: "tempo_breaker", name: "Tempo Breaker", rarity: "rare", category: "rhythm", description: "Every third combo is dramatically faster.", maxLevel: 1, buildSelectable: true },
+      { id: "gravity_well", name: "Gravity Well", rarity: "rare", category: "control", description: "Blasts pull nearby enemies inward before detonating.", maxLevel: 1, buildSelectable: true },
+      { id: "overload_mark", name: "Overload Mark", rarity: "rare", category: "onhit", description: "Marked enemies erupt in a larger chain blast on death.", maxLevel: 1, buildSelectable: true }
+    ],
+    standardPenalties: [
+      { id: "blade_blast_slow", name: "Slow Tempo", description: "Reduces Blade & Blast attack speed by 5% to 8%.", valueRange: { min: 5, max: 8, percent: true } },
+      { id: "blade_blast_weaken", name: "Weak Blades", description: "Reduces Blade & Blast damage by 5% to 8%.", valueRange: { min: 5, max: 8, percent: true } },
+      { id: "short_orbit", name: "Short Orbit", description: "Reduces blade reach by 10% to 15%.", valueRange: { min: 10, max: 15, percent: true } },
+      { id: "small_blast", name: "Small Blast", description: "Reduces blast radius by 10% to 15%.", valueRange: { min: 10, max: 15, percent: true } }
+    ],
+    uniqueUpgrades: [],
+    uniquePenalties: []
+  },
   soulSiphon: {
     standardUpgrades: [
       // COMMON (power)
@@ -614,6 +646,7 @@ export function rollUpgradeValue(def) {
 
 /** Category list used for Elemental Shot upgrade counting (evolution-ready). */
 const ELEMENTAL_SHOT_CATEGORY_KEYS = ["damage", "rhythm", "control", "elemental"];
+const BLADE_BLAST_CATEGORY_KEYS = ["damage", "rhythm", "control", "onhit"];
 
 /**
  * Returns upgrade category counts for Elemental Shot from applied run upgrades.
@@ -645,6 +678,35 @@ export function getElementalShotUpgradeCategoryCounts(game) {
 export function getElementalShotDominantCategories(counts) {
   if (!counts) return [null, null];
   const order = ELEMENTAL_SHOT_CATEGORY_KEYS;
+  const sorted = [...order].sort((a, b) => {
+    const diff = (counts[b] || 0) - (counts[a] || 0);
+    if (diff !== 0) return diff;
+    return order.indexOf(a) - order.indexOf(b);
+  });
+  const first = sorted[0] && (counts[sorted[0]] || 0) > 0 ? sorted[0] : null;
+  const second = sorted[1] && (counts[sorted[1]] || 0) > 0 ? sorted[1] : null;
+  return [first, second];
+}
+
+export function getBladeBlastUpgradeCategoryCounts(game) {
+  const counts = { damage: 0, rhythm: 0, control: 0, onhit: 0 };
+  if (!game || game.attackType !== "bladeBlast") return counts;
+  const upgrades = game.runAttackUpgrades || [];
+  for (const u of upgrades) {
+    const def = getAttackUpgradeDefById(game.attackType, u.id);
+    const category = (def && BLADE_BLAST_CATEGORY_KEYS.includes(def.category))
+      ? def.category
+      : (u.category && BLADE_BLAST_CATEGORY_KEYS.includes(u.category) ? u.category : null);
+    if (!category) continue;
+    const stacks = Number(u.level) || 1;
+    counts[category] = (counts[category] || 0) + stacks;
+  }
+  return counts;
+}
+
+export function getBladeBlastDominantCategories(counts) {
+  if (!counts) return [null, null];
+  const order = BLADE_BLAST_CATEGORY_KEYS;
   const sorted = [...order].sort((a, b) => {
     const diff = (counts[b] || 0) - (counts[a] || 0);
     if (diff !== 0) return diff;

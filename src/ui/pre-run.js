@@ -25,6 +25,7 @@ import { getFriendsState, canSelectCompanion, setSelectedCompanion, saveFriendsS
 import { FRIENDS_CATALOG, FRIEND_IDS } from '../data/friends-data.js';
 import { getFriendSpriteHtml } from './friends-ui.js';
 import { loadSavedCharacters } from './save-system.js';
+import { SNACK_TYPES, getSnackById } from '../data/snack.js';
 
 let preRunDifficulty = 1;
 let pendingCharacterIndex = null;
@@ -34,6 +35,7 @@ let preRunRerollMax = 1;
 let pendingLegacyItems = [];
 let pendingCompanionId = null;
 let pendingSelectedLureIds = [];
+let pendingSnackId = null;
 
 let pendingSkillsForRun = [null, null, null, null];
 let pendingAttackType = "projectile";
@@ -194,6 +196,7 @@ export function showPreRunScreen(legacyItems = [], options = {}) {
   
   // Load current companion selection
   pendingCompanionId = friendsState.selectedCompanionId;
+  pendingSnackId = null;
 
   const overlay = document.getElementById("pre-run-overlay");
   const mainMenu = document.getElementById("main-menu");
@@ -325,6 +328,51 @@ export function renderPreRunScreen() {
       });
       companionEl.appendChild(btn);
     }
+  }
+
+  const snackEl = document.getElementById("pre-run-snack");
+  if (snackEl) {
+    snackEl.innerHTML = "";
+
+    const noneBtn = document.createElement("button");
+    noneBtn.className = "pre-run-snack-btn" + (pendingSnackId === null ? " selected" : "");
+    noneBtn.type = "button";
+    noneBtn.innerHTML = `
+      <span class="pre-run-snack-icon">-</span>
+      <span class="pre-run-snack-copy">
+        <span class="pre-run-snack-name">None</span>
+        <span class="pre-run-snack-desc">Start the run without a snack.</span>
+      </span>
+    `;
+    noneBtn.addEventListener("click", () => {
+      pendingSnackId = null;
+      renderPreRunScreen();
+    });
+    snackEl.appendChild(noneBtn);
+
+    for (const snack of SNACK_TYPES) {
+      const btn = document.createElement("button");
+      btn.className = "pre-run-snack-btn" + (pendingSnackId === snack.id ? " selected" : "");
+      btn.type = "button";
+      btn.innerHTML = `
+        <span class="pre-run-snack-icon">${escapeHtml(snack.icon || "?")}</span>
+        <span class="pre-run-snack-copy">
+          <span class="pre-run-snack-name">${escapeHtml(snack.name)}</span>
+          <span class="pre-run-snack-desc">${escapeHtml(snack.description || "")}</span>
+        </span>
+      `;
+      btn.addEventListener("click", () => {
+        pendingSnackId = snack.id;
+        renderPreRunScreen();
+      });
+      snackEl.appendChild(btn);
+    }
+  }
+
+  const selectedSnackEl = document.getElementById("pre-run-snack-selected");
+  if (selectedSnackEl) {
+    const selectedSnack = getSnackById(pendingSnackId);
+    selectedSnackEl.textContent = `Selected snack: ${selectedSnack?.name || "None"}`;
   }
 }
 
@@ -627,6 +675,7 @@ export function confirmSkillSelectAndStart() {
   const selectedCharacter = pendingCharacterIndex != null && saved[pendingCharacterIndex] != null
     ? saved[pendingCharacterIndex]
     : null;
+  const selectedSnack = getSnackById(pendingSnackId);
 
   if (_onStartGame) {
     const runConfig = {
@@ -637,6 +686,7 @@ export function confirmSkillSelectAndStart() {
       secondaryAttackType: dualTechniqueActiveForRun ? pendingSecondaryAttackType : pendingAttackType,
       selectedUpgrades,
       companionId: pendingCompanionId,
+      snackId: selectedSnack?.id || null,
       selectedLureIds: pendingSelectedLureIds.slice(),
       selectedCharacterIndex: pendingCharacterIndex,
       selectedCharacter

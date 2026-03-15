@@ -257,6 +257,7 @@ export class LootSystem {
     this.nextId = 1;
     this.mapLootQuality = 0;
     this.difficulty = 1;
+    this.playerLuck = 0;
   }
 
   setMapLootQuality(quality) {
@@ -267,14 +268,18 @@ export class LootSystem {
     this.difficulty = difficulty != null ? Math.min(5, Math.max(1, difficulty)) : 1;
   }
 
+  setPlayerLuck(luck) {
+    this.playerLuck = Math.max(0, Number(luck) || 0);
+  }
+
   getLootDefinition(qualityBonus = 0) {
     const group = LOOT_DEFS[Math.floor(Math.random() * LOOT_DEFS.length)];
-    const opts = this.difficulty != null ? { difficulty: this.difficulty } : {};
+    const opts = this.difficulty != null ? { difficulty: this.difficulty, luck: this.playerLuck } : { luck: this.playerLuck };
     return generateEquipmentItem(group.type, this.mapLootQuality, qualityBonus, null, opts);
   }
 
   spawnGuaranteedWeaponAt(centerX, centerY) {
-    const opts = this.difficulty != null ? { difficulty: this.difficulty } : {};
+    const opts = this.difficulty != null ? { difficulty: this.difficulty, luck: this.playerLuck } : { luck: this.playerLuck };
     const def = generateEquipmentItem("Weapon", Math.min(1, this.mapLootQuality + 0.5), 0.5, null, opts);
     const size = 20;
     const margin = this.world.wallThickness + 15;
@@ -466,6 +471,5 @@ export class LootSystem {
     ctx.restore();
   }
 }
-
 
 

@@ -66,7 +66,8 @@ export function rollSearchableLoot(tableId, centerX, centerY, game, lootMultipli
       const type = types[Math.floor(Math.random() * types.length)];
       const lootQuality = game.currentMap?.lootQuality ?? 0.5;
       const difficulty = game.difficulty != null ? Math.min(5, Math.max(1, game.difficulty)) : 1;
-      const def = generateEquipmentItem(type, lootQuality, 0, null, { difficulty });
+      const luck = Math.max(0, Number(game?.runCharacterAttributes?.luck ?? game?.runConfig?.selectedCharacter?.attributes?.luck) || 0);
+      const def = generateEquipmentItem(type, lootQuality, 0, null, { difficulty, luck });
       game.lootSystem.spawnEquipmentAt(x, y, def);
     }
   }
