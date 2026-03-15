@@ -91,7 +91,7 @@ import {
   CAMERA_SHAKE_INTENSITY,
   CAMERA_SHAKE_DURATION
 } from '../vfx/fanStrikeVfx.js';
-import { createHitbox, updateHitboxes, getActiveHitboxes, drawHitboxDebug } from '../combat/index.js';
+import { createHitbox, clearHitboxes, updateHitboxes, getActiveHitboxes, drawHitboxDebug } from '../combat/index.js';
 import { PLAYER_FAN_CONE_DEF, DEATH_KNIGHT_CONE_DEF, PLAYER_THRUST_RECT_DEF, HUMAN_LANCER_THRUST_RECT_DEF, PLAYER_PULSE_CIRCLE_DEF, PLAYER_PROJECTILE_CIRCLE_DEF, PLAYER_ELEMENTAL_WIND_RECT_DEF, thrustRectFromDirection, SOUL_SIPHON_BEAM_RECT_DEF } from '../combat/hitbox-examples.js';
 import { refreshMainMenuLP } from '../ui/main-menu.js';
 import { consumeLegacyCubeStash, loadSavedCharacters, addConquerorBonusItem, addToLegacyCubeStash, SAVE_KEY, updateSavedCharacter } from '../ui/save-system.js';
@@ -181,6 +181,9 @@ const DESIGN_WIDTH = 640;
 const DESIGN_HEIGHT = 360;
 const CAMERA_VIEW_WIDTH = 499;   // zoomed out 1.2x from 416
 const CAMERA_VIEW_HEIGHT = 281; // zoomed out 1.2x from 234
+const WIND_PROJECTILE_TRAIL_LIFE = 0.5;
+const WIND_PROJECTILE_TRAIL_MAX_POINTS = 24;
+const WIND_PROJECTILE_TRAIL_MIN_STEP = 5;
 
 // -------- Game Class --------
 // Game class constructor and property initialization.
@@ -769,6 +772,7 @@ export class Game {
 
     // Player projectile state
     this.playerProjectiles = [];
+    this.windProjectileTrails = new Map();
     this.playerAttackCooldown = 0.72;
     // Elemental Shot: charge-based surge (fire / wind / lightning)
     this.elementalState = "fire";
@@ -2395,6 +2399,119 @@ export class Game {
       x: Number(hitbox?.x) || 0,
       y: Number(hitbox?.y) || 0
     };
+  }
+
+  getWindProjectileTrailStyle(hitbox) {
+    const w = Math.max(0, Number(hitbox?.width) || 0);
+    const h = Math.max(0, Number(hitbox?.height) || 0);
+    const radius = Math.max(0, Number(hitbox?.radius) || 0);
+    const baseThickness = w > 0 ? w : Math.max(2, radius * 0.6);
+    const thickness = Math.max(3, baseThickness * 0.7);
+    return {
+      thickness,
+      angle: Math.atan2(Number(hitbox?.dirY) || 0, Number(hitbox?.dirX) || 1),
+      life: WIND_PROJECTILE_TRAIL_LIFE
+    };
+  }
+
+  updateWindProjectileTrails(dt) {
+    if (!this.windProjectileTrails) return;
+    const activeWindIds = new Set();
+    for (const h of getActiveHitboxes()) {
+      if (h.destroyed || h.faction !== 'player' || h.ownerId !== 'player') continue;
+      if (h.defId !== 'player_projectile' || h.elementalState !== 'wind') continue;
+      const id = h.id;
+      if (!id) continue;
+      const point = this.getHitboxCollisionPoint(h);
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
+      activeWindIds.add(id);
+      const style = this.getWindProjectileTrailStyle(h);
+      const trail = this.windProjectileTrails.get(id) || [];
+      const last = trail[trail.length - 1];
+      const dx = last ? point.x - last.x : WIND_PROJECTILE_TRAIL_MIN_STEP + 1;
+      const dy = last ? point.y - last.y : WIND_PROJECTILE_TRAIL_MIN_STEP + 1;
+      const moved = dx * dx + dy * dy;
+      if (!last || moved >= WIND_PROJECTILE_TRAIL_MIN_STEP * WIND_PROJECTILE_TRAIL_MIN_STEP) {
+        trail.push({
+          x: point.x,
+          y: point.y,
+          age: 0,
+          life: style.life,
+          width: style.thickness,
+          angle: style.angle
+        });
+        if (trail.length > WIND_PROJECTILE_TRAIL_MAX_POINTS) {
+          trail.shift();
+        }
+      } else {
+        last.x = point.x;
+        last.y = point.y;
+        last.angle = style.angle;
+        last.width = style.thickness;
+      }
+      this.windProjectileTrails.set(id, trail);
+    }
+
+    for (const [id, trail] of this.windProjectileTrails.entries()) {
+      for (let i = trail.length - 1; i >= 0; i--) {
+        trail[i].age += dt;
+      }
+      while (trail.length > 0 && trail[0].age >= trail[0].life) {
+        trail.shift();
+      }
+      if (!trail.length && !activeWindIds.has(id)) {
+        this.windProjectileTrails.delete(id);
+      } else {
+        this.windProjectileTrails.set(id, trail);
+      }
+    }
+  }
+
+  drawWindProjectileTrails(ctx) {
+    if (!ctx || !this.windProjectileTrails?.size) return;
+    if (this.windProjectileTrails.size === 0) return;
+    const camX = this.camera?.position?.x ?? 0;
+    const camY = this.camera?.position?.y ?? 0;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const trail of this.windProjectileTrails.values()) {
+      if (!trail || trail.length < 2) continue;
+      for (let i = 1; i < trail.length; i++) {
+        const prev = trail[i - 1];
+        const cur = trail[i];
+        const dx = cur.x - prev.x;
+        const dy = cur.y - prev.y;
+        const segLen = Math.hypot(dx, dy);
+        if (segLen < 1) continue;
+        const alpha = Math.max(0, 1 - cur.age / Math.max(0.001, cur.life));
+        const width = Math.max(2.5, cur.width * 0.5 * (0.6 + (i / trail.length)));
+        const sx = prev.x - camX;
+        const sy = prev.y - camY;
+        const ex = cur.x - camX;
+        const ey = cur.y - camY;
+        ctx.beginPath();
+        ctx.shadowColor = `rgba(182, 244, 255, ${alpha * 0.9})`;
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = `rgba(182, 244, 255, ${Math.max(0.02, alpha * 0.28)})`;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        const glow = Math.max(0, alpha * 0.14);
+        const tipX = cur.x - camX;
+        const tipY = cur.y - camY;
+        ctx.fillStyle = `rgba(200, 248, 255, ${glow})`;
+        ctx.beginPath();
+        ctx.ellipse(tipX, tipY, width * 0.95, width * 0.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
   }
 
   getEntityById(id) {
@@ -4271,6 +4388,8 @@ export class Game {
     this.lootSystem.items = [];
     this.playerProjectiles = [];
     this.skillEffects = [];
+    this.windProjectileTrails = new Map();
+    clearHitboxes();
     this.hitStopRemaining = 0;
     this.cameraShakeUntil = 0;
     this.cameraShakeAmount = 0;
@@ -13437,6 +13556,7 @@ export class Game {
     es.projectiles = surviving;
 
     updateHitboxes(dt, this);
+    this.updateWindProjectileTrails(dt);
     if (this.attackType === "projectile") {
       this.checkElementalShotHitboxesVsBreakables?.();
       this.checkElementalShotHitboxesVsSwirls?.();
@@ -14122,6 +14242,7 @@ export class Game {
     if (this.hazardSystem) this.hazardSystem.draw(ctx, this.camera, this.time);
     this.lootSystem.draw(ctx, this.camera, this.time);
     this.drawLevelUpVfx(ctx);
+    this.drawWindProjectileTrails(ctx);
     this.drawWorldActorsYSorted(ctx, scale);
     if (typeof this.drawMartyrChargeCircles === "function") this.drawMartyrChargeCircles(ctx);
     if (typeof this.drawGuardedEffects === "function") this.drawGuardedEffects(ctx);
