@@ -26,12 +26,15 @@ const SOUNDS = {
   chestOpen: "assets/Audio/01_chest_open_4.wav",
   collectGold: "assets/Audio/collect_gold.wav",
   portcullisGate: "assets/Audio/Portcullis Gate.wav",
-  levelUp: "assets/Audio/level up.mp3"
+  levelUp: "assets/Audio/level up.mp3",
+  xpPickup: "assets/Audio/xp-pickup.mp3"
 };
 
 const ATTACK_SOUNDS = new Set(["projectileShot", "fanStrike", "pulseShot", "fireball", "iceHard"]);
 const BGM_PATH = "assets/Audio/05-Battle-1.wav";
 const BGM_MUTED_STORAGE_KEY = "extractDaPandaBgmMuted";
+const XP_PICKUP_HARMONIC_SEQUENCE = Object.freeze([1, 1.125, 1.25, 1.333, 1.5, 1.667, 1.333, 1.25]);
+let xpPickupHarmonicIndex = 0;
 
 let enabled = true;
 let ctx = null;
@@ -61,6 +64,12 @@ function randomPitch(soundId) {
   }
   if (soundId === "collectGold") {
     return 0.975 + Math.random() * 0.05; // 5% pitch variation
+  }
+  if (soundId === "xpPickup") {
+    const harmonicStep = XP_PICKUP_HARMONIC_SEQUENCE[xpPickupHarmonicIndex % XP_PICKUP_HARMONIC_SEQUENCE.length];
+    xpPickupHarmonicIndex++;
+    const micro = Math.random() * 0.08 - 0.04;
+    return harmonicStep + micro;
   }
   const isAttack = ATTACK_SOUNDS.has(soundId);
   if (isAttack) return 0.72 + Math.random() * 0.56;
