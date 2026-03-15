@@ -223,6 +223,7 @@ export class Game {
     // Soul Siphon run state (persists across map transitions)
     this.runSoulsTotal = 0;
     this.cuteSpiritCompanion = null;
+    this.soulSiphonSpiritUnlockedFromStart = this.attackType === "soulSiphon";
     this.spiritTriggerIcdUntil = 0;
     this.cuteSpiritSpeedBuffUntil = 0;
     this.cuteSpiritSpeedBuffStacks = 0;
@@ -363,7 +364,7 @@ export class Game {
       maxHealth: 100,
       defense: 0,
       speed: 220,
-      attack: 10,
+      attack: 20,
       hazardDamageReduction: 0
     };
     if (!this.devMode) {
@@ -2346,6 +2347,56 @@ export class Game {
     return out;
   }
 
+  getHitboxCollisionRect(hitbox) {
+    if (!hitbox) return null;
+    const shape = hitbox.shape;
+    if (shape === 'rect') {
+      const w = Math.max(0, Number(hitbox.width) || 0);
+      const h = Math.max(0, Number(hitbox.height) || 0);
+      if (w <= 0 || h <= 0) return null;
+      const hw = w / 2;
+      const hh = h / 2;
+      const cx = (Number(hitbox.x) || 0) + hw;
+      const cy = (Number(hitbox.y) || 0) + hh;
+      const angle = typeof hitbox.angleRad === 'number' ? hitbox.angleRad : Math.atan2(hitbox.dirY || 0, hitbox.dirX || 1);
+      const sin = Math.sin(angle);
+      const cos = Math.cos(angle);
+      const halfW = Math.abs(hw * cos) + Math.abs(hh * sin);
+      const halfH = Math.abs(hw * sin) + Math.abs(hh * cos);
+      return {
+        x: cx - halfW,
+        y: cy - halfH,
+        w: halfW * 2,
+        h: halfH * 2
+      };
+    }
+
+    if (shape === 'circle') {
+      const cr = Math.max(0, Number(hitbox.radius) || 0);
+      const cx = Number(hitbox.x) || 0;
+      const cy = Number(hitbox.y) || 0;
+      return { x: cx - cr, y: cy - cr, w: cr * 2, h: cr * 2 };
+    }
+
+    return null;
+  }
+
+  getHitboxCollisionPoint(hitbox) {
+    const shape = hitbox?.shape;
+    if (shape === 'rect') {
+      const w = Math.max(0, Number(hitbox.width) || 0);
+      const h = Math.max(0, Number(hitbox.height) || 0);
+      return {
+        x: (Number(hitbox.x) || 0) + w / 2,
+        y: (Number(hitbox.y) || 0) + h / 2
+      };
+    }
+    return {
+      x: Number(hitbox?.x) || 0,
+      y: Number(hitbox?.y) || 0
+    };
+  }
+
   getEntityById(id) {
     if (id === 'player') return this.player;
     const e = this.enemySystem?.enemies?.find((en) => en.id === id);
@@ -2755,10 +2806,15 @@ export class Game {
   }
 
   hitboxDestroyIfObstacle(hitbox) {
-    if (!hitbox || hitbox.shape !== 'circle' || hitbox.moveSpeed <= 0) return false;
-    const cx = hitbox.x;
-    const cy = hitbox.y;
-    const cr = hitbox.radius ?? 0;
+    if (!hitbox || hitbox.moveSpeed <= 0) return false;
+    const hitboxRect = this.getHitboxCollisionRect(hitbox);
+    if (!hitboxRect) return false;
+    const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+    const isCircle = hitbox.shape === 'circle';
+    const cx = Number(hitbox.x) || 0;
+    const cy = Number(hitbox.y) || 0;
+    const cr = Math.max(0, Number(hitbox.radius) || 0);
     const circleVsRect = (rx, ry, rw, rh) => {
       const clampX = Math.max(rx, Math.min(rx + rw, cx));
       const clampY = Math.max(ry, Math.min(ry + rh, cy));
@@ -2766,17 +2822,71 @@ export class Game {
       const dy = cy - clampY;
       return dx * dx + dy * dy <= cr * cr;
     };
+
     const walls = this.world?.tileWallRects || [];
     for (const wall of walls) {
       const r = getWallCollisionRect(wall);
-      if (circleVsRect(r.x, r.y, r.w, r.h)) return true;
+      if (isCircle) {
+        if (circleVsRect(r.x, r.y, r.w, r.h)) return true;
+      } else if (overlap(hitboxRect, r)) {
+        return true;
+      }
     }
     for (const obstacle of this.obstacles || []) {
       if (obstacle.destroyed || !obstacle.blocksProjectiles) continue;
       const r = getObstacleCollisionRect(obstacle);
-      if (circleVsRect(r.x, r.y, r.w, r.h)) return true;
+      if (isCircle) {
+        if (circleVsRect(r.x, r.y, r.w, r.h)) return true;
+      } else if (overlap(hitboxRect, r)) {
+        return true;
+      }
     }
     return false;
+  }
+
+  checkElementalShotHitboxesVsBreakables() {
+    if (this.attackType !== 'projectile') return;
+    const breakables = this.breakables || [];
+    if (!breakables.length) return;
+    const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    for (const h of getActiveHitboxes()) {
+      if (h.destroyed || h.faction !== 'player' || h.ownerId !== 'player') continue;
+      if (h.defId !== 'player_projectile') continue;
+      const hRect = this.getHitboxCollisionRect(h);
+      if (!hRect) continue;
+      const baseDamage = Number(h.damage) || 0;
+      const isGhost = !!h.ghost;
+      h.breakHitTargets = h.breakHitTargets || new Set();
+      const point = this.getHitboxCollisionPoint(h);
+      for (const b of breakables) {
+        if (b.isDead) continue;
+        if (h.breakHitTargets.has(b.id)) continue;
+        const bx = b.position?.x;
+        const by = b.position?.y;
+        const bw = b.size;
+        const bh = b.size;
+        if (bx == null || by == null || bw == null || bh == null) continue;
+        if (!overlap(hRect, { x: bx, y: by, w: bw, h: bh })) continue;
+        this.dealDamageToBreakable(b, baseDamage, {
+          useDamageFacade: true,
+          sourceType: 'player_projectile',
+          reason: 'projectile_obstacle_hit',
+          tags: ['player_projectile', 'obstacle_hit']
+        });
+        h.breakHitTargets.add(b.id);
+        this.skillEffects.push({
+          type: 'obstacleImpact',
+          x: point.x,
+          y: point.y,
+          t: 0,
+          duration: 0.2
+        });
+        if (!isGhost) {
+          h.destroyed = true;
+          break;
+        }
+      }
+    }
   }
 
   spawnEnemyConeHitbox(enemy, ex, ey, dirX, dirY, range, arcDeg, baseDmg, attackId) {
@@ -3472,7 +3582,13 @@ export class Game {
     this.updateCombat(dt);
 
     // Soul Siphon: Cute Spirit companion — summon, update, evolve, assist
-    if ((this.runSoulsTotal || 0) >= 10 && !this.cuteSpiritCompanion) {
+    if (
+      !this.cuteSpiritCompanion &&
+      (
+        this.soulSiphonSpiritUnlockedFromStart ||
+        (this.runSoulsTotal || 0) >= 10
+      )
+    ) {
       const px = this.player.position.x + this.player.size / 2;
       const py = this.player.position.y + this.player.size / 2;
       this.cuteSpiritCompanion = new CuteSpiritCompanion(px, py);
@@ -5001,9 +5117,6 @@ export class Game {
     if (typeof this.isPillarBasicAttackAllowed === "function" && !this.isPillarBasicAttackAllowed({ targetX, targetY })) {
       return;
     }
-    // Soul Siphon is channeled on mouse hold; no one-shot here
-    if (primaryAttackType === "soulSiphon") return;
-
     const dualConfig = typeof this.getPillarDualBasicAttackConfig === "function"
       ? this.getPillarDualBasicAttackConfig({
         primaryAttackType,
@@ -5015,7 +5128,7 @@ export class Game {
     if (secondaryAttackType === primaryAttackType) {
       secondaryAttackType = fallbackSecondary;
     }
-    const dualTechniqueActive = dualConfig?.enabled === true && secondaryAttackType !== primaryAttackType;
+    const dualTechniqueActive = primaryAttackType !== "soulSiphon" && dualConfig?.enabled === true && secondaryAttackType !== primaryAttackType;
     const dualDamageMultiplier = dualTechniqueActive
       ? Math.max(0.01, Number(dualConfig?.damageMultiplier) || 0.4)
       : 1;
@@ -5197,6 +5310,42 @@ export class Game {
       this.firePlayerProjectile(targetX, targetY, attackDamageMult, {
         attackTypeOverride: resolvedAttackType
       });
+      return true;
+    }
+
+    if (resolvedAttackType === "soulSiphon") {
+      if (!suppressSfx) {
+        playSfx("playerAttack");
+      }
+      const profile = this.getSoulSiphonProfile();
+      const beamMode = profile.beamMode || "channel";
+      const mods = profile.beamMods || {};
+      const baseMult = 0.8 * (mods.damageMult ?? 1) * (mods.baseDamageMult ?? 1);
+      if (beamMode === "avatar_command") {
+        if (!this.cuteSpiritCompanion || !this.soulSiphonAvatarReady || (this.avatarCommandIcdUntil || 0) > this.time) {
+          return true;
+        }
+        this.soulSiphonAvatarReady = false;
+        this.avatarCommandIcdUntil = this.time + 0.7;
+        const roll = Math.random();
+        if (roll < 1 / 3) {
+          this.runAvatarCommandFireballVolley();
+        } else if (roll < 2 / 3) {
+          this.runAvatarCommandMarchingSlam();
+        } else {
+          this.cuteSpiritSpeedBuffUntil = this.time + 0.5;
+          this.soulSiphonAvatarPending = {
+            at: this.time + 0.2,
+            type: Math.random() < 0.5 ? "volley" : "slam"
+          };
+        }
+        return true;
+      }
+      if (beamMode === "cursor_area") {
+        this.runOneSoulSiphonCursorArea(baseMult);
+        return true;
+      }
+      this.runOneSoulSiphonBeam(baseMult);
       return true;
     }
 
@@ -5580,8 +5729,9 @@ export class Game {
       if (h.faction !== "player" || h.ownerId !== "player") continue;
       const el = h.elementalState;
       if (el !== "fire" && el !== "lightning") continue;
-      const hx = h.x != null ? h.x : h.position?.x;
-      const hy = h.y != null ? h.y : h.position?.y;
+      const hPoint = this.getHitboxCollisionPoint(h);
+      const hx = hPoint.x;
+      const hy = hPoint.y;
       if (hx == null || hy == null) continue;
       for (const s of swirls) {
         if (s.consumed) continue;
@@ -5656,7 +5806,7 @@ export class Game {
   firePlayerProjectile(targetX, targetY, damageMult = 1, options = {}) {
     const px = this.player.position.x + this.player.size / 2 - PLAYER_PROJECTILE_SIZE / 2;
     const py = this.player.position.y + this.player.size / 2 - PLAYER_PROJECTILE_SIZE / 2;
-    const attackTypeForDamage = this.sanitizeBasicAttackType(options?.attackTypeOverride || this.attackType, this.attackType);
+      const attackTypeForDamage = this.sanitizeBasicAttackType(options?.attackTypeOverride || this.attackType, this.attackType);
     const attackFlatBonus = getSkillFlatDamageBonus(this, attackTypeForDamage);
     const evo = attackTypeForDamage === "projectile" ? this.getProjectileShotEvolutionOverrides() : null;
     const evolutionDamageMult = evo?.damageMult != null ? evo.damageMult : 1;
@@ -5852,6 +6002,7 @@ export class Game {
             height: windRectH,
             moveSpeed: moveSpeedShot,
             damage: dmg,
+            ghost,
             createdAt: this.time,
             durationMs,
             maxTotalTargets: maxTotalShot,
@@ -5869,6 +6020,7 @@ export class Game {
             radius: r,
             moveSpeed: moveSpeedShot,
             damage: dmg,
+            ghost,
             createdAt: this.time,
             durationMs,
             maxTotalTargets: maxTotalShot,
@@ -6910,18 +7062,14 @@ export class Game {
     }
 
     if (this.mouseHeld && !this.gameOver && !this.paused && !this.levelUpChoices) {
-      const primaryAttackType = this.sanitizeBasicAttackType(this.attackType, "projectile");
-      if (primaryAttackType === "soulSiphon") {
-        this.updateSoulSiphonChannel(dt);
-      } else {
-        this.tryBasicAttack(this.lastMouseWorld.x, this.lastMouseWorld.y);
-      }
+      this.tryBasicAttack(this.lastMouseWorld.x, this.lastMouseWorld.y);
     } else {
-      this.soulSiphonChannelTime = 0;
-      this.soulSiphonReaperWindup = 0;
-      this.soulSiphonAvatarReady = true;
+      if (this.sanitizeBasicAttackType(this.attackType, "projectile") === "soulSiphon") {
+        this.soulSiphonChannelTime = 0;
+        this.soulSiphonReaperWindup = 0;
+        this.soulSiphonAvatarReady = true;
+      }
     }
-    // Soul Siphon: do not reset soulSiphonLastProcTime on release so spamming click still procs at attack-speed rate
     if (this.delayedFireQueue && this.delayedFireQueue.length > 0) {
       const stillPending = [];
       for (const item of this.delayedFireQueue) {
@@ -10459,7 +10607,7 @@ export class Game {
   }
 
   /** Cursor-area beam mode: damage zone at cursor. Tracks field for haste/debuff links. */
-  runOneSoulSiphonCursorArea() {
+  runOneSoulSiphonCursorArea(baseDamageMult = 1) {
     const cursor = this.lastMouseWorld;
     if (!cursor || !Number.isFinite(cursor.x) || !Number.isFinite(cursor.y)) return;
     const profile = this.getSoulSiphonProfile();
@@ -10497,7 +10645,7 @@ export class Game {
     const attackFlatBonus = getSkillFlatDamageBonus(this, "soulSiphon");
     const baseDamage = this.computePlayerDamage(null) + attackFlatBonus;
     const firstTickMult = mods.firstTickDamageMult ?? 1;
-    const dmg = Math.max(1, Math.round(baseDamage * 0.4 * firstTickMult));
+    const dmg = Math.max(1, Math.round(baseDamage * 0.4 * firstTickMult * baseDamageMult) + 7);
     for (const e of hit) {
       this.dealDamageToEnemy(e, dmg, {
         skillId: "soulSiphon",
@@ -10507,7 +10655,7 @@ export class Game {
     }
   }
 
-  /** Soul Siphon fixed beam: 200 px length, 80 px width, toward cursor. One rect hitbox per proc. */
+  /** Soul Siphon fixed beam toward cursor. One rect hitbox per proc. */
   runOneSoulSiphonBeam(damageMult) {
     const profile = this.getSoulSiphonProfile();
     const mods = profile.beamMods || {};
@@ -10537,7 +10685,7 @@ export class Game {
     const rect = thrustRectFromDirection(px, py, dirX, dirY, beamLength, beamWidth, 0);
     const attackFlatBonus = getSkillFlatDamageBonus(this, "soulSiphon");
     const baseDamage = this.computePlayerDamage(null) + attackFlatBonus;
-    let dmg = Math.max(1, Math.round(baseDamage * finalDamageMult));
+    let dmg = Math.max(1, Math.round(baseDamage * finalDamageMult) + 7);
 
     const tripleBeam = mods.tripleBeam === true;
     if (tripleBeam && (mods.pulseDamageMult != null || mods.pulseIntervalSec != null)) {
@@ -12115,7 +12263,7 @@ export class Game {
         const sx = eff.x + ox;
         const sy = eff.y + oy;
         const len = eff.length ?? 200;
-        const w = eff.width ?? 80;
+        const w = eff.width ?? 40;
         const alpha = 1 - eff.t / (eff.duration ?? 0.15);
         const angle = Math.atan2(eff.dirY || 0, eff.dirX || 1);
         ctx.save();
@@ -12140,37 +12288,6 @@ export class Game {
       }
     }
 
-    // Soul Siphon channel: faint beam hitbox preview while holding left mouse
-    const primaryAttackType = this.sanitizeBasicAttackType(this.attackType, "projectile");
-    if (this.mouseHeld && primaryAttackType === "soulSiphon" && !this.gameOver && !this.paused && !this.levelUpChoices &&
-        !this.dashActive && !this.bladeDashActive && !this.dashStrikeState && !this.backfireDashState) {
-      const BEAM_LENGTH = 200;
-      const BEAM_WIDTH = 80;
-      const px = this.player.position.x + this.player.size / 2;
-      const py = this.player.position.y + this.player.size / 2;
-      const cursor = this.lastMouseWorld;
-      let dirX = 1;
-      let dirY = 0;
-      if (cursor && Number.isFinite(cursor.x) && Number.isFinite(cursor.y)) {
-        const dx = cursor.x - px;
-        const dy = cursor.y - py;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        dirX = dx / dist;
-        dirY = dy / dist;
-      }
-      const sx = px + ox;
-      const sy = py + oy;
-      const alpha = 0.15 + 0.06 * Math.sin(this.time * 6);
-      ctx.save();
-      ctx.translate(sx, sy);
-      ctx.rotate(Math.atan2(dirY, dirX));
-      ctx.fillStyle = `rgba(180, 160, 255, ${alpha})`;
-      ctx.fillRect(0, -BEAM_WIDTH / 2, BEAM_LENGTH, BEAM_WIDTH);
-      ctx.strokeStyle = `rgba(200, 180, 255, ${0.35 * alpha})`;
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(0, -BEAM_WIDTH / 2, BEAM_LENGTH, BEAM_WIDTH);
-      ctx.restore();
-    }
   }
 
   updateSkillUI() {
@@ -12981,7 +13098,7 @@ export class Game {
         xp = Math.round(xp * (1 + 0.4 * stacks));
       }
     }
-    this.grantXP(xp);
+    return xp;
   }
 
   dropLootFromEnemy(enemy) {
@@ -13021,7 +13138,7 @@ export class Game {
     if (enemy.isCursedChestGuardian) {
       this.tryDropCubeFromEnemy(enemy);
       this.cursedChestBlocked = false;
-      this.grantXP(50);
+      this.lootSystem.spawnXpOrbAt(ex, ey, "small", 50);
       this.lootSystem.spawnBurstAt(enemy.position.x + enemy.size / 2, enemy.position.y + enemy.size / 2, 2, 0.6);
       return martyrMinions;
     }
@@ -13037,11 +13154,14 @@ export class Game {
         const def = generateEquipmentItem(type, 1, 0.8, null, { difficulty: diff });
         const item = new LootItem(this.lootSystem.nextId++, ex - 10, ey - 10, def, ex, ey);
         this.lootSystem.items.push(item);
-        this.grantXP(80);
+        this.lootSystem.spawnXpOrbAt(ex, ey, "small", 80);
       }
       return martyrMinions;
     }
-    this.grantXPFromEnemy(enemy);
+    const xpFromEnemy = this.grantXPFromEnemy(enemy);
+    if (xpFromEnemy > 0) {
+      this.lootSystem.spawnXpOrbAt(ex, ey, "small", xpFromEnemy);
+    }
     this.tryDropCubeFromEnemy(enemy);
 
     const tier = enemy.enemyTier || (enemy.isMiniBoss ? "miniBoss" : enemy.isElite ? "elite" : "minion");
@@ -13318,6 +13438,7 @@ export class Game {
 
     updateHitboxes(dt, this);
     if (this.attackType === "projectile") {
+      this.checkElementalShotHitboxesVsBreakables?.();
       this.checkElementalShotHitboxesVsSwirls?.();
       this.updateElementalStorms?.(dt);
       this.updateElementalSwirls?.(dt);

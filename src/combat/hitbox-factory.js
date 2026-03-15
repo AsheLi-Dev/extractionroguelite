@@ -145,6 +145,7 @@ export function createHitboxInstance(def, spawn) {
     maxHitsPerTarget,
     maxTotalTargets: maxTotalTargets === undefined ? undefined : Math.max(0, Math.floor(Number(maxTotalTargets))),
     hitTargets: new Set(),
+    breakHitTargets: new Set(),
     followOwner,
     destroyed: false,
     tags
@@ -172,6 +173,10 @@ export function createHitboxInstance(def, spawn) {
   }
   if (sniperPierceFalloff && typeof sniperPierceFalloff === 'object') {
     instance.sniperPierceFalloff = sniperPierceFalloff;
+  }
+
+  if (spawn?.ghost != null) {
+    instance.ghost = !!spawn.ghost;
   }
 
   if (spawn?.elementalState != null) {
