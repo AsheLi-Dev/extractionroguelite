@@ -1,0 +1,275 @@
+{
+	"frames": {
+		"attack-angle-down-01.png": {
+			"frame": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"sourceSize": {
+				"w": 160,
+				"h": 128
+			}
+		},
+		"attack-angle-down-02.png": {
+			"frame": {
+				"x": 160,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"sourceSize": {
+				"w": 160,
+				"h": 128
+			}
+		},
+		"attack-angle-down-03.png": {
+			"frame": {
+				"x": 320,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"sourceSize": {
+				"w": 160,
+				"h": 128
+			}
+		},
+		"attack-angle-down-04.png": {
+			"frame": {
+				"x": 480,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"sourceSize": {
+				"w": 160,
+				"h": 128
+			}
+		},
+		"attack-angle-down-05.png": {
+			"frame": {
+				"x": 640,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"sourceSize": {
+				"w": 160,
+				"h": 128
+			}
+		},
+		"attack-angle-down-06.png": {
+			"frame": {
+				"x": 800,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"sourceSize": {
+				"w": 160,
+				"h": 128
+			}
+		},
+		"attack-angle-down-07.png": {
+			"frame": {
+				"x": 960,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"sourceSize": {
+				"w": 160,
+				"h": 128
+			}
+		},
+		"attack-angle-down-08.png": {
+			"frame": {
+				"x": 1120,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"sourceSize": {
+				"w": 160,
+				"h": 128
+			}
+		},
+		"attack-angle-down-09.png": {
+			"frame": {
+				"x": 1280,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"sourceSize": {
+				"w": 160,
+				"h": 128
+			}
+		},
+		"attack-angle-down-10.png": {
+			"frame": {
+				"x": 1440,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"sourceSize": {
+				"w": 160,
+				"h": 128
+			}
+		},
+		"attack-angle-down-continue-11.png": {
+			"frame": {
+				"x": 1600,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"sourceSize": {
+				"w": 160,
+				"h": 128
+			}
+		},
+		"attack-angle-down-continue-12.png": {
+			"frame": {
+				"x": 1760,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"sourceSize": {
+				"w": 160,
+				"h": 128
+			}
+		},
+		"attack-angle-down-continue-13.png": {
+			"frame": {
+				"x": 1920,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 160,
+				"h": 128
+			},
+			"sourceSize": {
+				"w": 160,
+				"h": 128
+			}
+		}
+	},
+	"meta": {
+		"app": "http://www.codeandweb.com/texturepacker",
+		"version": "1.0",
+		"image": "spritesheet.png",
+		"format": "RGBA8888",
+		"size": {
+			"w": 2080,
+			"h": 128
+		},
+		"scale": "1"
+	}
+}

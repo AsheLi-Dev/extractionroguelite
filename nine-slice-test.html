@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nine Slice Test</title>
+    <style>
+      body {
+        margin: 0;
+        background: #0b1020;
+        color: #e5e7eb;
+        font-family: system-ui, sans-serif;
+      }
+      .wrap {
+        padding: 16px;
+      }
+      canvas {
+        display: block;
+        background: #111827;
+        border: 1px solid #374151;
+        image-rendering: pixelated;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <canvas id="nine-slice-canvas" width="1820" height="1480"></canvas>
+    </div>
+    <script type="module">
+      import { drawNineSlice, setPixelArtSmoothing, NINE_SLICE_PRESETS } from "./src/ui/nine-slice.js";
+
+      const canvas = document.getElementById("nine-slice-canvas");
+      const ctx = canvas.getContext("2d");
+      setPixelArtSmoothing(ctx, false);
+
+      const spriteDefs = [
+        { key: "UI_TravelBook_Popup01a", src: "assets/UI/UI_TravelBook_Popup01a.png" },
+        { key: "ui_travelbook_banner", src: "assets/UI/ui_travelbook_banner.png" },
+        { key: "ui_travelbook_cover_frame", src: "assets/UI/ui_travelbook_cover_frame.png" },
+        { key: "ui_travelbook_page", src: "assets/UI/ui_travelbook_page.png" },
+      ];
+      const sizes = [
+        { w: 200, h: 120 },
+        { w: 300, h: 200 },
+        { w: 500, h: 300 },
+      ];
+
+      function loadImage(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = src;
+        });
+      }
+
+      async function run() {
+        const loaded = [];
+        for (const def of spriteDefs) {
+          loaded.push({ ...def, image: await loadImage(def.src) });
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#9ca3af";
+        ctx.font = "14px system-ui, sans-serif";
+        ctx.fillText("Nine-slice test: 200x120, 300x200, 500x300", 16, 20);
+
+        let y = 40;
+        for (const sprite of loaded) {
+          ctx.fillStyle = "#e5e7eb";
+          ctx.font = "13px system-ui, sans-serif";
+          ctx.fillText(sprite.key, 16, y + 14);
+          let x = 16;
+          const preset = NINE_SLICE_PRESETS[sprite.key];
+          for (const size of sizes) {
+            drawNineSlice(
+              ctx,
+              sprite.image,
+              x,
+              y + 24,
+              size.w,
+              size.h,
+              preset.left,
+              preset.right,
+              preset.top,
+              preset.bottom
+            );
+            ctx.fillStyle = "#9ca3af";
+            ctx.font = "11px system-ui, sans-serif";
+            ctx.fillText(`${size.w}x${size.h}`, x, y + 24 + size.h + 14);
+            x += size.w + 20;
+          }
+          y += 24 + 300 + 40;
+        }
+      }
+
+      run().catch((err) => {
+        console.error(err);
+        ctx.fillStyle = "#ef4444";
+        ctx.fillText(`Failed to load test sprites: ${String(err)}`, 16, 20);
+      });
+    </script>
+  </body>
+</html>

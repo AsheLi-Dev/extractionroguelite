@@ -1,0 +1,74 @@
+/* -------- Main Stylesheet -------- */
+/* Imports all component stylesheets */
+
+@import url('./base.css');
+@import url('./game.css');
+/* TODO: Extract remaining CSS sections from styles.css into:
+   - ui.css (buttons, tooltips, health bars, etc.)
+   - overlays.css (level-up, victory, game-over, event, shrine)
+   - menus.css (main-menu, talent-tree, skill-library, pre-run, legacy-vault)
+   - inventory.css (inventory overlay, crafting)
+   - dev.css (dev tools)
+*/
+@import url('./ui.css');
+@import url('./overlays.css');
+@import url('./menus.css');
+@import url('./inventory.css');
+@import url('./dev.css');
+@import url('./pillars.css');
+
+#minimap-canvas.minimap-canvas {
+  position: fixed;
+  width: 176px;
+  height: 104px;
+  max-width: 30vw;
+  max-height: 30vh;
+  image-rendering: pixelated;
+  border: 2px solid rgba(148, 163, 184, 0.9);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.95), 0 12px 24px rgba(15, 23, 42, 0.9);
+  pointer-events: none;
+  z-index: 20;
+  opacity: 0.5;
+}
+
+#talent-tree-close,
+#skill-library-close,
+#instructions-close,
+#options-close,
+#legacy-vault-close,
+#inventory-overlay-close,
+#build-log-close,
+#dev-close,
+#notification-close,
+#friends-close-btn {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent url('../assets/UI/UI_TravelBook_IconCross01a.png') center/contain no-repeat !important;
+  box-shadow: none !important;
+  color: transparent !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  text-indent: -9999px;
+  overflow: hidden;
+}
+
+#talent-tree-close:hover,
+#skill-library-close:hover,
+#instructions-close:hover,
+#options-close:hover,
+#legacy-vault-close:hover,
+#inventory-overlay-close:hover,
+#build-log-close:hover,
+#dev-close:hover,
+#notification-close:hover,
+#friends-close-btn:hover {
+  filter: brightness(1.15);
+}
+

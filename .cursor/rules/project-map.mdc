@@ -1,0 +1,14 @@
+---
+description: Read PROJECT_MAP.md first for architecture and key files
+alwaysApply: true
+---
+
+# Project context
+
+When working on Extract-Da-Panda, **read `PROJECT_MAP.md`** at the repo root first. Use it to:
+
+- Understand the game architecture (game loop, rendering, map generation, player, enemies, UI).
+- Find which files own which systems (e.g. `src/game/game-core.js` for the loop, `src/data/maps.js` for map generation).
+- Avoid scanning the whole codebase when you need to change a specific system.
+
+Then use that context for all edits, refactors, and answers about this codebase.

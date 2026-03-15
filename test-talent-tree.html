@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Talent Tree Testing Helper</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 20px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+    }
+    h1 {
+      color: #4ec9b0;
+    }
+    .section {
+      background: #252526;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 5px;
+      border-left: 3px solid #007acc;
+    }
+    button {
+      background: #007acc;
+      color: white;
+      border: none;
+      padding: 8px 15px;
+      margin: 5px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    button:hover {
+      background: #005a9e;
+    }
+    button.danger {
+      background: #d32f2f;
+    }
+    button.danger:hover {
+      background: #b71c1c;
+    }
+    input {
+      background: #3c3c3c;
+      color: #d4d4d4;
+      border: 1px solid #555;
+      padding: 5px;
+      margin: 5px;
+      border-radius: 3px;
+      font-family: inherit;
+    }
+    #output {
+      background: #1e1e1e;
+      border: 1px solid #555;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 3px;
+      min-height: 100px;
+      max-height: 400px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      font-size: 12px;
+    }
+    .status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 3px;
+      background: #2d2d30;
+    }
+    .status-label {
+      font-weight: bold;
+      color: #4ec9b0;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎯 Talent Tree Testing Helper</h1>
+  
+  <div class="section">
+    <h2>Current State</h2>
+    <div id="currentState" class="status">
+      <span class="status-label">LP:</span> <span id="lpValue">0</span> | 
+      <span class="status-label">Talents:</span> <span id="talentsValue">[]</span>
+    </div>
+    <button onclick="updateState()">Refresh State</button>
+  </div>
+
+  <div class="section">
+    <h2>Quick Actions</h2>
+    <button onclick="setLP(10)">Set LP to 10</button>
+    <button onclick="setLP(50)">Set LP to 50</button>
+    <button onclick="setLP(100)">Set LP to 100</button>
+    <br>
+    <input type="number" id="customLP" placeholder="Custom LP" value="10">
+    <button onclick="setLP(document.getElementById('customLP').value)">Set Custom LP</button>
+    <br>
+    <button onclick="clearTalents()" class="danger">Clear All Talents</button>
+    <button onclick="resetAll()" class="danger">Reset Everything</button>
+  </div>
+
+  <div class="section">
+    <h2>Manage Talents</h2>
+    <input type="text" id="talentId" placeholder="Talent ID (e.g., 'fierce')" value="fierce">
+    <button onclick="addTalent()">Add Talent</button>
+    <button onclick="removeTalent()">Remove Talent</button>
+    <button onclick="checkTalent()">Check Talent</button>
+    <br>
+    <button onclick="listAllTalents()">List All Purchased Talents</button>
+  </div>
+
+  <div class="section">
+    <h2>Test Scenarios</h2>
+    <button onclick="scenarioBasicPurchase()">Scenario: Basic Purchase</button>
+    <button onclick="scenarioParentRequirement()">Scenario: Parent Requirement</button>
+    <button onclick="scenarioInsufficientLP()">Scenario: Insufficient LP</button>
+    <button onclick="scenarioRefundPrevention()">Scenario: Refund Prevention</button>
+    <button onclick="scenarioFullBranch()">Scenario: Full Branch</button>
+  </div>
+
+  <div class="section">
+    <h2>Output</h2>
+    <button onclick="clearOutput()">Clear Output</button>
+    <div id="output"></div>
+  </div>
+
+  <script>
+    const TALENTS_KEY = 'spaceShooter_talents';
+    const LP_KEY = 'spaceShooter_legacyPoints';
+
+    function log(message) {
+      const output = document.getElementById('output');
+      const timestamp = new Date().toLocaleTimeString();
+      output.textContent += `[${timestamp}] ${message}\n`;
+      output.scrollTop = output.scrollHeight;
+      console.log(message);
+    }
+
+    function clearOutput() {
+      document.getElementById('output').textContent = '';
+    }
+
+    function updateState() {
+      const talents = JSON.parse(localStorage.getItem(TALENTS_KEY) || '[]');
+      const lp = parseInt(localStorage.getItem(LP_KEY) || '0');
+      
+      document.getElementById('lpValue').textContent = lp;
+      document.getElementById('talentsValue').textContent = JSON.stringify(talents);
+      
+      log(`State updated: LP=${lp}, Talents=${talents.length}`);
+      return { talents, lp };
+    }
+
+    function setLP(amount) {
+      const num = parseInt(amount);
+      if (isNaN(num)) {
+        log('Error: Invalid LP amount');
+        return;
+      }
+      localStorage.setItem(LP_KEY, String(num));
+      log(`LP set to ${num}`);
+      updateState();
+      return num;
+    }
+
+    function clearTalents() {
+      if (!confirm('Clear all purchased talents?')) return;
+      localStorage.removeItem(TALENTS_KEY);
+      log('All talents cleared');
+      updateState();
+    }
+
+    function resetAll() {
+      if (!confirm('Reset everything? This will clear all talents and set LP to 0.')) return;
+      localStorage.removeItem(TALENTS_KEY);
+      localStorage.setItem(LP_KEY, '0');
+      log('Everything reset');
+      updateState();
+    }
+
+    function addTalent() {
+      const talentId = document.getElementById('talentId').value.trim();
+      if (!talentId) {
+        log('Error: Please enter a talent ID');
+        return;
+      }
+      const talents = JSON.parse(localStorage.getItem(TALENTS_KEY) || '[]');
+      if (talents.includes(talentId)) {
+        log(`Talent "${talentId}" already exists`);
+        return;
+      }
+      talents.push(talentId);
+      localStorage.setItem(TALENTS_KEY, JSON.stringify(talents));
+      log(`Added talent: ${talentId}`);
+      updateState();
+    }
+
+    function removeTalent() {
+      const talentId = document.getElementById('talentId').value.trim();
+      if (!talentId) {
+        log('Error: Please enter a talent ID');
+        return;
+      }
+      const talents = JSON.parse(localStorage.getItem(TALENTS_KEY) || '[]');
+      const filtered = talents.filter(id => id !== talentId);
+      if (filtered.length === talents.length) {
+        log(`Talent "${talentId}" not found`);
+        return;
+      }
+      localStorage.setItem(TALENTS_KEY, JSON.stringify(filtered));
+      log(`Removed talent: ${talentId}`);
+      updateState();
+    }
+
+    function checkTalent() {
+      const talentId = document.getElementById('talentId').value.trim();
+      if (!talentId) {
+        log('Error: Please enter a talent ID');
+        return;
+      }
+      const talents = JSON.parse(localStorage.getItem(TALENTS_KEY) || '[]');
+      const has = talents.includes(talentId);
+      log(`Talent "${talentId}": ${has ? '✓ PURCHASED' : '✗ NOT PURCHASED'}`);
+    }
+
+    function listAllTalents() {
+      const talents = JSON.parse(localStorage.getItem(TALENTS_KEY) || '[]');
+      log(`Purchased talents (${talents.length}):`);
+      talents.forEach((id, idx) => log(`  ${idx + 1}. ${id}`));
+      if (talents.length === 0) {
+        log('  (none)');
+      }
+    }
+
+    // Test Scenarios
+    function scenarioBasicPurchase() {
+      log('\n=== Scenario: Basic Purchase ===');
+      resetAll();
+      setLP(10);
+      log('✓ Setup complete');
+      log('→ Now go to talent tree UI and try purchasing "fierce" (cost: 1 LP)');
+      log('→ Expected: LP decreases to 9, talent shows as purchased');
+    }
+
+    function scenarioParentRequirement() {
+      log('\n=== Scenario: Parent Requirement ===');
+      resetAll();
+      setLP(10);
+      addTalent('fierce');
+      log('✓ Added parent talent "fierce"');
+      log('→ Now try purchasing "bloodthirst" in UI (cost: 2 LP)');
+      log('→ Expected: "bloodthirst" should be available (parent exists)');
+    }
+
+    function scenarioInsufficientLP() {
+      log('\n=== Scenario: Insufficient LP ===');
+      resetAll();
+      setLP(0);
+      log('✓ LP set to 0');
+      log('→ Try purchasing any talent in UI');
+      log('→ Expected: Purchase should fail, LP remains 0');
+    }
+
+    function scenarioRefundPrevention() {
+      log('\n=== Scenario: Refund Prevention ===');
+      resetAll();
+      setLP(10);
+      addTalent('fierce');
+      addTalent('bloodthirst');
+      log('✓ Added "fierce" → "bloodthirst" chain');
+      log('→ Try refunding "fierce" in UI');
+      log('→ Expected: Cannot refund "fierce" (has child "bloodthirst")');
+      log('→ Try refunding "bloodthirst"');
+      log('→ Expected: Can refund "bloodthirst" (no children)');
+    }
+
+    function scenarioFullBranch() {
+      log('\n=== Scenario: Full Branch Purchase ===');
+      resetAll();
+      setLP(50);
+      log('✓ LP set to 50');
+      log('→ Purchase entire Warrior branch:');
+      log('  Tier 1: fierce, rapid, resilient (1 LP each)');
+      log('  Tier 2: bloodthirst, predator, reflexes, ironWill (2 LP each)');
+      log('  Tier 3: frenzy, executioner, battleScarred, endurance, fortress (3 LP each)');
+      log('  Tier 4: berserkerRage, warlord, secondWind, immortal (4-5 LP each)');
+    }
+
+    // Initialize
+    updateState();
+    log('Talent Tree Testing Helper loaded!');
+    log('Use the buttons above to test talent tree functionality.');
+  </script>
+</body>
+</html>

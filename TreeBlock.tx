@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<template>
+ <tileset firstgid="1" source="Trees.tsx"/>
+ <object gid="7" width="228" height="295">
+  <properties>
+   <property name="type" value="tree"/>
+  </properties>
+ </object>
+</template>
