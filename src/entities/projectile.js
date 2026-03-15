@@ -4,7 +4,9 @@ import { drawMagicProjectile, getMagicProjectileDrawOptions } from '../vfx/magic
 export const PLAYER_PROJECTILE_SPEED = 520;
 export const PLAYER_PROJECTILE_SIZE = 8;
 export const PLAYER_PROJECTILE_MAX_DIST = 1400;
-export const PLAYER_PROJECTILE_TRAIL_LEN = 8; // Increased for better trail effect
+export const PLAYER_PROJECTILE_TRAIL_LEN = 8;
+export const WIND_PROJECTILE_TRAIL_LEN = 16;
+export const WIND_PROJECTILE_TRAIL_LIFE = 0.35;
 
 const enemyProjectileSpriteCache = new Map();
 
@@ -31,8 +33,8 @@ export class PlayerProjectile {
     const sizeMult = options.sizeMult != null ? options.sizeMult : 1;
     this.size = (options.overdrive ? PLAYER_PROJECTILE_SIZE * 2 : PLAYER_PROJECTILE_SIZE) * sizeMult;
     if (options.overdrive) this.damage = this.damage * 3;
-    this.trail = [];
-    this.trailPositions = []; // New trail array for afterimages (N=8)
+    this.elementalState = options.elementalState ?? "fire";
+    this.trailPositions = [];
     this.sparks = []; // Sparks particles array
     this.distanceTraveled = 0;
     this.hitEnemyIds = new Set();
@@ -54,7 +56,6 @@ export class PlayerProjectile {
     this.currentDamageMult = 1;
     this._spawn = null;
     this.magicStyle = options.magicStyle ?? null;
-    this.elementalState = options.elementalState ?? "fire";
     this.bounceOffWalls = !!options.bounceOffWalls;
     if (options.rectWidth != null && options.rectHeight != null) {
       this.rectWidth = options.rectWidth;
@@ -67,15 +68,28 @@ export class PlayerProjectile {
   }
 
   update(dt, game = null) {
-    // Update trail positions (for afterimages)
-    this.trailPositions.push({ x: this.position.x, y: this.position.y });
-    if (this.trailPositions.length > PLAYER_PROJECTILE_TRAIL_LEN) {
-      this.trailPositions.shift();
+    if (this.elementalState === "wind") {
+      this.trailPositions.push({
+        x: this.position.x,
+        y: this.position.y,
+        age: 0,
+        life: WIND_PROJECTILE_TRAIL_LIFE,
+        width: Math.max(2.5, this.size * 0.8)
+      });
+      if (this.trailPositions.length > WIND_PROJECTILE_TRAIL_LEN) this.trailPositions.shift();
+      for (let i = 0; i < this.trailPositions.length; i++) {
+        const trailPoint = this.trailPositions[i];
+        trailPoint.age = (trailPoint.age || 0) + dt;
+      }
+      while (this.trailPositions.length > 0 && (this.trailPositions[0].age || 0) >= (this.trailPositions[0].life || WIND_PROJECTILE_TRAIL_LIFE)) {
+        this.trailPositions.shift();
+      }
+    } else {
+      this.trailPositions.push({ x: this.position.x, y: this.position.y, age: 0, life: 1 });
+      if (this.trailPositions.length > PLAYER_PROJECTILE_TRAIL_LEN) {
+        this.trailPositions.shift();
+      }
     }
-    
-    // Keep old trail for backward compatibility
-    this.trail.push({ x: this.position.x, y: this.position.y });
-    if (this.trail.length > PLAYER_PROJECTILE_TRAIL_LEN) this.trail.shift();
     
     // Update sparks
     for (let i = this.sparks.length - 1; i >= 0; i--) {
@@ -231,39 +245,80 @@ export class PlayerProjectile {
     const stretch = clamp(speed * 0.015, 0.0, 1.2);
     const scaleX = 1.0 + stretch;
     const scaleY = 1.0;
-    
-    // Draw trail afterimages (oldest to newest)
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.imageSmoothingEnabled = false;
-    
     const isRect = this.rectWidth != null && this.rectHeight != null;
-    const trailN = this.trailPositions.length;
-    for (let i = 0; i < trailN; i++) {
-      const t = this.trailPositions[i];
-      const trailSx = Math.floor(t.x - camera.position.x);
-      const trailSy = Math.floor(t.y - camera.position.y);
-      const progress = (i + 1) / trailN;
-      const alpha = progress * 0.35;
-      const sizeMul = lerp(0.6, 1.0, progress);
-      const trailW = (isRect ? this.rectWidth : this.size) * sizeMul;
-      const trailH = (isRect ? this.rectHeight : this.size) * sizeMul;
-      const trailCx = trailSx + (isRect ? this.rectWidth : this.size) / 2;
-      const trailCy = trailSy + (isRect ? this.rectHeight : this.size) / 2;
-      ctx.save();
-      ctx.translate(trailCx, trailCy);
-      ctx.rotate(angle);
-      if (isRect) {
-        ctx.scale(scaleX * sizeMul, scaleY * sizeMul);
-        ctx.fillStyle = `rgba(${colors.trail}, ${alpha})`;
-        ctx.fillRect(-trailW / 2, -trailH / 2, trailW, trailH);
-      } else {
-        const trailSize = this.size * sizeMul;
-        ctx.scale(scaleX * sizeMul, scaleY * sizeMul);
-        ctx.fillStyle = `rgba(${colors.trail}, ${alpha})`;
+    
+    if (el === "wind") {
+      const trail = this.trailPositions;
+      for (let i = 1; i < trail.length; i++) {
+        const prev = trail[i - 1];
+        const cur = trail[i];
+        const dx = cur.x - prev.x;
+        const dy = cur.y - prev.y;
+        const segLen = Math.hypot(dx, dy);
+        if (segLen < 1) continue;
+        const age = Number(cur.age) || 0;
+        const life = Number(cur.life) || WIND_PROJECTILE_TRAIL_LIFE;
+        const alpha = Math.max(0, 1 - age / life);
+        const tailWidth = isRect ? ((prev.width || this.size) * 0.7) : ((prev.width || this.size) * 0.5);
+        const x1 = Math.floor(prev.x - camera.position.x);
+        const y1 = Math.floor(prev.y - camera.position.y);
+        const x2 = Math.floor(cur.x - camera.position.x);
+        const y2 = Math.floor(cur.y - camera.position.y);
+        const width = Math.max(2.2, tailWidth * (0.45 + (i / trail.length)));
+
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.strokeStyle = `rgba(182, 244, 255, ${Math.max(0.02, alpha * 0.26)})`;
+        ctx.shadowColor = `rgba(200, 248, 255, ${Math.max(0.02, alpha * 0.42)})`;
+        ctx.shadowBlur = 10;
+        ctx.lineWidth = width;
+        ctx.lineCap = "round";
         ctx.beginPath();
-        ctx.ellipse(0, 0, trailSize / 2, trailSize / 2, 0, 0, Math.PI * 2);
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = `rgba(210, 250, 255, ${Math.max(0.02, alpha * 0.16)})`;
+        ctx.beginPath();
+        ctx.ellipse(x2, y2, width * 0.9, width * 0.55, 0, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // Draw trail afterimages (oldest to newest)
+    if (el !== "wind") {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.imageSmoothingEnabled = false;
+      const trailN = this.trailPositions.length;
+      for (let i = 0; i < trailN; i++) {
+        const t = this.trailPositions[i];
+        const trailSx = Math.floor(t.x - camera.position.x);
+        const trailSy = Math.floor(t.y - camera.position.y);
+        const progress = (i + 1) / trailN;
+        const alpha = progress * 0.35;
+        const sizeMul = lerp(0.6, 1.0, progress);
+        const trailW = (isRect ? this.rectWidth : this.size) * sizeMul;
+        const trailH = (isRect ? this.rectHeight : this.size) * sizeMul;
+        const trailCx = trailSx + (isRect ? this.rectWidth : this.size) / 2;
+        const trailCy = trailSy + (isRect ? this.rectHeight : this.size) / 2;
+        ctx.save();
+        ctx.translate(trailCx, trailCy);
+        ctx.rotate(angle);
+        if (isRect) {
+          ctx.scale(scaleX * sizeMul, scaleY * sizeMul);
+          ctx.fillStyle = `rgba(${colors.trail}, ${alpha})`;
+          ctx.fillRect(-trailW / 2, -trailH / 2, trailW, trailH);
+        } else {
+          const trailSize = this.size * sizeMul;
+          ctx.scale(scaleX * sizeMul, scaleY * sizeMul);
+          ctx.fillStyle = `rgba(${colors.trail}, ${alpha})`;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, trailSize / 2, trailSize / 2, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
       }
       ctx.restore();
     }
@@ -279,11 +334,12 @@ export class PlayerProjectile {
       ctx.fillStyle = `rgba(${colors.core}, 0.9)`;
       ctx.fillRect(-w / 2 * 0.7, -h / 2 * 0.7, w * 0.7, h * 0.7);
     } else {
-      ctx.fillStyle = `rgba(${colors.glow}, 0.6)`;
+      const windFill = el === "wind";
+      ctx.fillStyle = `rgba(${colors.glow}, ${windFill ? 0.2 : 0.6})`;
       ctx.beginPath();
       ctx.ellipse(0, 0, this.size / 2 * 1.2, this.size / 2 * 1.2, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = `rgba(${colors.core}, 0.9)`;
+      ctx.fillStyle = `rgba(${colors.core}, ${windFill ? 0.7 : 0.9})`;
       ctx.beginPath();
       ctx.ellipse(0, 0, this.size / 2 * 0.7, this.size / 2 * 0.7, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -437,6 +493,7 @@ export class EnemyProjectile {
     const sx = Math.floor(this.position.x - camera.position.x);
     const sy = Math.floor(this.position.y - camera.position.y);
     const angle = Math.atan2(this.velocity.y, this.velocity.x);
+    const outlineWidth = 5;
 
     if (this.spriteImage && this.spriteImage.complete && this.spriteImage.naturalWidth > 0 && this.spriteImage.naturalHeight > 0) {
       ctx.save();
@@ -444,6 +501,9 @@ export class EnemyProjectile {
       ctx.translate(sx + this.size / 2, sy + this.size / 2);
       ctx.rotate(angle);
       ctx.drawImage(this.spriteImage, -this.size / 2, -this.size / 2, this.size, this.size);
+      ctx.strokeStyle = "#ff0000";
+      ctx.lineWidth = outlineWidth;
+      ctx.strokeRect(-this.size / 2, -this.size / 2, this.size, this.size);
       ctx.restore();
       return;
     }
@@ -465,6 +525,13 @@ export class EnemyProjectile {
         ...this.magicStyle,
       });
       drawMagicProjectile(ctx, opts);
+      ctx.save();
+      ctx.strokeStyle = "#ff0000";
+      ctx.lineWidth = outlineWidth;
+      ctx.beginPath();
+      ctx.arc(sx + this.size / 2, sy + this.size / 2, this.size / 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
       return;
     }
 
@@ -487,6 +554,11 @@ export class EnemyProjectile {
     ctx.beginPath();
     ctx.arc(sx + this.size / 2, sy + this.size / 2, this.size / 2, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = "#ff0000";
+    ctx.lineWidth = outlineWidth;
+    ctx.beginPath();
+    ctx.arc(sx + this.size / 2, sy + this.size / 2, this.size / 2, 0, Math.PI * 2);
+    ctx.stroke();
   }
 }
 
@@ -558,12 +630,5 @@ export class Projectile {
     ctx.fill();
   }
 }
-
-
-
-
-
-
-
 
 
