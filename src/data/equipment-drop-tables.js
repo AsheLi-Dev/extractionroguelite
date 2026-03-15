@@ -23,6 +23,24 @@ export const MINIBOSS_EXTRA_BASE = Object.freeze({
   qualityBonus: 0.8
 });
 
+function getMiniBossExtraChance(dropMult, equipDropMult, bandMult) {
+  const chanceMult = Math.max(0, Number(dropMult) || 0)
+    * Math.max(0, Number(equipDropMult) || 0)
+    * Math.max(0, Number(bandMult) || 0);
+  return Math.max(0, Math.min(1, (MINIBOSS_EXTRA_BASE.chance || 0) * chanceMult));
+}
+
+export function getMiniBossSecondaryDropChance(tier, dropMult = 1, equipDropMult = 1, bandMult = 1) {
+  if (tier !== "miniBoss") return { secondary: {} };
+  const chance = getMiniBossExtraChance(dropMult, equipDropMult, bandMult);
+  return {
+    secondary: {
+      rare: chance * 0.05,
+      magic: chance * 0.15
+    }
+  };
+}
+
 function getBaseTableForTier(tier) {
   if (tier === "miniBoss") return MINIBOSS_BASE;
   if (tier === "special") return SPECIAL_BASE;
@@ -46,6 +64,7 @@ export function rollEquipmentDropOutcome(tier, bias = 0, dropMult = 1, equipDrop
   if (probs.chance <= 0 || Math.random() >= probs.chance) return null;
   return {
     tier,
-    qualityBonus: probs.qualityBonus
+    qualityBonus: probs.qualityBonus,
+    rarity: Math.random() < 0.2 ? "rare" : "magic"
   };
 }

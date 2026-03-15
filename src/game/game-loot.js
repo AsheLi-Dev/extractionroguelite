@@ -297,7 +297,7 @@ export function applyGameLootMixin(Game) {
           this.logTalentTrigger("keenEye", "Mini-boss guaranteed rare drop applied.");
         }
 
-        const miniChance = getMiniBossSecondaryDropChance("miniBoss", dropChanceInputs);
+        const miniChance = getMiniBossSecondaryDropChance("miniBoss", dropChanceInputs.dropMult, dropChanceInputs.equipDropMult, dropChanceInputs.bandMult);
         const secRoll = Math.random();
         if (secRoll < (miniChance.secondary?.rare || 0)) {
           emitEquipment(generateEquipmentItem(types[Math.floor(Math.random() * types.length)], lootQual, 0, "rare", equipOpts));
@@ -335,7 +335,7 @@ export function applyGameLootMixin(Game) {
           }
         }
       } else {
-        const outcome = rollEquipmentDropOutcome(tier, dropChanceInputs);
+        const outcome = rollEquipmentDropOutcome(tier, 0, dropChanceInputs.dropMult, dropChanceInputs.equipDropMult, dropChanceInputs.bandMult);
         if (outcome && outcome.rarity) {
           const type = types[Math.floor(Math.random() * types.length)];
           emitEquipment(generateEquipmentItem(type, lootQual, 0, outcome.rarity, equipOpts));
