@@ -3,7 +3,7 @@
  * and runs overlap tests against world targets. Collision is intentionally
  * minimal (circle, rect, cone vs circle) so melee, projectiles, and AoEs
  * share one code path without extra dependencies.
- * Moving projectiles can use moveMode: straight, accelerating, zigzag, homing.
+ * Moving projectiles can use moveMode: straight, accelerating, speed_ramp, zigzag, segment_zigzag, homing, spiral.
  */
 
 import { createHitboxInstance } from './hitbox-factory.js';
@@ -57,6 +57,18 @@ export function updateProjectileMotion(h, dt, world) {
     return;
   }
 
+  if (mode === 'speed_ramp') {
+    const duration = Math.max(0, Number(h.speedRampDuration) || 0);
+    const start = Number.isFinite(h.speedRampStart) ? h.speedRampStart : h.moveSpeed;
+    const end = Number.isFinite(h.speedRampEnd) ? h.speedRampEnd : start;
+    const t = duration > 0 ? Math.min(1, (h._age ?? 0) / duration) : 1;
+    const speed = start + (end - start) * t;
+    h._currentSpeed = speed;
+    h.x += h.dirX * speed * dt;
+    h.y += h.dirY * speed * dt;
+    return;
+  }
+
   if (mode === 'zigzag') {
     const startX = h._zigzagStartX ?? h.x;
     const startY = h._zigzagStartY ?? h.y;
@@ -77,6 +89,47 @@ export function updateProjectileMotion(h, dt, world) {
     return;
   }
 
+  if (mode === 'segment_zigzag') {
+    const forwardX = h.forwardX ?? h.dirX;
+    const forwardY = h.forwardY ?? h.dirY;
+    const lateralX = -forwardY;
+    const lateralY = forwardX;
+    const segmentSecMin = Math.max(0.001, Number(h.zigzagSegmentSecMin ?? h.zigzagSegmentSec) || 0.08);
+    const segmentSecMax = Math.max(segmentSecMin, Number(h.zigzagSegmentSecMax ?? h.zigzagSegmentSec ?? segmentSecMin) || segmentSecMin);
+    const lateralWeightMin = Math.max(0, Number(h.zigzagLateralWeightMin ?? h.zigzagLateralWeight) || 0.55);
+    const lateralWeightMax = Math.max(lateralWeightMin, Number(h.zigzagLateralWeightMax ?? h.zigzagLateralWeight ?? lateralWeightMin) || lateralWeightMin);
+    const maxSegments = h.zigzagMaxSegments == null ? null : Math.max(0, Number(h.zigzagMaxSegments) || 0);
+    let remaining = dt;
+    while (remaining > 1e-6) {
+      if ((h._zigzagSegmentTimer ?? 0) <= 1e-6) {
+        if ((h._zigzagSegmentIndex ?? 0) > 0) {
+          h._zigzagSegmentSign = (h._zigzagSegmentSign ?? 1) * -1;
+        }
+        const nextDuration = segmentSecMin + Math.random() * (segmentSecMax - segmentSecMin);
+        h._zigzagSegmentTimer = nextDuration;
+        h._zigzagSegmentIndex = (h._zigzagSegmentIndex ?? 0) + 1;
+        h._zigzagSegmentLateralWeight = lateralWeightMin + Math.random() * (lateralWeightMax - lateralWeightMin);
+      }
+      const step = Math.min(remaining, h._zigzagSegmentTimer);
+      const sign = maxSegments != null && (h._zigzagSegmentIndex ?? 1) > maxSegments
+        ? 0
+        : (h._zigzagSegmentSign ?? 1);
+      const lateralWeight = Number(h._zigzagSegmentLateralWeight ?? lateralWeightMin) || 0;
+      const rawX = forwardX + lateralX * sign * lateralWeight;
+      const rawY = forwardY + lateralY * sign * lateralWeight;
+      const len = Math.sqrt(rawX * rawX + rawY * rawY) || 1;
+      const dirX = rawX / len;
+      const dirY = rawY / len;
+      h.dirX = dirX;
+      h.dirY = dirY;
+      h.x += dirX * h.moveSpeed * step;
+      h.y += dirY * h.moveSpeed * step;
+      h._zigzagSegmentTimer -= step;
+      remaining -= step;
+    }
+    return;
+  }
+
   if (mode === 'homing') {
     const target = getTargetPosition(h.targetId, world);
     if (target) {
@@ -93,6 +146,17 @@ export function updateProjectileMotion(h, dt, world) {
       h.dirX = nx / nlen;
       h.dirY = ny / nlen;
     }
+    h.x += h.dirX * h.moveSpeed * dt;
+    h.y += h.dirY * h.moveSpeed * dt;
+    return;
+  }
+
+  if (mode === 'spiral') {
+    const baseAngle = Number.isFinite(h._spiralBaseAngle) ? h._spiralBaseAngle : Math.atan2(h.forwardY ?? h.dirY, h.forwardX ?? h.dirX);
+    const turnRate = (Number(h.spiralTurnRate) || 2.5) * ((Number(h.spiralDirection) || 1) >= 0 ? 1 : -1);
+    const angle = baseAngle + (h._age ?? 0) * turnRate;
+    h.dirX = Math.cos(angle);
+    h.dirY = Math.sin(angle);
     h.x += h.dirX * h.moveSpeed * dt;
     h.y += h.dirY * h.moveSpeed * dt;
     return;
@@ -224,10 +288,17 @@ export function createHitbox(def, spawnData) {
  */
 export function updateHitboxes(dt, world) {
   const currentTime = Number(world?.time) ?? 0;
+  const expireHitbox = (index, hitbox, reason) => {
+    if (typeof hitbox?.onExpire === 'function') {
+      hitbox.onExpire(reason, hitbox, world);
+    }
+    activeHitboxes.splice(index, 1);
+  };
+
   for (let i = activeHitboxes.length - 1; i >= 0; i--) {
     const h = activeHitboxes[i];
     if (h.destroyed) {
-      activeHitboxes.splice(i, 1);
+      expireHitbox(i, h, 'removed');
       continue;
     }
     h._age = (h._age ?? 0) + dt;
@@ -235,7 +306,7 @@ export function updateHitboxes(dt, world) {
     const expiredByAge = lifetimeSec > 0 && h._age >= lifetimeSec;
     const expiredByTime = h.expiresAt > 0 && currentTime >= h.expiresAt;
     if (expiredByAge || expiredByTime) {
-      activeHitboxes.splice(i, 1);
+      expireHitbox(i, h, 'lifetime');
       continue;
     }
 
@@ -250,7 +321,8 @@ export function updateHitboxes(dt, world) {
     if (h.moveSpeed > 0) {
       updateProjectileMotion(h, dt, world);
       if (typeof world?.hitboxDestroyIfObstacle === 'function' && world.hitboxDestroyIfObstacle(h)) {
-        activeHitboxes.splice(i, 1);
+        h.destroyed = true;
+        expireHitbox(i, h, 'obstacle');
         continue;
       }
     }

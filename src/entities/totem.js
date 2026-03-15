@@ -13,7 +13,6 @@ import {
   TOTEM_CATEGORY,
   pickRandomTotemType,
 } from '../data/totems.js';
-import { EnemyProjectile } from './projectile.js';
 import { obstacleIntersectsRect } from '../utils.js';
 
 const BUFF_TOTEM_SHEET_SRC = 'assets/Enemies/Buff Totem Sprite Sheet v1.1.png';
@@ -140,28 +139,23 @@ export class Totem {
         options.stunDuration = def.stunDuration ?? 0.35;
       }
 
-      const proj = new EnemyProjectile(
-        cx,
-        cy,
-        vx,
-        vy,
-        def.projectileDamage ?? 8,
-        def.projectileSize ?? 12,
-        def.color ?? "#999",
-        options
+      game.createEnemyProjectileAttack(
+        {
+          x: cx,
+          y: cy,
+          vx,
+          vy,
+          damage: def.projectileDamage ?? 8,
+          size: def.projectileSize ?? 12,
+          color: def.color ?? "#999"
+        },
+        options,
+        this,
+        {
+          sourceTotemId: this.id,
+          sourceTotemTypeId: this.typeId
+        }
       );
-      proj.sourceTotemId = this.id;
-      proj.sourceTotemTypeId = this.typeId;
-      if (def.onHitSlow) {
-        proj.slowZone = true;
-        proj.slowDuration = def.slowDuration ?? 1.5;
-        proj.slowMult = def.slowMult ?? 0.65;
-      }
-      if (def.onHitStun) {
-        proj.onHitStun = true;
-        proj.stunDuration = def.stunDuration ?? 0.35;
-      }
-      game.enemySystem.projectiles.push(proj);
     }
 
     if (game.devMode && typeof console !== 'undefined' && console.debug) {

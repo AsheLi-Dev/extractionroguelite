@@ -31,13 +31,19 @@ function nextId() {
  * @property {number} [maxHitsPerTarget]
  * @property {boolean} [followOwner]
  * @property {string[]} [tags]
- * @property {string} [moveMode] - 'straight' | 'accelerating' | 'zigzag' | 'homing'
+ * @property {string} [moveMode] - 'straight' | 'accelerating' | 'speed_ramp' | 'zigzag' | 'segment_zigzag' | 'homing' | 'spiral'
  * @property {number} [maxSpeed]
  * @property {number} [accel]
+ * @property {number} [speedRampEnd]
+ * @property {number} [speedRampDuration]
  * @property {string} [targetId]
  * @property {number} [homingStrength]
  * @property {number} [zigzagAmplitude]
  * @property {number} [zigzagFrequency]
+ * @property {number} [spiralDirection]
+ * @property {number} [spiralTurnRate]
+ * @property {(hitbox: import('./hitbox-types.js').HitboxInstance, world: unknown) => void} [onHit]
+ * @property {(reason: string, hitbox: import('./hitbox-types.js').HitboxInstance, world: unknown) => void} [onExpire]
  */
 
 /**
@@ -100,10 +106,21 @@ export function createHitboxInstance(def, spawn) {
 
   const maxSpeed = Math.max(0, Number(spawn?.maxSpeed ?? def?.maxSpeed) ?? 0);
   const accel = Number(spawn?.accel ?? def?.accel) ?? 0;
+  const speedRampEnd = Number(spawn?.speedRampEnd ?? def?.speedRampEnd);
+  const speedRampDuration = Math.max(0, Number(spawn?.speedRampDuration ?? def?.speedRampDuration) ?? 0);
   const targetId = spawn?.targetId ?? def?.targetId ?? null;
   const homingStrength = Math.max(0, Number(spawn?.homingStrength ?? def?.homingStrength) ?? 2);
   const zigzagAmplitude = Math.max(0, Number(spawn?.zigzagAmplitude ?? def?.zigzagAmplitude) ?? 20);
   const zigzagFrequency = Math.max(0, Number(spawn?.zigzagFrequency ?? def?.zigzagFrequency) ?? 6);
+  const spiralDirection = Number(spawn?.spiralDirection ?? def?.spiralDirection) || 1;
+  const spiralTurnRate = Number(spawn?.spiralTurnRate ?? def?.spiralTurnRate) || 2.5;
+  const zigzagSegmentSec = Math.max(0.01, Number(spawn?.zigzagSegmentSec ?? def?.zigzagSegmentSec) || 0.08);
+  const zigzagSegmentSecMin = Math.max(0.001, Number(spawn?.zigzagSegmentSecMin ?? def?.zigzagSegmentSecMin) || zigzagSegmentSec);
+  const zigzagSegmentSecMax = Math.max(zigzagSegmentSecMin, Number(spawn?.zigzagSegmentSecMax ?? def?.zigzagSegmentSecMax) || zigzagSegmentSecMin);
+  const zigzagLateralWeight = Math.max(0, Number(spawn?.zigzagLateralWeight ?? def?.zigzagLateralWeight) || 0.55);
+  const zigzagLateralWeightMin = Math.max(0, Number(spawn?.zigzagLateralWeightMin ?? def?.zigzagLateralWeightMin) || zigzagLateralWeight);
+  const zigzagLateralWeightMax = Math.max(zigzagLateralWeightMin, Number(spawn?.zigzagLateralWeightMax ?? def?.zigzagLateralWeightMax) || zigzagLateralWeightMin);
+  const zigzagMaxSegments = spawn?.zigzagMaxSegments ?? def?.zigzagMaxSegments ?? null;
 
   const x0 = Number(spawn?.x) ?? 0;
   const y0 = Number(spawn?.y) ?? 0;
@@ -160,6 +177,12 @@ export function createHitboxInstance(def, spawn) {
       instance.maxSpeed = maxSpeed > 0 ? maxSpeed : 9999;
       instance.accel = accel;
     }
+    if (moveMode === 'speed_ramp') {
+      instance.speedRampStart = moveSpeed;
+      instance.speedRampEnd = Number.isFinite(speedRampEnd) ? speedRampEnd : moveSpeed;
+      instance.speedRampDuration = speedRampDuration;
+      instance._currentSpeed = moveSpeed;
+    }
     if (moveMode === 'homing' && targetId) {
       instance.targetId = String(targetId);
       instance.homingStrength = homingStrength;
@@ -170,9 +193,35 @@ export function createHitboxInstance(def, spawn) {
       instance.zigzagAmplitude = zigzagAmplitude;
       instance.zigzagFrequency = zigzagFrequency;
     }
+    if (moveMode === 'segment_zigzag') {
+      instance.zigzagSegmentSec = zigzagSegmentSec;
+      instance.zigzagSegmentSecMin = zigzagSegmentSecMin;
+      instance.zigzagSegmentSecMax = zigzagSegmentSecMax;
+      instance.zigzagLateralWeight = zigzagLateralWeight;
+      instance.zigzagLateralWeightMin = zigzagLateralWeightMin;
+      instance.zigzagLateralWeightMax = zigzagLateralWeightMax;
+      instance.zigzagMaxSegments = zigzagMaxSegments == null ? null : Math.max(0, Math.floor(Number(zigzagMaxSegments)));
+      instance._zigzagSegmentTimer = 0;
+      instance._zigzagSegmentIndex = 0;
+      instance._zigzagSegmentSign = 1;
+      instance._zigzagSegmentLateralWeight = zigzagLateralWeightMin;
+    }
+    if (moveMode === 'spiral') {
+      instance.spiralDirection = spiralDirection;
+      instance.spiralTurnRate = spiralTurnRate;
+      instance._spiralBaseAngle = Math.atan2(dir.dirY, dir.dirX);
+    }
   }
   if (sniperPierceFalloff && typeof sniperPierceFalloff === 'object') {
     instance.sniperPierceFalloff = sniperPierceFalloff;
+  }
+
+  if (typeof (spawn?.onHit ?? def?.onHit) === 'function') {
+    instance.onHit = spawn?.onHit ?? def.onHit;
+  }
+
+  if (typeof (spawn?.onExpire ?? def?.onExpire) === 'function') {
+    instance.onExpire = spawn?.onExpire ?? def.onExpire;
   }
 
   if (spawn?.ghost != null) {

@@ -31,8 +31,8 @@ export function resolveHit(hitbox, target, world) {
   const hitStunMs = Math.max(0, hitbox.hitStunMs);
   const knockback = Math.max(0, hitbox.knockback);
 
-  if (typeof world.damageEntity === 'function') {
-    const source = typeof world.getEntityById === 'function' ? world.getEntityById(hitbox.ownerId) : null;
+  if (damage > 0 && typeof world.damageEntity === 'function') {
+    const source = hitbox.sourceEntity || (typeof world.getEntityById === 'function' ? world.getEntityById(hitbox.ownerId) : null);
     world.damageEntity(target.id, damage, source, { hitbox });
   }
   if (typeof world.applyStun === 'function' && hitStunMs > 0) {
@@ -49,5 +49,9 @@ export function resolveHit(hitbox, target, world) {
   hitbox.hitTargets.add(target.id);
   if (hitbox.maxTotalTargets != null && hitbox.hitTargets.size >= hitbox.maxTotalTargets) {
     hitbox.destroyed = true;
+  }
+
+  if (typeof hitbox.onHit === 'function') {
+    hitbox.onHit(hitbox, target, world);
   }
 }

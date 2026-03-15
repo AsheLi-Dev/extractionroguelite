@@ -71,7 +71,7 @@ import {
 } from '../entities/enemy.js';
 import {
   PLAYER_PROJECTILE_SPEED, PLAYER_PROJECTILE_SIZE, PLAYER_PROJECTILE_MAX_DIST,
-  PlayerProjectile, Projectile, EnemyProjectile
+  PlayerProjectile
 } from '../entities/projectile.js';
 import { Boss, BOSS_MAX_HP, BOSS_ATTACK, BOSS_BASE_SPEED, BOSS_SIZE } from '../entities/boss.js';
 import { EnemySystem } from '../entities/enemy-system.js';
@@ -91,6 +91,13 @@ import {
   CAMERA_SHAKE_INTENSITY,
   CAMERA_SHAKE_DURATION
 } from '../vfx/fanStrikeVfx.js';
+import {
+  createHitboxProjectileVisual,
+  destroyHitboxProjectileVisual,
+  updateHitboxProjectileVisualTrails,
+  drawHitboxProjectileTrails,
+  drawHitboxProjectileVisuals
+} from '../vfx/projectile-visuals.js';
 import { createHitbox, clearHitboxes, updateHitboxes, getActiveHitboxes, drawHitboxDebug } from '../combat/index.js';
 import { PLAYER_FAN_CONE_DEF, DEATH_KNIGHT_CONE_DEF, PLAYER_THRUST_RECT_DEF, HUMAN_LANCER_THRUST_RECT_DEF, PLAYER_PULSE_CIRCLE_DEF, PLAYER_PROJECTILE_CIRCLE_DEF, PLAYER_ELEMENTAL_WIND_RECT_DEF, thrustRectFromDirection, SOUL_SIPHON_BEAM_RECT_DEF } from '../combat/hitbox-examples.js';
 import { refreshMainMenuLP } from '../ui/main-menu.js';
@@ -181,9 +188,11 @@ const DESIGN_WIDTH = 640;
 const DESIGN_HEIGHT = 360;
 const CAMERA_VIEW_WIDTH = 499;   // zoomed out 1.2x from 416
 const CAMERA_VIEW_HEIGHT = 281; // zoomed out 1.2x from 234
-const WIND_PROJECTILE_TRAIL_LIFE = 0.5;
-const WIND_PROJECTILE_TRAIL_MAX_POINTS = 24;
-const WIND_PROJECTILE_TRAIL_MIN_STEP = 5;
+const LIGHTNING_ZIGZAG_SEGMENT_SEC_MIN = 0.004;
+const LIGHTNING_ZIGZAG_SEGMENT_SEC_MAX = 0.008;
+const LIGHTNING_ZIGZAG_LATERAL_WEIGHT_MIN = 0.4;
+const LIGHTNING_ZIGZAG_LATERAL_WEIGHT_MAX = 0.6;
+const LIGHTNING_ZIGZAG_MAX_SEGMENTS = null;
 
 // -------- Game Class --------
 // Game class constructor and property initialization.
@@ -194,7 +203,7 @@ export class Game {
     this.runConfig = runConfig;
     this.restRoomEnabled = true;
     this.pendingRestRoomExit = null;
-    this.characterTalents = getPurchasedTalents();
+    this.runTalents = getPurchasedTalents();
     this.difficulty = runConfig.difficulty ?? 1;
     this.conditions = enforceConditionLimits(runConfig.conditions ?? []);
     this.skills = runConfig.skills || [null, null, null, null];
@@ -332,7 +341,7 @@ export class Game {
     };
     this.selectedAncestorSpiritId = null;
     ensureRunInventoryState(this);
-    if (this.hasCharacterTalent("livingItem")) {
+    if (this.hasRunTalent("livingItem")) {
       const firstCommon = this.inventory.find((it) => it.type !== "Upgrade Card" && (it.rarity === "common" || !it.rarity));
       if (firstCommon) firstCommon.livingItem = true;
     }
@@ -371,10 +380,10 @@ export class Game {
       hazardDamageReduction: 0
     };
     if (!this.devMode) {
-      if (this.hasCharacterTalent("fortitude")) this.baseStats.maxHealth = Math.round(this.baseStats.maxHealth * 1.15);
-      if (this.hasCharacterTalent("thickSkin")) this.baseStats.maxHealth = Math.round(this.baseStats.maxHealth * 1.15);
-      if (this.hasCharacterTalent("fierce")) this.baseStats.attack = Math.round(this.baseStats.attack * 1.1);
-      if (this.hasCharacterTalent("nimble")) this.baseStats.speed = Math.round(this.baseStats.speed * 1.05);
+      if (this.hasRunTalent("fortitude")) this.baseStats.maxHealth = Math.round(this.baseStats.maxHealth * 1.15);
+      if (this.hasRunTalent("thickSkin")) this.baseStats.maxHealth = Math.round(this.baseStats.maxHealth * 1.15);
+      if (this.hasRunTalent("fierce")) this.baseStats.attack = Math.round(this.baseStats.attack * 1.1);
+      if (this.hasRunTalent("nimble")) this.baseStats.speed = Math.round(this.baseStats.speed * 1.05);
       if (this.hasCondition("startHealth")) this.baseStats.maxHealth = Math.max(10, this.baseStats.maxHealth - 30);
       if (this.hasCondition("startAttack")) this.baseStats.attack = Math.round(this.baseStats.attack * 0.8);
       if (this.hasCondition("startSpeed")) this.baseStats.speed = Math.round(this.baseStats.speed * 0.8);
@@ -772,7 +781,8 @@ export class Game {
 
     // Player projectile state
     this.playerProjectiles = [];
-    this.windProjectileTrails = new Map();
+    this.projectileVisuals = new Map();
+    this.enableProjectileVisuals = true;
     this.playerAttackCooldown = 0.72;
     // Elemental Shot: charge-based surge (fire / wind / lightning)
     this.elementalState = "fire";
@@ -812,12 +822,12 @@ export class Game {
     this.dashDuration = 0.2;
     this.dashInvincibleStart = 0.1;
     this.dashInvincibleDuration = 0.1;
-    let baseDash = this.hasCharacterTalent("agilitySwiftExtraction") ? 0.9 : 1.0;
-    if (this.hasCharacterTalent("reflexes")) baseDash = Math.max(0.1, baseDash - 0.1);
+    let baseDash = this.hasRunTalent("agilitySwiftExtraction") ? 0.9 : 1.0;
+    if (this.hasRunTalent("reflexes")) baseDash = Math.max(0.1, baseDash - 0.1);
     this.baseDashCooldownTime = baseDash;
     this.dashCooldownTime = this.baseDashCooldownTime;
     this.dashSpeedMult = 3;
-    this.dashDistanceMult = this.hasCharacterTalent("agilitySwiftExtraction") ? 0.5 * 1.25 : 0.5;
+    this.dashDistanceMult = this.hasRunTalent("agilitySwiftExtraction") ? 0.5 * 1.25 : 0.5;
     this.dashMaxCharges = 2;
     this.dashCharges = this.dashMaxCharges;
     this.dashRechargeTimer = 0;
@@ -864,7 +874,7 @@ export class Game {
     this.updateInventoryUI();
     this.updateEquippedUI();
     this.recalculateStats();
-    if (this.hasCharacterTalent("immortal")) this.immortalShield = 30;
+    if (this.hasRunTalent("immortal")) this.immortalShield = 30;
     this.recalculateStats();
     syncFocusCharges(this);
     this.updateMapUI();
@@ -1056,8 +1066,8 @@ export class Game {
     this._rafId = requestAnimationFrame((t) => this.loop(t));
   }
 
-  hasCharacterTalent(id) {
-    return (this.characterTalents || []).includes(id);
+  hasRunTalent(id) {
+    return (this.runTalents || []).includes(id);
   }
 
   /** Called when a talent triggers; count is kept for potential tooling, but no console output. */
@@ -2052,7 +2062,7 @@ export class Game {
       this.applyUpgradeCube(this.craftingSelectedItem, upgCube, tier);
     }
 
-    const cascadeSave = this.hasCharacterTalent("cubeCascade") && Math.random() < 0.1;
+    const cascadeSave = this.hasRunTalent("cubeCascade") && Math.random() < 0.1;
     if (cascadeSave) this.logTalentTrigger("cubeCascade", "Cube used: 10% proc, cube not consumed (duplicate)");
     if (!cascadeSave) {
       this.cubeInventory[cubeKey] = count - 1;
@@ -2139,7 +2149,7 @@ export class Game {
       item.rarity = "rare";
       item.modifiers = item.modifiers || [];
       const pool = getModifierPoolForType(item.type).filter((p) => !item.modifiers.some((m) => m.id === p.id));
-      const extraMods = this.hasCharacterTalent("transmutation") && Math.random() < 0.05 ? 3 : 2;
+      const extraMods = this.hasRunTalent("transmutation") && Math.random() < 0.05 ? 3 : 2;
       for (let i = 0; i < extraMods; i++) {
         if (pool.length === 0) break;
         const idx = Math.floor(Math.random() * pool.length);
@@ -2401,117 +2411,44 @@ export class Game {
     };
   }
 
-  getWindProjectileTrailStyle(hitbox) {
-    const w = Math.max(0, Number(hitbox?.width) || 0);
-    const h = Math.max(0, Number(hitbox?.height) || 0);
-    const radius = Math.max(0, Number(hitbox?.radius) || 0);
-    const baseThickness = w > 0 ? w : Math.max(2, radius * 0.6);
-    const thickness = Math.max(3, baseThickness * 0.7);
+  getLightningProjectileZigzagProfile() {
     return {
-      thickness,
-      angle: Math.atan2(Number(hitbox?.dirY) || 0, Number(hitbox?.dirX) || 1),
-      life: WIND_PROJECTILE_TRAIL_LIFE
+      zigzagSegmentSecMin: LIGHTNING_ZIGZAG_SEGMENT_SEC_MIN,
+      zigzagSegmentSecMax: LIGHTNING_ZIGZAG_SEGMENT_SEC_MAX,
+      zigzagLateralWeightMin: LIGHTNING_ZIGZAG_LATERAL_WEIGHT_MIN,
+      zigzagLateralWeightMax: LIGHTNING_ZIGZAG_LATERAL_WEIGHT_MAX,
+      zigzagMaxSegments: LIGHTNING_ZIGZAG_MAX_SEGMENTS
     };
   }
 
-  updateWindProjectileTrails(dt) {
-    if (!this.windProjectileTrails) return;
-    const activeWindIds = new Set();
-    for (const h of getActiveHitboxes()) {
-      if (h.destroyed || h.faction !== 'player' || h.ownerId !== 'player') continue;
-      if (h.defId !== 'player_projectile' || h.elementalState !== 'wind') continue;
-      const id = h.id;
-      if (!id) continue;
-      const point = this.getHitboxCollisionPoint(h);
-      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
-      activeWindIds.add(id);
-      const style = this.getWindProjectileTrailStyle(h);
-      const trail = this.windProjectileTrails.get(id) || [];
-      const last = trail[trail.length - 1];
-      const dx = last ? point.x - last.x : WIND_PROJECTILE_TRAIL_MIN_STEP + 1;
-      const dy = last ? point.y - last.y : WIND_PROJECTILE_TRAIL_MIN_STEP + 1;
-      const moved = dx * dx + dy * dy;
-      if (!last || moved >= WIND_PROJECTILE_TRAIL_MIN_STEP * WIND_PROJECTILE_TRAIL_MIN_STEP) {
-        trail.push({
-          x: point.x,
-          y: point.y,
-          age: 0,
-          life: style.life,
-          width: style.thickness,
-          angle: style.angle
-        });
-        if (trail.length > WIND_PROJECTILE_TRAIL_MAX_POINTS) {
-          trail.shift();
-        }
-      } else {
-        last.x = point.x;
-        last.y = point.y;
-        last.angle = style.angle;
-        last.width = style.thickness;
-      }
-      this.windProjectileTrails.set(id, trail);
-    }
-
-    for (const [id, trail] of this.windProjectileTrails.entries()) {
-      for (let i = trail.length - 1; i >= 0; i--) {
-        trail[i].age += dt;
-      }
-      while (trail.length > 0 && trail[0].age >= trail[0].life) {
-        trail.shift();
-      }
-      if (!trail.length && !activeWindIds.has(id)) {
-        this.windProjectileTrails.delete(id);
-      } else {
-        this.windProjectileTrails.set(id, trail);
-      }
-    }
+  getProjectileVisualState() {
+    return {
+      projectileVisuals: this.projectileVisuals,
+      camera: this.camera,
+      enableProjectileVisuals: this.enableProjectileVisuals,
+      getHitboxCollisionPoint: (hitbox) => this.getHitboxCollisionPoint(hitbox)
+    };
   }
 
-  drawWindProjectileTrails(ctx) {
-    if (!ctx || !this.windProjectileTrails?.size) return;
-    if (this.windProjectileTrails.size === 0) return;
-    const camX = this.camera?.position?.x ?? 0;
-    const camY = this.camera?.position?.y ?? 0;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    for (const trail of this.windProjectileTrails.values()) {
-      if (!trail || trail.length < 2) continue;
-      for (let i = 1; i < trail.length; i++) {
-        const prev = trail[i - 1];
-        const cur = trail[i];
-        const dx = cur.x - prev.x;
-        const dy = cur.y - prev.y;
-        const segLen = Math.hypot(dx, dy);
-        if (segLen < 1) continue;
-        const alpha = Math.max(0, 1 - cur.age / Math.max(0.001, cur.life));
-        const width = Math.max(2.5, cur.width * 0.5 * (0.6 + (i / trail.length)));
-        const sx = prev.x - camX;
-        const sy = prev.y - camY;
-        const ex = cur.x - camX;
-        const ey = cur.y - camY;
-        ctx.beginPath();
-        ctx.shadowColor = `rgba(182, 244, 255, ${alpha * 0.9})`;
-        ctx.shadowBlur = 12;
-        ctx.strokeStyle = `rgba(182, 244, 255, ${Math.max(0.02, alpha * 0.28)})`;
-        ctx.lineWidth = width;
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        ctx.lineTo(ex, ey);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        const glow = Math.max(0, alpha * 0.14);
-        const tipX = cur.x - camX;
-        const tipY = cur.y - camY;
-        ctx.fillStyle = `rgba(200, 248, 255, ${glow})`;
-        ctx.beginPath();
-        ctx.ellipse(tipX, tipY, width * 0.95, width * 0.55, 0, 0, Math.PI * 2);
-        ctx.fill();
+  createHitboxAttack(def, spawnData, options = {}) {
+    const hitbox = createHitbox(def, spawnData);
+    if (!hitbox || !hitbox.id) return hitbox;
+    const destroyVisualOnExpire = (reason, expiredHitbox) => {
+      if (options.visual?.kind === "projectile") {
+        destroyHitboxProjectileVisual(this.getProjectileVisualState(), expiredHitbox?.id || hitbox.id);
       }
+      if (typeof options.onExpire === "function") {
+        options.onExpire(reason, expiredHitbox, this);
+      }
+    };
+    if (typeof options.onHit === "function") hitbox.onHit = options.onHit;
+    if (options.visual?.kind === "projectile" || typeof options.onExpire === "function") {
+      hitbox.onExpire = destroyVisualOnExpire;
     }
-    ctx.restore();
+    if (options.visual?.kind === "projectile") {
+      createHitboxProjectileVisual(this.getProjectileVisualState(), hitbox, options.visual);
+    }
+    return hitbox;
   }
 
   getEntityById(id) {
@@ -2519,6 +2456,8 @@ export class Game {
     const e = this.enemySystem?.enemies?.find((en) => en.id === id);
     if (e) return e;
     if (this.enemySystem?.boss?.id === id) return this.enemySystem.boss;
+    const totem = (this.totems || []).find((entry) => entry.id === id);
+    if (totem) return totem;
     return null;
   }
 
@@ -2558,7 +2497,7 @@ export class Game {
         const flightMult = 1 + Math.min(1, hitbox._age) * 0.1;
         effectiveAmount = Math.round(effectiveAmount * flightMult);
       }
-      if (this.hasCharacterTalent && this.hasCharacterTalent('executioner') && enemy.health < enemy.maxHealth * 0.3) {
+      if (this.hasRunTalent && this.hasRunTalent('executioner') && enemy.health < enemy.maxHealth * 0.3) {
         effectiveAmount = Math.round(effectiveAmount * 1.25);
       }
     }
@@ -2952,11 +2891,59 @@ export class Game {
     for (const obstacle of this.obstacles || []) {
       if (obstacle.destroyed || !obstacle.blocksProjectiles) continue;
       const r = getObstacleCollisionRect(obstacle);
-      if (isCircle) {
-        if (circleVsRect(r.x, r.y, r.w, r.h)) return true;
-      } else if (overlap(hitboxRect, r)) {
-        return true;
+      const collided = isCircle
+        ? circleVsRect(r.x, r.y, r.w, r.h)
+        : overlap(hitboxRect, r);
+      if (!collided) continue;
+      if (hitbox.faction === 'enemy' && hitbox.tags?.includes('enemy_projectile')) {
+        if (obstacle.type === "barrel") {
+          obstacle.destroyed = true;
+          const ex = obstacle.position.x + obstacle.size.w / 2;
+          const ey = obstacle.position.y + obstacle.size.h / 2;
+          const hitArea = this.enemiesInRadius(ex, ey, obstacle.typeDef.explosionRadius);
+          for (const e of hitArea) {
+            this.dealDamageToEnemy(e, obstacle.typeDef.explosionDamage, {
+              useDamageFacade: true,
+              sourceType: "environment",
+              reason: "barrel_explosion_enemy",
+              damageClass: "explosion",
+              tags: ["environment", "barrel_explosion"]
+            });
+          }
+          const px = this.player.position.x + this.player.size / 2;
+          const py = this.player.position.y + this.player.size / 2;
+          const dist = Math.sqrt((px - ex) ** 2 + (py - ey) ** 2);
+          if (dist < obstacle.typeDef.explosionRadius) {
+            this.applyDamage({
+              targetType: "player",
+              sourceType: "environment",
+              amount: obstacle.typeDef.explosionDamage,
+              reason: "barrel_explosion_player",
+              damageClass: "explosion",
+              tags: ["environment", "barrel_explosion"],
+              bypassMitigation: false,
+              canKill: true
+            });
+          }
+          this.skillEffects.push({
+            type: "barrelExplosion",
+            x: ex,
+            y: ey,
+            radius: obstacle.typeDef.explosionRadius,
+            t: 0,
+            duration: 0.3
+          });
+        } else {
+          this.dealDamageToBreakable(obstacle, Math.max(1, Math.round(hitbox.enemyProjectileDamage || hitbox.damage || this.currentStats?.attack || 1)), {
+            useDamageFacade: true,
+            sourceType: "enemy_projectile",
+            reason: "enemy_projectile_obstacle_hit",
+            damageClass: "object",
+            tags: ["projectile", "enemy", "obstacle_hit"]
+          });
+        }
       }
+      return true;
     }
     return false;
   }
@@ -3314,11 +3301,11 @@ export class Game {
       effectiveSpeed *= this.getPillarMoveSpeedMultiplier({ source: "player_move" });
     }
     if (this.hasBlessing("swiftness")) effectiveSpeed *= 1.5;
-    if (this.hasCharacterTalent("cardSurge") && this.cardSurgeUntil > this.time) effectiveSpeed *= 1.2;
-    if (this.hasCharacterTalent("bloodRush") && this.bloodRushUntil > this.time) effectiveSpeed *= 1.15;
-    if (this.hasCharacterTalent("momentum") && this.momentumUntil > this.time) effectiveSpeed *= 1.2;
-    if (this.hasCharacterTalent("fleetFooted") && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth <= 0.5) effectiveSpeed *= 1.15;
-    if (this.hasCharacterTalent("berserkerRage") && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth <= 0.4) effectiveSpeed *= 1.15;
+    if (this.hasRunTalent("cardSurge") && this.cardSurgeUntil > this.time) effectiveSpeed *= 1.2;
+    if (this.hasRunTalent("bloodRush") && this.bloodRushUntil > this.time) effectiveSpeed *= 1.15;
+    if (this.hasRunTalent("momentum") && this.momentumUntil > this.time) effectiveSpeed *= 1.2;
+    if (this.hasRunTalent("fleetFooted") && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth <= 0.5) effectiveSpeed *= 1.15;
+    if (this.hasRunTalent("berserkerRage") && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth <= 0.4) effectiveSpeed *= 1.15;
     if (this.playerSlowUntil > this.time) effectiveSpeed *= (this.playerSlowMult ?? 0.7);
     if (this.playerHasteUntil > this.time) effectiveSpeed *= (this.playerHasteMult ?? 1);
     if ((this.snackEspressoUntil || 0) > this.time) effectiveSpeed *= 1.2;
@@ -3489,7 +3476,7 @@ export class Game {
       if (!canMoveX && !canMoveY) {
         this.dashActive = false;
         this.dashTrail = [];
-        if (this.hasCharacterTalent("rapid")) {
+        if (this.hasRunTalent("rapid")) {
           this.logTalentTrigger("rapid", "Dash end (blocked): +10% attack speed 3s");
           this.rapidTalentUntil = this.time + 3;
         }
@@ -3508,19 +3495,19 @@ export class Game {
       if (this.dashTrail.length > 12) this.dashTrail.shift();
 
       if (this.dashActive && this.dashTimer <= 0) {
-        if (this.hasCharacterTalent("momentum")) {
+        if (this.hasRunTalent("momentum")) {
           this.logTalentTrigger("momentum", "Dash end: +20% move speed 2s");
           this.momentumUntil = this.time + 2;
         }
-        if (this.hasCharacterTalent("danceOfBlades")) {
+        if (this.hasRunTalent("danceOfBlades")) {
           this.logTalentTrigger("danceOfBlades", "Dash end: next attack within 1s +30% damage");
           this.danceOfBladesUntil = this.time + 1;
         }
-        if (this.hasCharacterTalent("phantomDash")) {
+        if (this.hasRunTalent("phantomDash")) {
           this.logTalentTrigger("phantomDash", "Dash end: 0.1s invulnerability");
           this.phantomDashInvulnUntil = this.time + 0.1;
         }
-        if (this.hasCharacterTalent("dashingAttack") && this.dashDirection && (this.dashDirection.x !== 0 || this.dashDirection.y !== 0)) {
+        if (this.hasRunTalent("dashingAttack") && this.dashDirection && (this.dashDirection.x !== 0 || this.dashDirection.y !== 0)) {
           this.logTalentTrigger("dashingAttack", "Dash end: fired 30% damage projectile");
           const px = this.player.position.x + this.player.size / 2;
           const py = this.player.position.y + this.player.size / 2;
@@ -3531,7 +3518,7 @@ export class Game {
         }
         this.dashActive = false;
         this.dashTrail = [];
-        if (this.hasCharacterTalent("rapid")) {
+        if (this.hasRunTalent("rapid")) {
           this.logTalentTrigger("rapid", "Dash end: +10% attack speed 3s");
           this.rapidTalentUntil = this.time + 3;
         }
@@ -4388,7 +4375,7 @@ export class Game {
     this.lootSystem.items = [];
     this.playerProjectiles = [];
     this.skillEffects = [];
-    this.windProjectileTrails = new Map();
+    this.projectileVisuals = new Map();
     clearHitboxes();
     this.hitStopRemaining = 0;
     this.cameraShakeUntil = 0;
@@ -4400,9 +4387,9 @@ export class Game {
     this.lootSystem.setDifficulty(this.difficulty);
     this.lootSystem.setPlayerLuck(Math.max(0, Number(this.runCharacterAttributes?.luck) || 0));
 
-    if (this.hasCharacterTalent("immortal")) this.immortalShield = 30;
+    if (this.hasRunTalent("immortal")) this.immortalShield = 30;
 
-    if (this.hasCharacterTalent("treasureHunter") && targetMapId % 3 === 2) {
+    if (this.hasRunTalent("treasureHunter") && targetMapId % 3 === 2) {
       const cx = this.world.width / 2 - 10;
       const cy = this.world.height / 2 - 10;
       this.lootSystem.spawnBurstAt(cx, cy, 2, 0.8);
@@ -5212,7 +5199,7 @@ export class Game {
     this.dashTrail = [];
     this.spaceConsumed = true;
     onRingDashUsed(this);
-    if (this.hasCharacterTalent("endurance")) {
+    if (this.hasRunTalent("endurance")) {
       this.logTalentTrigger("endurance", "Dash start: 30% DR for 1s");
       this.enduranceUntil = this.time + 1;
     }
@@ -5255,10 +5242,10 @@ export class Game {
     const attackMults = this.getSkillMultipliersFor(primaryAttackType);
     const attackSpeedMult = attackMults.attackSpeedMult || 1;
     const attackCooldownMult = attackMults.cooldownMult || 1;
-    const rapidMult = (this.hasCharacterTalent("rapid") && this.rapidTalentUntil > this.time) ? 1.1 : 1;
-    const bloodRushMult = (this.hasCharacterTalent("bloodRush") && this.bloodRushUntil > this.time) ? 1.15 : 1;
-    const berserkerRageMult = (this.hasCharacterTalent("berserkerRage") && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth <= 0.4) ? 1.2 : 1;
-    const retaliationStacks = (this.hasCharacterTalent("brutalityRetaliation") && this.time < (this.brutalityRetaliationUntil || 0) && (this.brutalityRetaliationStacks || 0) > 0) ? (this.brutalityRetaliationStacks || 0) : 0;
+    const rapidMult = (this.hasRunTalent("rapid") && this.rapidTalentUntil > this.time) ? 1.1 : 1;
+    const bloodRushMult = (this.hasRunTalent("bloodRush") && this.bloodRushUntil > this.time) ? 1.15 : 1;
+    const berserkerRageMult = (this.hasRunTalent("berserkerRage") && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth <= 0.4) ? 1.2 : 1;
+    const retaliationStacks = (this.hasRunTalent("brutalityRetaliation") && this.time < (this.brutalityRetaliationUntil || 0) && (this.brutalityRetaliationStacks || 0) > 0) ? (this.brutalityRetaliationStacks || 0) : 0;
     const retaliationMult = retaliationStacks > 0 ? (1 + retaliationStacks * 0.05) : 1;
     let atkSpdMult = (this.equipmentAttackSpeedMult || 1) * rapidMult * bloodRushMult * berserkerRageMult * retaliationMult;
     atkSpdMult *= getRingAttackSpeedMultiplier(this);
@@ -5292,7 +5279,7 @@ export class Game {
     const baseCooldown = this.devAttackCooldownOverride ?? this.playerAttackCooldown;
     let effectiveCooldown = (baseCooldown / atkSpdMult) * attackCooldownMult;
     effectiveCooldown /= attackSpeedMult;
-    if (this.hasCharacterTalent("cardSurge") && this.cardSurgeUntil > this.time) {
+    if (this.hasRunTalent("cardSurge") && this.cardSurgeUntil > this.time) {
       effectiveCooldown /= 1.2;
     }
     effectiveCooldown += this.getAttackPenaltyValue("cooldown");
@@ -5470,7 +5457,7 @@ export class Game {
 
     const attackFlatBonus = getSkillFlatDamageBonus(this, resolvedAttackType);
     let attackDamage = Math.round((this.computePlayerDamage(null) + attackFlatBonus) * attackDamageMult);
-    if (this.hasCharacterTalent("heavyHit")) {
+    if (this.hasRunTalent("heavyHit")) {
       this.heavyHitAttackCount = (this.heavyHitAttackCount || 0) + 1;
       if (this.heavyHitAttackCount % 4 === 0) {
         this.logTalentTrigger("heavyHit", "4th attack: +40% damage, consumed 1 dash charge");
@@ -5820,20 +5807,29 @@ export class Game {
       const dirX = dx / dist;
       const dirY = dy / dist;
       const speed = (PLAYER_PROJECTILE_SPEED * 1.8) * (1 + (this.getAttackUpgradeValue?.("projectile_speed") || 0) - this.getAttackPenaltyValue?.("slowShot"));
-      createHitbox(PLAYER_PROJECTILE_CIRCLE_DEF, {
+      this.createHitboxAttack(PLAYER_PROJECTILE_CIRCLE_DEF, {
         x: cx,
         y: cy,
         dirX,
         dirY,
         radius: PLAYER_PROJECTILE_SIZE / 2,
         moveSpeed: speed,
+        moveMode: "segment_zigzag",
         damage: splitDmg,
         createdAt: this.time,
         durationMs: 2000,
         maxTotalTargets: 999999,
         faction: "player",
         ownerId: "player",
-        elementalState: "lightning"
+        elementalState: "lightning",
+        ...this.getLightningProjectileZigzagProfile()
+      }, {
+        visual: {
+          kind: "projectile",
+          elementalState: "lightning",
+          shape: "circle",
+          radius: PLAYER_PROJECTILE_SIZE / 2
+        }
       });
     }
   }
@@ -6107,11 +6103,20 @@ export class Game {
         let maxTotalShot = maxTotalTargetsBase;
         if (attackTypeForDamage === "projectile" && shotElement === "wind") maxTotalShot = 999999;
         if (attackTypeForDamage === "projectile" && shotElement === "lightning") maxTotalShot = Math.min(999999, maxTotalShot + 1);
-        const useHomingForShot = seekerHoming || this.hasUpgradeCard("homing") || isLightning || seeking;
+        const useHomingForShot = seekerHoming || this.hasUpgradeCard("homing") || seeking;
         const homingTarget = useHomingForShot ? this.getNearestEnemy(centerX, centerY, 800) : null;
         if (isWind) {
           const angleRad = Math.atan2(dy, dx);
-          createHitbox(PLAYER_ELEMENTAL_WIND_RECT_DEF, {
+          const visualPayload = {
+            kind: 'projectile',
+            elementalState: 'wind',
+            shape: 'rect',
+            width: windRectW,
+            height: windRectH,
+            alpha: 0.32,
+            coreAlpha: 0.7
+          };
+          this.createHitboxAttack(PLAYER_ELEMENTAL_WIND_RECT_DEF, {
             x: centerX - windRectW / 2,
             y: centerY - windRectH / 2,
             dirX: dx,
@@ -6129,15 +6134,18 @@ export class Game {
             ownerId: 'player',
             elementalState: 'wind',
             ...extra
+          }, {
+            visual: visualPayload
           });
         } else {
-          createHitbox(PLAYER_PROJECTILE_CIRCLE_DEF, {
+          this.createHitboxAttack(PLAYER_PROJECTILE_CIRCLE_DEF, {
             x: centerX,
             y: centerY,
             dirX: dx,
             dirY: dy,
             radius: r,
             moveSpeed: moveSpeedShot,
+            ...(isLightning ? { moveMode: 'segment_zigzag', ...this.getLightningProjectileZigzagProfile() } : {}),
             damage: dmg,
             ghost,
             createdAt: this.time,
@@ -6149,6 +6157,14 @@ export class Game {
             ...(sniperFalloff ? { sniperPierceFalloff: sniperFalloff } : {}),
             ...(attackTypeForDamage === "projectile" ? { elementalState: shotElement } : {}),
             ...extra
+          }, {
+            visual: {
+              kind: 'projectile',
+              elementalState: shotElement,
+              shape: 'circle',
+              radius: r,
+              alpha: shotElement === 'wind' ? 0.35 : 1
+            }
           });
         }
       };
@@ -6221,7 +6237,8 @@ export class Game {
         sizeMult: projectileScaleMult,
         canSteer,
         sniperPierceFalloff: sniperFalloff,
-        forceHoming: seekerHoming || (attackTypeForDamage === "projectile" && entityElement === "lightning"),
+        forceHoming: seekerHoming,
+        ...(attackTypeForDamage === "projectile" && entityElement === "lightning" ? this.getLightningProjectileZigzagProfile() : {}),
         ...(attackTypeForDamage === "projectile" ? { elementalState: entityElement } : {})
       });
       proj.attackType = attackTypeForDamage;
@@ -6287,7 +6304,7 @@ export class Game {
         if (this.hasAttackUpgrade("momentum")) {
           useDmg = Math.round(useDmg * (1 + Math.min(1, proj.flightTime) * 0.1));
         }
-        if (this.hasCharacterTalent("executioner") && enemy.health < enemy.maxHealth * 0.3) {
+        if (this.hasRunTalent("executioner") && enemy.health < enemy.maxHealth * 0.3) {
           useDmg = Math.round(useDmg * 1.25);
         }
         if (proj._fromSpirit && enemy.soulSiphonMarkedUntil != null && this.time < enemy.soulSiphonMarkedUntil) {
@@ -6946,17 +6963,7 @@ export class Game {
         for (let i = 0; i < 8; i++) {
           const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.3;
           const speed = 120;
-          const proj = new EnemyProjectile(
-            ex,
-            ey,
-            Math.cos(angle) * speed,
-            Math.sin(angle) * speed,
-            6,
-            8,
-            "#f97316",
-            { lifetime: 4 }
-          );
-          es.projectiles.push(proj);
+          this.spawnEnemyProjectile(ex, ey, Math.cos(angle) * speed, Math.sin(angle) * speed, 6, 8, "#f97316", { lifetime: 4 }, null);
         }
       }
     }
@@ -7759,26 +7766,26 @@ export class Game {
 
   applyTalentOnEnemyKill(enemy) {
     if (!enemy || !enemy.isDead) return;
-    if (this.hasCharacterTalent("bloodthirst")) {
+    if (this.hasRunTalent("bloodthirst")) {
       this.logTalentTrigger("bloodthirst", "Kill: healed 3% max HP");
       const maxHp = this.currentStats?.maxHealth || 1;
       this.healPlayer(Math.max(1, Math.round(maxHp * 0.03)));
     }
-    if (this.hasCharacterTalent("bloodRush")) {
+    if (this.hasRunTalent("bloodRush")) {
       this.logTalentTrigger("bloodRush", "Kill: +15% attack/move speed for 3s");
       this.bloodRushUntil = this.time + 3;
     }
-    if (this.hasCharacterTalent("relentless")) {
+    if (this.hasRunTalent("relentless")) {
       this.logTalentTrigger("relentless", "Kill: dash cooldown -0.5s");
       this.dashCooldown = Math.max(0, (this.dashCooldown || 0) - 0.5);
       if (typeof this.updateDashUI === "function") this.updateDashUI();
     }
-    if (this.hasCharacterTalent("lifebloom")) {
+    if (this.hasRunTalent("lifebloom")) {
       this.logTalentTrigger("lifebloom", "Kill: healed 5% of enemy max HP");
       const enemyMaxHp = enemy.maxHealth || 1;
       this.healPlayer(Math.max(1, Math.round(enemyMaxHp * 0.05)));
     }
-    if (this.hasCharacterTalent("bloodRitual")) {
+    if (this.hasRunTalent("bloodRitual")) {
       this.bloodRitualStacks = (this.bloodRitualStacks || 0) + 1;
       if (this.bloodRitualStacks >= 10) {
         this.logTalentTrigger("bloodRitual", "Kill: 10 stacks — next hit heals 50% of damage");
@@ -7872,16 +7879,16 @@ export class Game {
         enemy.regenChannelUntil = null;
       }
     }
-    if (this.hasCharacterTalent("predator") && enemy.maxHealth > 0 && enemy.health / enemy.maxHealth <= 0.25) {
+    if (this.hasRunTalent("predator") && enemy.maxHealth > 0 && enemy.health / enemy.maxHealth <= 0.25) {
       this.logTalentTrigger("predator", "Hit enemy below 25% HP: +50% damage");
       dmg = Math.max(1, Math.round(dmg * 1.5));
     }
-    if (this.hasCharacterTalent("luckyShot")) {
+    if (this.hasRunTalent("luckyShot")) {
       const luckAttr = Math.max(0, Number(this.runCharacterAttributes?.luck) || 0);
       if (luckAttr > 0) this.logTalentTrigger("luckyShot", `Hit: +${luckAttr * 10}% damage (Luck)`);
       dmg = Math.max(1, Math.round(dmg * (1 + luckAttr * 0.1)));
     }
-    if (!opts.isSkill && this.hasCharacterTalent("danceOfBlades") && (this.danceOfBladesUntil || 0) > this.time) {
+    if (!opts.isSkill && this.hasRunTalent("danceOfBlades") && (this.danceOfBladesUntil || 0) > this.time) {
       this.logTalentTrigger("danceOfBlades", "Attack after dash: +30% damage");
       dmg = Math.max(1, Math.round(dmg * 1.3));
     }
@@ -7918,14 +7925,14 @@ export class Game {
       const py = this.player.position.y + this.player.size / 2;
       this.addFloatingText(px, py, `+${heal}`, "heal");
     }
-    if (!opts.isSkill && dmg > 0 && this.hasCharacterTalent("frenzy")) {
+    if (!opts.isSkill && dmg > 0 && this.hasRunTalent("frenzy")) {
       this.frenzyAttackCount = (this.frenzyAttackCount || 0) + 1;
       if (this.frenzyAttackCount % 4 === 0) {
         this.logTalentTrigger("frenzy", "4th consecutive attack: +30% attack speed 3s");
         this.frenzyBuffUntil = this.time + 3;
       }
     }
-    if (!opts.isDot && dmg > 0 && this.hasCharacterTalent("bloodRitual") && this.bloodRitualNextHitHeal) {
+    if (!opts.isDot && dmg > 0 && this.hasRunTalent("bloodRitual") && this.bloodRitualNextHitHeal) {
       this.bloodRitualNextHitHeal = false;
       this.logTalentTrigger("bloodRitual", "Hit with 10 stacks: healed 50% of damage");
       const heal = Math.max(1, Math.round(dmg * 0.5));
@@ -8025,7 +8032,7 @@ export class Game {
     }
 
     // Only trigger overkill from the initial hit; splash damage must not retrigger overkill to avoid stack overflow
-    if (this.hasCharacterTalent("overkill") && opts.sourceType !== "overkill_talent" && dmg >= enemy.health * 1.5 && dmg > enemy.health) {
+    if (this.hasRunTalent("overkill") && opts.sourceType !== "overkill_talent" && dmg >= enemy.health * 1.5 && dmg > enemy.health) {
       this.logTalentTrigger("overkill", "Killing blow overkill: splashing 40% excess to nearby");
       const excess = dmg - enemy.health;
       const splash = Math.max(1, Math.round(excess * 0.4));
@@ -8529,7 +8536,7 @@ export class Game {
       const ratio = this.currentStats.maxHealth > 0 ? this.currentHealth / this.currentStats.maxHealth : 1;
       dmg *= 1 + (1 - ratio) * 0.5;
     }
-    if (enemy && this.hasCharacterTalent("executioner") && enemy.health < enemy.maxHealth * 0.3) {
+    if (enemy && this.hasRunTalent("executioner") && enemy.health < enemy.maxHealth * 0.3) {
       this.logTalentTrigger("executioner", "Skill vs low-HP enemy: +25% damage");
       dmg = Math.round(dmg * 1.25);
     }
@@ -9007,40 +9014,40 @@ export class Game {
           record.finalAmount = record.baseAmount;
         }
       }
-      if (this.hasCharacterTalent("phantomDash") && this.time < (this.phantomDashInvulnUntil || 0)) {
+      if (this.hasRunTalent("phantomDash") && this.time < (this.phantomDashInvulnUntil || 0)) {
         this.logTalentTrigger("phantomDash", "Player damage ignored (post-dash invuln)");
         record.finalAmount = 0;
       }
-      if (this.hasCharacterTalent("toughness") && (this.toughnessHitsThisMap || 0) < 3) {
+      if (this.hasRunTalent("toughness") && (this.toughnessHitsThisMap || 0) < 3) {
         this.logTalentTrigger("toughness", "First 3 hits this map: 40% reduced");
         record.finalAmount = Math.max(1, Math.round(record.finalAmount * 0.6));
         this.toughnessHitsThisMap = (this.toughnessHitsThisMap || 0) + 1;
       }
-      if (this.hasCharacterTalent("endurance") && this.time < (this.enduranceUntil || 0)) {
+      if (this.hasRunTalent("endurance") && this.time < (this.enduranceUntil || 0)) {
         this.logTalentTrigger("endurance", "Damage during dash DR: 30% reduced");
         record.finalAmount = Math.max(1, Math.round(record.finalAmount * 0.7));
       }
       if ((this.snackHerbalTeaUntil || 0) > this.time) {
         record.finalAmount = Math.max(1, Math.round(record.finalAmount * 0.85));
       }
-      if (this.hasCharacterTalent("stoneSkin") && record.finalAmount > (this.currentStats?.maxHealth || 1) * 0.2) {
+      if (this.hasRunTalent("stoneSkin") && record.finalAmount > (this.currentStats?.maxHealth || 1) * 0.2) {
         this.logTalentTrigger("stoneSkin", "Large hit: 30% reduction on excess over 20% max HP");
         const excess = record.finalAmount - (this.currentStats?.maxHealth || 1) * 0.2;
         record.finalAmount = Math.round((this.currentStats?.maxHealth || 1) * 0.2 + excess * 0.7);
       }
-      if (this.hasCharacterTalent("resilient")) {
+      if (this.hasRunTalent("resilient")) {
         if (this.time < (this.resilientUntil || 0)) {
           this.logTalentTrigger("resilient", "Taking damage: 10% reduction (2s)");
           record.finalAmount = Math.max(1, Math.round(record.finalAmount * 0.9));
         }
         this.resilientUntil = this.time + 2;
       }
-      if (this.hasCharacterTalent("battleScarred")) {
+      if (this.hasRunTalent("battleScarred")) {
         this.logTalentTrigger("battleScarred", "Taking damage: +10% attack stack (5s, cap 3)");
         this.battleScarredStacks = Math.min(3, (this.battleScarredStacks || 0) + 1);
         this.battleScarredUntil = this.time + 5;
       }
-      if (this.hasCharacterTalent("brutalityRetaliation")) {
+      if (this.hasRunTalent("brutalityRetaliation")) {
         this.logTalentTrigger("brutalityRetaliation", "Taking damage: +5% attack speed stack (4s, cap 5)");
         this.brutalityRetaliationStacks = Math.min(5, (this.brutalityRetaliationStacks || 0) + 1);
         this.brutalityRetaliationUntil = this.time + 4;
@@ -9360,7 +9367,7 @@ export class Game {
     if (this.currentHealth <= 0) {
       if (tryGuardianPreDeath(this)) {
         this.updateHealthBar();
-      } else if (this.hasCharacterTalent("secondWind") && !this.secondWindUsed) {
+      } else if (this.hasRunTalent("secondWind") && !this.secondWindUsed) {
         this.logTalentTrigger("secondWind", "Lethal hit survived (once per run), set to 1 HP");
         this.secondWindUsed = true;
         setSkillUnlock("secondWindUsed", true);
@@ -10610,10 +10617,10 @@ export class Game {
     const attackMults = this.getSkillMultipliersFor(primaryAttackType);
     const attackSpeedMult = attackMults.attackSpeedMult || 1;
     let atkSpdMult = (this.equipmentAttackSpeedMult || 1);
-    if (this.hasCharacterTalent("rapid") && this.rapidTalentUntil > this.time) atkSpdMult *= 1.1;
-    if (this.hasCharacterTalent("bloodRush") && this.bloodRushUntil > this.time) atkSpdMult *= 1.15;
-    if (this.hasCharacterTalent("berserkerRage") && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth <= 0.4) atkSpdMult *= 1.2;
-    const retaliationStacks = (this.hasCharacterTalent("brutalityRetaliation") && this.time < (this.brutalityRetaliationUntil || 0) && (this.brutalityRetaliationStacks || 0) > 0) ? (this.brutalityRetaliationStacks || 0) : 0;
+    if (this.hasRunTalent("rapid") && this.rapidTalentUntil > this.time) atkSpdMult *= 1.1;
+    if (this.hasRunTalent("bloodRush") && this.bloodRushUntil > this.time) atkSpdMult *= 1.15;
+    if (this.hasRunTalent("berserkerRage") && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth <= 0.4) atkSpdMult *= 1.2;
+    const retaliationStacks = (this.hasRunTalent("brutalityRetaliation") && this.time < (this.brutalityRetaliationUntil || 0) && (this.brutalityRetaliationStacks || 0) > 0) ? (this.brutalityRetaliationStacks || 0) : 0;
     if (retaliationStacks > 0) atkSpdMult *= (1 + retaliationStacks * 0.05);
     atkSpdMult *= getRingAttackSpeedMultiplier(this);
     if (typeof this.getPillarAttackSpeedMultiplier === "function") {
@@ -12520,7 +12527,7 @@ export class Game {
           : 1;
       dmg *= 1 + (1 - ratio) * 0.5;
     }
-    if (enemy && this.hasCharacterTalent("executioner") && enemy.health < enemy.maxHealth * 0.3) {
+    if (enemy && this.hasRunTalent("executioner") && enemy.health < enemy.maxHealth * 0.3) {
       this.logTalentTrigger("executioner", "Skill vs low-HP enemy: +25% damage");
       dmg = Math.round(dmg * 1.25);
     }
@@ -12578,8 +12585,7 @@ export class Game {
         for (let i = 0; i < projCount; i++) {
           const angle = Math.atan2(dy, dx) + (i - (projCount - 1) / 2) * 0.4;
           const speed = 280;
-          const proj = new Projectile(bx, by, Math.cos(angle) * speed, Math.sin(angle) * speed, 12, 14, "#dc2626");
-          es.projectiles.push(proj);
+          this.spawnEnemyProjectile(bx, by, Math.cos(angle) * speed, Math.sin(angle) * speed, 12, 14, "#dc2626", { lifetime: 12 }, boss);
         }
       } else if (boss.minionTimer <= 0) {
         boss.minionTimer = boss.minionCooldown;
@@ -12665,7 +12671,7 @@ export class Game {
         this.victoryPortal = { x: bx - portalSize / 2, y: by - portalSize / 2, w: portalSize, h: portalSize };
         this.victoryPortalTimer = 3;
       }
-      if (this.hasCharacterTalent("livingItem")) {
+      if (this.hasRunTalent("livingItem")) {
         const living = this.getLivingItem();
         if (living && (living.modifiers?.length ?? 0) < 6) {
           this.logTalentTrigger("livingItem", "Boss kill: +2 modifiers on Living Item");
@@ -13318,7 +13324,7 @@ export class Game {
 
     let dropMult = enemy.affixes?.includes("evasive") ? 2 : 1;
     if (this.hasBlessing("fortune")) dropMult *= 2;
-    const equipDropMult = this.hasCharacterTalent("keenEye") ? 1.15 : 1;
+    const equipDropMult = this.hasRunTalent("keenEye") ? 1.15 : 1;
     if (tier === "minion") {
       if (Math.random() < 0.05 * dropMult * equipDropMult) {
         const type = types[Math.floor(Math.random() * types.length)];
@@ -13340,12 +13346,12 @@ export class Game {
         const def2 = generateEquipmentItem(type2, 1, 0.8, "rare", equipOpts);
         this.lootSystem.spawnEquipmentAt(ex + 25, ey, def2);
       }
-      if (this.hasCharacterTalent("philosophersStone") && Math.random() < 0.05) {
+      if (this.hasRunTalent("philosophersStone") && Math.random() < 0.05) {
         const legType = types[Math.floor(Math.random() * types.length)];
         const legDef = this.generateLegendaryEquipment(legType);
         this.lootSystem.spawnEquipmentAt(ex + 15, ey - 20, legDef);
       }
-      if (this.hasCharacterTalent("livingItem")) {
+      if (this.hasRunTalent("livingItem")) {
         const living = this.getLivingItem();
         if (living && (living.modifiers?.length ?? 0) < 6) {
           const pool = getModifierPoolForType(living.type).filter((p) => !living.modifiers?.some((m) => m.id === p.id));
@@ -13367,196 +13373,8 @@ export class Game {
   }
 
   updateProjectiles(dt) {
-    const es = this.enemySystem;
-    const surviving = [];
-    const playerInset = Math.max(0, PLAYER_WALL_COLLISION_INSET || 0);
-    const playerBase = Math.max(1, this.player.size - playerInset * 2);
-    const playerW = Math.max(1, playerBase * 0.25);
-    const playerH = Math.max(1, playerBase * 0.5);
-    const playerOffX = playerInset + (playerBase - playerW) / 2;
-    const playerOffY = playerInset + (playerBase - playerH) / 2;
-    const playerRect = {
-      x: this.player.position.x + playerOffX,
-      y: this.player.position.y + playerOffY,
-      w: playerW,
-      h: playerH
-    };
-    const rectsOverlap = (a, b) => (
-      a.x < b.x + b.w &&
-      a.x + a.w > b.x &&
-      a.y < b.y + b.h &&
-      a.y + a.h > b.y
-    );
-    const projectileHitsPlayer = (proj) => {
-      const nowRect = { x: proj.position.x, y: proj.position.y, w: proj.size, h: proj.size };
-      if (rectsOverlap(nowRect, playerRect)) return true;
-      const prev = proj.prevPosition;
-      if (!prev) return false;
-      const minX = Math.min(prev.x, proj.position.x);
-      const minY = Math.min(prev.y, proj.position.y);
-      const sweptRect = {
-        x: minX,
-        y: minY,
-        w: Math.abs(proj.position.x - prev.x) + proj.size,
-        h: Math.abs(proj.position.y - prev.y) + proj.size
-      };
-      return rectsOverlap(sweptRect, playerRect);
-    };
-    for (const p of es.projectiles) {
-      p.update(dt, this);
-      if (p.isExpired && p.isExpired()) {
-        if (p.lichOrbBurst && this.spawnLichOrbBurst) this.spawnLichOrbBurst(p);
-        continue;
-      }
-
-      // Check obstacle collision
-      let hitObstacle = false;
-      for (const obstacle of this.obstacles || []) {
-        if (obstacle.destroyed || !obstacle.blocksProjectiles) continue;
-        if (p.intersects(obstacle)) {
-          hitObstacle = true;
-          // Barrel explosion
-          if (obstacle.type === "barrel") {
-            obstacle.destroyed = true;
-            const ex = obstacle.position.x + obstacle.size.w / 2;
-            const ey = obstacle.position.y + obstacle.size.h / 2;
-            const hitArea = this.enemiesInRadius(ex, ey, obstacle.typeDef.explosionRadius);
-            for (const e of hitArea) {
-              this.dealDamageToEnemy(e, obstacle.typeDef.explosionDamage, {
-                useDamageFacade: true,
-                sourceType: "environment",
-                reason: "barrel_explosion_enemy",
-                damageClass: "explosion",
-                tags: ["environment", "barrel_explosion"]
-              });
-            }
-            // Damage player if in range
-            const px = this.player.position.x + this.player.size / 2;
-            const py = this.player.position.y + this.player.size / 2;
-            const dist = Math.sqrt((px - ex) ** 2 + (py - ey) ** 2);
-            if (dist < obstacle.typeDef.explosionRadius) {
-              this.applyDamage({
-                targetType: "player",
-                sourceType: "environment",
-                amount: obstacle.typeDef.explosionDamage,
-                reason: "barrel_explosion_player",
-                damageClass: "explosion",
-                tags: ["environment", "barrel_explosion"],
-                bypassMitigation: false,
-                canKill: true
-              });
-            }
-            this.skillEffects.push({ 
-              type: "barrelExplosion", 
-              x: ex, 
-              y: ey, 
-              radius: obstacle.typeDef.explosionRadius, 
-              t: 0, 
-              duration: 0.3 
-            });
-          } else {
-            this.dealDamageToBreakable(obstacle, Math.max(1, Math.round(p.damage || this.currentStats?.attack || 1)), {
-              useDamageFacade: true,
-              sourceType: "enemy_projectile",
-              reason: "enemy_projectile_obstacle_hit",
-              damageClass: "object",
-              tags: ["projectile", "enemy", "obstacle_hit"]
-            });
-          }
-          break;
-        }
-      }
-      
-      // Check sub-area wall collision
-      if (!hitObstacle && this.world.tileWallRects) {
-        for (const wall of this.world.tileWallRects) {
-          const wallRect = getWallCollisionRect(wall);
-            const projRect = { x: p.position.x, y: p.position.y, w: p.size, h: p.size };
-            
-            if (projRect.x < wallRect.x + wallRect.w && projRect.x + projRect.w > wallRect.x &&
-                projRect.y < wallRect.y + wallRect.h && projRect.y + projRect.h > wallRect.y) {
-              hitObstacle = true;
-              break;
-            }
-          }
-          if (hitObstacle) break;
-        }
-      // Procedural tile walls (enemy projectiles do not penetrate)
-      if (!hitObstacle && this.world.tileWallRects) {
-        const projRect = { x: p.position.x, y: p.position.y, w: p.size, h: p.size };
-        for (const wall of this.world.tileWallRects) {
-          if (projRect.x < wall.x + wall.w && projRect.x + projRect.w > wall.x &&
-              projRect.y < wall.y + wall.h && projRect.y + projRect.h > wall.y) {
-            hitObstacle = true;
-            break;
-          }
-        }
-      }
-
-      if (hitObstacle) {
-        if (p.lichOrbBurst && this.spawnLichOrbBurst) this.spawnLichOrbBurst(p);
-        if (p.slowZone && this.hazardSystem) {
-          this.hazardSystem.addTemporaryPatch("slowZone", p.position.x + p.size / 2, p.position.y + p.size / 2, p.slowRadius ?? 50, p.slowDuration ?? 1.5, 0, false, 0.6);
-        }
-        continue;
-      }
-
-      if (projectileHitsPlayer(p)) {
-        if (p.sourceEnemy) this.lastDamagingEnemy = p.sourceEnemy;
-        if (p.damage > 0) {
-          const dmgResult = this.applyDamage({
-            targetType: "player",
-            sourceEntity: p.sourceEnemy || null,
-            sourceType: "enemy_projectile",
-            amount: p.damage,
-            reason: "enemy_projectile_hit",
-            damageClass: "projectile",
-            fromEnemy: true,
-            bypassMitigation: false,
-            canKill: true
-          });
-          if (p.sourceEnemy?.enemyTypeId === "m_5x_vampire_archer" && (dmgResult?.effectiveDamage || 0) > 0 && !p.sourceEnemy.isDead) {
-            p.sourceEnemy.health = Math.min(p.sourceEnemy.maxHealth, p.sourceEnemy.health + 5);
-          }
-        }
-        if (p.onHitStun && (p.stunDuration != null)) {
-          this.stunTimer = Math.max(this.stunTimer || 0, p.stunDuration);
-          if (this.playerDebuffVFX?.stun) {
-            this.playerDebuffVFX.stun.active = true;
-            this.playerDebuffVFX.stun.until = this.time + p.stunDuration;
-          }
-        }
-        if (p.slowZone && p.slowDuration != null) {
-          this.playerSlowUntil = this.time + p.slowDuration;
-          this.playerSlowMult = p.slowMult ?? 0.65;
-          if (this.playerDebuffVFX?.slow) {
-            this.playerDebuffVFX.slow.active = true;
-            this.playerDebuffVFX.slow.until = this.time + p.slowDuration;
-          }
-        }
-        if (p.slowZone && this.hazardSystem) {
-          this.hazardSystem.addTemporaryPatch("slowZone", p.position.x + p.size / 2, p.position.y + p.size / 2, p.slowRadius ?? 50, p.slowDuration ?? 1.5, 0, false, p.slowMult ?? 0.6);
-        }
-        if (p.poisonOnHit && p.poisonDuration != null && p.poisonDmgPerSec != null) {
-          this.playerPoisonUntil = this.time + p.poisonDuration;
-          this.playerPoisonDmgPerSec = p.poisonDmgPerSec;
-          if (this.playerDebuffVFX?.poison) {
-            this.playerDebuffVFX.poison.active = true;
-            this.playerDebuffVFX.poison.until = this.playerPoisonUntil;
-          }
-        }
-      } else {
-        const margin = -20;
-        if (p.position.x >= margin && p.position.x <= this.world.width - margin &&
-            p.position.y >= margin && p.position.y <= this.world.height - margin) {
-          surviving.push(p);
-        }
-      }
-    }
-    es.projectiles = surviving;
-
     updateHitboxes(dt, this);
-    this.updateWindProjectileTrails(dt);
+    updateHitboxProjectileVisualTrails(this.getProjectileVisualState(), getActiveHitboxes(), dt);
     if (this.attackType === "projectile") {
       this.checkElementalShotHitboxesVsBreakables?.();
       this.checkElementalShotHitboxesVsSwirls?.();
@@ -13679,7 +13497,7 @@ export class Game {
     }
 
     // Immortal: regenerating shield absorbs damage first
-    if (this.hasCharacterTalent("immortal") && this.immortalShield > 0) {
+    if (this.hasRunTalent("immortal") && this.immortalShield > 0) {
       const absorb = Math.min(this.immortalShield, rawAmount);
       if (absorb > 0) {
         this.logTalentTrigger("immortal", `Shield absorbed ${absorb} damage`);
@@ -13715,7 +13533,7 @@ export class Game {
       showFloatingText: true,
       playSfx: true
     });
-    if (this.hasCharacterTalent("secondBreath") && !this.secondBreathUsedThisMap && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth < 0.15) {
+    if (this.hasRunTalent("secondBreath") && !this.secondBreathUsedThisMap && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth < 0.15) {
       this.logTalentTrigger("secondBreath", "Health below 15%: healed 25% max HP (once per map)");
       this.healPlayer(Math.round(this.currentStats.maxHealth * 0.25));
       this.secondBreathUsedThisMap = true;
@@ -13981,7 +13799,7 @@ export class Game {
   }
 
   drawTreasureSenseArrows(ctx) {
-    if (!this.hasCharacterTalent("treasureSense")) return;
+    if (!this.hasRunTalent("treasureSense")) return;
     const props = (this.searchableProps || []).filter((p) => !p.isSearched);
     if (props.length === 0) return;
     const px = this.player.position.x + this.player.size / 2;
@@ -14242,8 +14060,8 @@ export class Game {
     if (this.hazardSystem) this.hazardSystem.draw(ctx, this.camera, this.time);
     this.lootSystem.draw(ctx, this.camera, this.time);
     this.drawLevelUpVfx(ctx);
-    this.drawWindProjectileTrails(ctx);
     this.drawWorldActorsYSorted(ctx, scale);
+    drawHitboxProjectileTrails(this.getProjectileVisualState(), ctx);
     if (typeof this.drawMartyrChargeCircles === "function") this.drawMartyrChargeCircles(ctx);
     if (typeof this.drawGuardedEffects === "function") this.drawGuardedEffects(ctx);
     this.drawAmbushZoneDebug(ctx);
@@ -14259,25 +14077,6 @@ export class Game {
       this.searchingProp.drawProgressBar(ctx, this.camera);
     }
     this.drawTreasureSenseArrows(ctx);
-    for (const p of this.enemySystem?.projectiles || []) {
-      p.draw(ctx, this.camera);
-    }
-    // Draw enemy projectile hitboxes (e.g. Skeleton Archer arrow)
-    const camX = this.camera?.position?.x ?? 0;
-    const camY = this.camera?.position?.y ?? 0;
-    for (const h of getActiveHitboxes()) {
-      if (h.destroyed || h.faction !== 'enemy' || h.shape !== 'circle' || h.moveSpeed <= 0) continue;
-      if (!h.tags || !h.tags.includes('enemy_projectile')) continue;
-      const sx = h.x - camX;
-      const sy = h.y - camY;
-      ctx.fillStyle = '#e2e8f0';
-      ctx.beginPath();
-      ctx.arc(sx, sy, h.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
     this.drawEnemyDeathSmokeVfx(ctx);
     
     // Draw tutorial highlights
@@ -14680,59 +14479,14 @@ export class Game {
       ctx.fill();
     }
 
-    for (const h of getActiveHitboxes()) {
-      if (h.destroyed || h.defId !== 'player_projectile') continue;
-      const sx = h.x - this.camera.position.x;
-      const sy = h.y - this.camera.position.y;
-      const el = h.elementalState || 'fire';
-      if (h.shape === 'rect') {
-        const rcx = sx + (h.width ?? 12) / 2;
-        const rcy = sy + (h.height ?? 72) / 2;
-        const angleRad = typeof h.angleRad === 'number' ? h.angleRad : Math.atan2(h.dirY || 0, h.dirX || 1);
-        const w = h.width ?? 12;
-        const hh = h.height ?? 72;
-        ctx.save();
-        ctx.translate(rcx, rcy);
-        ctx.rotate(angleRad);
-        const g = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
-        g.addColorStop(0, 'rgba(22, 163, 74, 0.4)');
-        g.addColorStop(0.5, 'rgba(34, 197, 94, 0.85)');
-        g.addColorStop(1, 'rgba(22, 163, 74, 0.4)');
-        ctx.fillStyle = g;
-        ctx.fillRect(-w / 2, -hh / 2, w, hh);
-        ctx.strokeStyle = 'rgba(134, 239, 172, 0.6)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(-w / 2, -hh / 2, w, hh);
-        ctx.restore();
-      } else {
-        const r = h.radius ?? 4;
-        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
-        if (el === 'wind') {
-          g.addColorStop(0, 'rgba(134, 239, 172, 0.95)');
-          g.addColorStop(0.6, 'rgba(34, 197, 94, 0.7)');
-          g.addColorStop(1, 'rgba(22, 163, 74, 0.4)');
-        } else if (el === 'lightning') {
-          g.addColorStop(0, 'rgba(254, 249, 195, 0.95)');
-          g.addColorStop(0.6, 'rgba(250, 204, 21, 0.7)');
-          g.addColorStop(1, 'rgba(234, 179, 8, 0.4)');
-        } else {
-          g.addColorStop(0, 'rgba(254, 215, 170, 0.95)');
-          g.addColorStop(0.6, 'rgba(251, 146, 60, 0.7)');
-          g.addColorStop(1, 'rgba(234, 88, 12, 0.4)');
-        }
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(sx, sy, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
+    drawHitboxProjectileVisuals(this.getProjectileVisualState(), ctx, getActiveHitboxes());
     for (const proj of this.playerProjectiles) {
       proj.draw(ctx, this.camera);
     }
 
+    const camX = this.camera?.position?.x ?? 0;
+    const camY = this.camera?.position?.y ?? 0;
     if (this.attackType === "projectile" && (this.elementalStorms?.length || this.elementalSwirls?.length)) {
-      const camX = this.camera?.position?.x ?? 0;
-      const camY = this.camera?.position?.y ?? 0;
       for (const storm of this.elementalStorms || []) {
         const sx = storm.x - camX;
         const sy = storm.y - camY;
@@ -15049,7 +14803,7 @@ export class Game {
 
     this.inventory.push(newItem);
 
-    if (this.hasCharacterTalent("ghostLooter")) this.ghostLooterUntargetableUntil = this.time + 0.5;
+    if (this.hasRunTalent("ghostLooter")) this.ghostLooterUntargetableUntil = this.time + 0.5;
 
     if (this.hasUpgradeCard("secureFooting")) {
       this.swiftFeetTimer = 2.0;
@@ -15116,7 +14870,7 @@ export class Game {
     const isMiniBoss = !!(enemy.enemyTier === "miniBoss" || enemy.isFiery || enemy.isCursedChestGuardian);
     const isElite = !!(enemy.enemyTier === "elite" || enemy.isElite);
     let dropMult = this.hasBlessing("fortune") ? 2 : 1;
-    if (this.hasCharacterTalent("cubeMagnet")) dropMult *= 1.2;
+    if (this.hasRunTalent("cubeMagnet")) dropMult *= 1.2;
 
     const allCubes = [...MODIFIER_CUBES, ...UPGRADE_CUBES];
     const upgradeCubes = [...UPGRADE_CUBES];
@@ -15213,7 +14967,7 @@ export class Game {
   }
 
   hasUpgradeCard(key) {
-    return this.hasCharacterTalent(key);
+    return this.hasRunTalent(key);
   }
 
   getProjectileShotEvolution() {
@@ -15489,15 +15243,15 @@ export class Game {
       const pct = percentMods[key] || 0;
       if (pct !== 0) stats[key] = Math.round((stats[key] || 0) * (1 + pct));
     }
-    if (this.hasCharacterTalent("bulwark")) stats.defense = Math.round((stats.defense || 0) * 1.1);
-    if (this.hasCharacterTalent("thickSkin")) stats.defense = Math.round((stats.defense || 0) * 1.1);
+    if (this.hasRunTalent("bulwark")) stats.defense = Math.round((stats.defense || 0) * 1.1);
+    if (this.hasRunTalent("thickSkin")) stats.defense = Math.round((stats.defense || 0) * 1.1);
     stats.maxHealth = Math.round(stats.maxHealth);
     stats.speed = Math.round(stats.speed);
     stats.attack = Math.round(stats.attack);
-    if (this.hasCharacterTalent("battleScarred") && this.time < (this.battleScarredUntil || 0) && (this.battleScarredStacks || 0) > 0) {
+    if (this.hasRunTalent("battleScarred") && this.time < (this.battleScarredUntil || 0) && (this.battleScarredStacks || 0) > 0) {
       stats.attack = Math.round(stats.attack * (1 + (this.battleScarredStacks || 0) * 0.1));
     }
-    if (this.hasCharacterTalent("berserkerRage") && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth <= 0.4) {
+    if (this.hasRunTalent("berserkerRage") && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth <= 0.4) {
       stats.attack = Math.round(stats.attack * 1.4);
       stats.speed = Math.round(stats.speed * 1.15);
     }

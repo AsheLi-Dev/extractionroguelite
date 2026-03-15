@@ -9,7 +9,7 @@
 
 /** @typedef {'circle'|'rect'|'cone'} HitboxShape */
 
-/** @typedef {'straight'|'accelerating'|'zigzag'|'homing'} MoveMode */
+/** @typedef {'straight'|'accelerating'|'speed_ramp'|'zigzag'|'segment_zigzag'|'homing'|'spiral'} MoveMode */
 
 /**
  * Hitbox definition (data only). Used by the factory to create instances.
@@ -24,17 +24,21 @@
  * @property {number} [coneAngleRad] - Cone half-angle in radians.
  * @property {number} [durationMs] - How long the hitbox lives (0 = one frame).
  * @property {number} [moveSpeed] - Pixels per second in dir; 0 = stationary.
- * @property {MoveMode} [moveMode] - 'straight' | 'accelerating' | 'zigzag' | 'homing'; only used when moveSpeed > 0.
+ * @property {MoveMode} [moveMode] - Projectile movement mode; only used when moveSpeed > 0.
  * @property {number} [maxSpeed] - For accelerating: cap speed (pixels/sec).
- * @property {number} [accel] - For accelerating: speed gain per second (pixels/sec²).
+ * @property {number} [accel] - For accelerating: speed gain per second (pixels/sec^2).
+ * @property {number} [speedRampEnd] - For speed_ramp: target speed at the end of the ramp.
+ * @property {number} [speedRampDuration] - For speed_ramp: duration of the speed ramp (seconds).
  * @property {string} [targetId] - For homing: entity id to steer toward (e.g. 'player').
- * @property {number} [homingStrength] - For homing: blend factor per second (e.g. 2 = steer noticeably each second).
+ * @property {number} [homingStrength] - For homing: blend factor per second.
  * @property {number} [zigzagAmplitude] - For zigzag: perpendicular offset in pixels.
- * @property {number} [zigzagFrequency] - For zigzag: oscillation rad/sec (e.g. 6 ≈ 1 cycle per second).
+ * @property {number} [zigzagFrequency] - For zigzag: oscillation rad/sec.
+ * @property {number} [spiralDirection] - For spiral: 1 or -1 to control turn direction.
+ * @property {number} [spiralTurnRate] - For spiral: radians/sec of turning.
  * @property {number} [damage]
  * @property {number} [hitStunMs]
  * @property {number} [knockback]
- * @property {'radial'|'directional'} [knockbackMode] - 'radial' = push away from hitbox center; 'directional' = push along hitbox dir (default 'radial').
+ * @property {'radial'|'directional'} [knockbackMode] - 'radial' = push away from hitbox center; 'directional' = push along hitbox dir.
  * @property {number} [maxHitsPerTarget] - Max times this hitbox can hit the same target (default 1).
  * @property {number} [maxTotalTargets] - Max number of different targets that can be hit; omit = unlimited.
  * @property {boolean} [followOwner] - If true, position is synced to owner each frame.
@@ -69,19 +73,27 @@
  * @property {'radial'|'directional'} knockbackMode
  * @property {number} maxHitsPerTarget
  * @property {number|undefined} maxTotalTargets - Cap on how many different targets; undefined = no cap.
+ * @property {(hitbox: HitboxInstance, target: { id: string, x: number, y: number, radius: number }, world?: unknown) => void} [onHit]
+ * @property {(reason: string, hitbox: HitboxInstance, world?: unknown) => void} [onExpire]
  * @property {Set<string>} hitTargets - Entity ids already hit (per-target and total caps).
  * @property {boolean} followOwner
  * @property {boolean} destroyed
  * @property {string[]} tags
  * --- Optional projectile motion (only used when moveSpeed > 0 and moveMode is set) ---
  * @property {MoveMode} [moveMode] - Default 'straight'.
- * @property {number} [_currentSpeed] - For accelerating: current speed (pixels/sec).
+ * @property {number} [_currentSpeed] - For accelerating/speed_ramp: current speed.
  * @property {number} [maxSpeed]
  * @property {number} [accel]
+ * @property {number} [speedRampStart]
+ * @property {number} [speedRampEnd]
+ * @property {number} [speedRampDuration]
  * @property {string|null} [targetId] - For homing.
  * @property {number} [homingStrength]
  * @property {number} [zigzagAmplitude]
  * @property {number} [zigzagFrequency]
+ * @property {number} [spiralDirection]
+ * @property {number} [spiralTurnRate]
+ * @property {number} [_spiralBaseAngle]
  * @property {number} [forwardX] - For zigzag: fixed forward direction (unit).
  * @property {number} [forwardY]
  * @property {number} [_zigzagStartX] - For zigzag: spawn position X.
@@ -89,4 +101,4 @@
  */
 
 export const SHAPES = /** @type {const} */ (['circle', 'rect', 'cone']);
-export const MOVE_MODES = /** @type {const} */ (['straight', 'accelerating', 'zigzag', 'homing']);
+export const MOVE_MODES = /** @type {const} */ (['straight', 'accelerating', 'speed_ramp', 'zigzag', 'segment_zigzag', 'homing', 'spiral']);
