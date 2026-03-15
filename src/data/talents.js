@@ -131,6 +131,7 @@ export function canPurchaseTalent(id) {
   return (crystals[crystalId] || 0) >= Math.max(0, Number(node.cost) || 0);
 }
 
+/** Global talent tree: returns purchased talent ids from localStorage (single key, not per-character). */
 export function getPurchasedTalents() {
   try {
     const raw = localStorage.getItem(TALENTS_KEY);
@@ -156,31 +157,6 @@ export function purchaseTalent(id, cost) {
 export function hasTalent(id, purchased) {
   if (purchased !== undefined) return Array.isArray(purchased) && purchased.includes(id);
   return getPurchasedTalents().includes(id);
-}
-
-/** Get talent ids for a saved character (per-character trees). */
-export function getTalentsForCharacter(char) {
-  return getPurchasedTalents();
-}
-
-/** True if any saved character has the given talent (for menu context e.g. legacy vault). */
-export function hasAnyCharacterTalent(id) {
-  return hasTalent(id);
-}
-
-/** Purchase a talent for a character by index. */
-export function purchaseTalentForCharacter(charIndex, id, cost) {
-  return purchaseTalent(id, cost);
-}
-
-/** Refund a talent for a character by index. */
-export function refundTalentForCharacter(charIndex, talentId) {
-  return refundTalent(talentId);
-}
-
-/** Refund all talents in a branch for a character. */
-export function refundBranchForCharacter(charIndex, branchName) {
-  return refundBranch(branchName);
 }
 
 export function canRefundTalent(talentId, purchased) {

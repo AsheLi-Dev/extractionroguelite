@@ -118,7 +118,7 @@ export class SearchableProp {
         }
       }
     }
-    if (game && game.hasCharacterTalent("lootHoarder")) {
+    if (game && game.hasRunTalent("lootHoarder")) {
       if (typeof game.logTalentTrigger === "function") game.logTalentTrigger("lootHoarder", "Searchable opened: +20% drop chance 10s");
       const until = (game.time ?? 0) + 10;
       game.lootHoarderUntil = Math.max(game.lootHoarderUntil || 0, until);
@@ -149,7 +149,7 @@ export class SearchableProp {
     }
     const isBossRoom = (game?.currentMapId ?? game?.currentMap?.id) === 4;
     let lootMultiplier = (isBossRoom ? 2 : 1) * BASE_SEARCHABLE_LOOT_MULT;
-    if (game.hasCharacterTalent("arcaneEye")) {
+    if (game.hasRunTalent("arcaneEye")) {
       if (typeof game.logTalentTrigger === "function") game.logTalentTrigger("arcaneEye", "Searchable loot: +20% amount");
       lootMultiplier *= 1.2;
     }

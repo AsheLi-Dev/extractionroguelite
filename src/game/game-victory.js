@@ -64,7 +64,7 @@ export function applyGameVictoryMixin(Game) {
     },
 
     applyLootTranscendenceOnExtraction() {
-      if (!this.hasCharacterTalent("lootTranscendence")) return;
+      if (!this.hasRunTalent("lootTranscendence")) return;
       const diff = Math.min(5, Math.max(1, this.difficulty ?? 1));
       const tryUpgrade = (item) => {
         if (!item || item.type === "Upgrade Card" || item.type === "Cube") return;
@@ -213,7 +213,7 @@ export function applyGameVictoryMixin(Game) {
     },
 
     applyCuratorCubeUpgradeOnExtraction() {
-      if (!this.hasCharacterTalent("curator")) return;
+      if (!this.hasRunTalent("curator")) return;
       if (!this.cubeInventory) return;
       const snapshot = Object.entries(this.cubeInventory);
       const addMap = {};

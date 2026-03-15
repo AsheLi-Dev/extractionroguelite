@@ -1,7 +1,7 @@
 // -------- Legacy Vault UI --------
 
 import { escapeHtml } from '../utils.js';
-import { hasAnyCharacterTalent } from '../data/talents.js';
+import { hasTalent } from '../data/talents.js';
 import {
   MODIFIER_CUBES, UPGRADE_CUBES, LEGENDARY_CUBES, rollModifierForTier, getModifierRollRangeForTier, getCubeDifficultyForTier
 } from '../data/cubes-data.js';
@@ -267,7 +267,7 @@ function toggleLegacySelection(idx, cardEl) {
 }
 
 function maxLegacySelection() {
-  return hasAnyCharacterTalent("vaultMaster") ? 8 : 3;
+  return hasTalent("vaultMaster") ? 8 : 3;
 }
 
 function updateLegacySelectionUI() {
@@ -539,8 +539,8 @@ function updateLegacyCraftingPreview() {
           if (currentSockets >= 2) {
             preview = "Item already has maximum vessels (2).";
           } else {
-            const socketMasteryBonus = hasAnyCharacterTalent("socketMastery") ? " (20% chance to add 2 vessels)" : "";
-            const maxPossible = currentSockets === 0 && hasAnyCharacterTalent("socketMastery") ? 2 : 1;
+            const socketMasteryBonus = hasTalent("socketMastery") ? " (20% chance to add 2 vessels)" : "";
+            const maxPossible = currentSockets === 0 && hasTalent("socketMastery") ? 2 : 1;
             const newSockets = Math.min(2, currentSockets + maxPossible);
             preview = `Adds 1 vessel${socketMasteryBonus}. Item will have ${newSockets} vessel${newSockets !== 1 ? "s" : ""}.`;
             canCraft = true;
@@ -617,7 +617,7 @@ function executeLegacyCraft() {
     return;
   }
 
-  const cascadeSave = hasAnyCharacterTalent("cubeCascade") && Math.random() < 0.1;
+  const cascadeSave = hasTalent("cubeCascade") && Math.random() < 0.1;
   if (!cascadeSave) {
     stash[legacyCraftSelectedCube] = Math.max(0, (stash[legacyCraftSelectedCube] || 0) - 1);
     if (stash[legacyCraftSelectedCube] <= 0) delete stash[legacyCraftSelectedCube];
@@ -689,7 +689,7 @@ function applySocketCube(item) {
   const currentSockets = item.sockets ?? 0;
   if (currentSockets >= 2) return;
   let add = 1;
-  if (hasAnyCharacterTalent("socketMastery") && Math.random() < 0.2) add = 2;
+  if (hasTalent("socketMastery") && Math.random() < 0.2) add = 2;
   item.sockets = Math.min(2, currentSockets + add);
   rebuildItemStats(item);
 }
@@ -716,7 +716,7 @@ function applyUpgradeCube(item, cubeDef, tier) {
     item.rarity = "rare";
     item.modifiers = item.modifiers || [];
     const pool = getModifierPoolForType(item.type).filter((p) => !item.modifiers.some((m) => m.id === p.id));
-    const extraMods = hasAnyCharacterTalent("transmutation") && Math.random() < 0.05 ? 3 : 2;
+    const extraMods = hasTalent("transmutation") && Math.random() < 0.05 ? 3 : 2;
     for (let i = 0; i < extraMods; i++) {
       if (pool.length === 0) break;
       const idx = Math.floor(Math.random() * pool.length);

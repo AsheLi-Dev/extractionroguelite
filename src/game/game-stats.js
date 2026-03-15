@@ -95,8 +95,8 @@ export function applyGameStatsMixin(Game) {
         const pct = percentMods[key] || 0;
         if (pct !== 0) stats[key] = Math.round((stats[key] || 0) * (1 + pct));
       }
-      if (this.hasCharacterTalent("bulwark")) stats.defense = Math.round((stats.defense || 0) * 1.1);
-      if (this.hasCharacterTalent("thickSkin")) stats.defense = Math.round((stats.defense || 0) * 1.1);
+      if (this.hasRunTalent("bulwark")) stats.defense = Math.round((stats.defense || 0) * 1.1);
+      if (this.hasRunTalent("thickSkin")) stats.defense = Math.round((stats.defense || 0) * 1.1);
       stats.maxHealth = Math.round(stats.maxHealth);
       stats.speed = Math.round(stats.speed);
       stats.attack = Math.round(stats.attack);
@@ -226,7 +226,7 @@ export function applyGameStatsMixin(Game) {
         atkSpdMult *= this.getPillarAttackSpeedMultiplier({ attackType });
       }
       if (this.frenzyBuffUntil > this.time) atkSpdMult *= 1.3;
-      if (this.hasCharacterTalent("brutalityRetaliation") && this.time < (this.brutalityRetaliationUntil || 0) && (this.brutalityRetaliationStacks || 0) > 0) {
+      if (this.hasRunTalent("brutalityRetaliation") && this.time < (this.brutalityRetaliationUntil || 0) && (this.brutalityRetaliationStacks || 0) > 0) {
         atkSpdMult *= 1 + (this.brutalityRetaliationStacks || 0) * 0.05;
       }
       if (typeof this.getAttackUpgradeValue === "function") {
@@ -249,7 +249,7 @@ export function applyGameStatsMixin(Game) {
       let effectiveCooldown = (baseCooldown / atkSpdMult) * attackCooldownMult;
       effectiveCooldown /= attackSpeedMult;
 
-      if (this.hasCharacterTalent("cardSurge") && this.cardSurgeUntil > this.time) {
+      if (this.hasRunTalent("cardSurge") && this.cardSurgeUntil > this.time) {
         effectiveCooldown /= 1.2;
       }
       if (typeof this.getAttackPenaltyValue === "function") {

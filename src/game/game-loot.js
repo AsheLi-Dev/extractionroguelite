@@ -282,10 +282,10 @@ export function applyGameLootMixin(Game) {
 
       const dropMult = (enemy.affixes?.includes("evasive") ? 2 : 1)
         * (this.hasBlessing("fortune") ? 2 : 1)
-        * (this.hasCharacterTalent("lootHoarder") && (this.lootHoarderUntil || 0) > this.time ? 1.2 : 1)
+        * (this.hasRunTalent("lootHoarder") && (this.lootHoarderUntil || 0) > this.time ? 1.2 : 1)
         * getRingDropRateMult(this);
-      const equipDropMult = (this.hasCharacterTalent("keenEye") ? 1.15 : 1)
-        * (tier === "elite" && this.hasCharacterTalent("scavengersInstinct") ? 1.1 : 1);
+      const equipDropMult = (this.hasRunTalent("keenEye") ? 1.15 : 1)
+        * (tier === "elite" && this.hasRunTalent("scavengersInstinct") ? 1.1 : 1);
       const bandMult = enemy.dropChanceMult ?? 1;
       const dropChanceInputs = { dropMult, equipDropMult, bandMult };
 
@@ -293,7 +293,7 @@ export function applyGameLootMixin(Game) {
         emitEquipment(
           generateEquipmentItem(types[Math.floor(Math.random() * types.length)], lootQual, 0, "rare", equipOpts)
         );
-        if (this.hasCharacterTalent("keenEye") && typeof this.logTalentTrigger === "function") {
+        if (this.hasRunTalent("keenEye") && typeof this.logTalentTrigger === "function") {
           this.logTalentTrigger("keenEye", "Mini-boss guaranteed rare drop applied.");
         }
 
@@ -301,23 +301,23 @@ export function applyGameLootMixin(Game) {
         const secRoll = Math.random();
         if (secRoll < (miniChance.secondary?.rare || 0)) {
           emitEquipment(generateEquipmentItem(types[Math.floor(Math.random() * types.length)], lootQual, 0, "rare", equipOpts));
-          if (this.hasCharacterTalent("keenEye") && typeof this.logTalentTrigger === "function") {
+          if (this.hasRunTalent("keenEye") && typeof this.logTalentTrigger === "function") {
             this.logTalentTrigger("keenEye", "Mini-boss: extra rare roll succeeded.");
           }
         } else if (secRoll < ((miniChance.secondary?.rare || 0) + (miniChance.secondary?.magic || 0))) {
           emitEquipment(generateEquipmentItem(types[Math.floor(Math.random() * types.length)], lootQual, 0, "magic", equipOpts));
-          if (this.hasCharacterTalent("keenEye") && typeof this.logTalentTrigger === "function") {
+          if (this.hasRunTalent("keenEye") && typeof this.logTalentTrigger === "function") {
             this.logTalentTrigger("keenEye", "Mini-boss: bonus magic roll succeeded.");
           }
         }
 
-        if (this.hasCharacterTalent("philosophersStone") && Math.random() < 0.05) {
+        if (this.hasRunTalent("philosophersStone") && Math.random() < 0.05) {
           const legType = types[Math.floor(Math.random() * types.length)];
           const legDef = this.generateLegendaryEquipment(legType);
           emitEquipment(legDef);
         }
 
-        if (this.hasCharacterTalent("livingItem")) {
+        if (this.hasRunTalent("livingItem")) {
           const living = this.getLivingItem();
           if (living && (living.modifiers?.length ?? 0) < 6) {
             const pool = getModifierPoolForType(living.type).filter((p) => !living.modifiers?.some((m) => m.id === p.id));
@@ -339,7 +339,7 @@ export function applyGameLootMixin(Game) {
         if (outcome && outcome.rarity) {
           const type = types[Math.floor(Math.random() * types.length)];
           emitEquipment(generateEquipmentItem(type, lootQual, 0, outcome.rarity, equipOpts));
-          if (this.hasCharacterTalent("keenEye") && typeof this.logTalentTrigger === "function") {
+          if (this.hasRunTalent("keenEye") && typeof this.logTalentTrigger === "function") {
             this.logTalentTrigger("keenEye", "Equipment dropped: chance multipliers applied");
           }
         }
@@ -391,7 +391,7 @@ export function applyGameLootMixin(Game) {
       if (lootItem.type === "Gold" && lootItem.goldAmount > 0) {
         addGold(this, lootItem.goldAmount, "loot_pickup", {});
         if (typeof playSfx === "function") playSfx("collectGold");
-        if (this.hasCharacterTalent("cardSurge")) {
+        if (this.hasRunTalent("cardSurge")) {
           if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("cardSurge", "Loot pickup: +20% move/attack speed 3s");
           this.cardSurgeUntil = Math.max(this.cardSurgeUntil || 0, this.time + 3);
         }
@@ -405,7 +405,7 @@ export function applyGameLootMixin(Game) {
       }
       if (lootItem.type === "Cube" && lootItem.cubeKey) {
         this.addCubeToInventory(lootItem.cubeKey);
-        if (this.hasCharacterTalent("cardSurge")) {
+        if (this.hasRunTalent("cardSurge")) {
           if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("cardSurge", "Loot pickup: +20% move/attack speed 3s");
           this.cardSurgeUntil = Math.max(this.cardSurgeUntil || 0, this.time + 3);
         }
@@ -483,15 +483,15 @@ export function applyGameLootMixin(Game) {
       ensureItemVessels(newItem);
 
       this.inventory.push(newItem);
-      if (this.hasCharacterTalent("cardSurge")) {
+      if (this.hasRunTalent("cardSurge")) {
         if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("cardSurge", "Loot pickup: +20% move/attack speed 3s");
         this.cardSurgeUntil = Math.max(this.cardSurgeUntil || 0, this.time + 3);
       }
-      if (this.hasCharacterTalent("itemSense") && newItem.rarity === "magic") {
+      if (this.hasRunTalent("itemSense") && newItem.rarity === "magic") {
         if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("itemSense", "Magic item pickup: slowed nearby enemies 20% for 2s");
         this.applyItemSenseSlowPulse(0.5, 220, 0.7);
       }
-      if (this.hasCharacterTalent("ghostLooter")) {
+      if (this.hasRunTalent("ghostLooter")) {
         if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("ghostLooter", "Loot pickup: untargetable 0.5s");
         this.ghostLooterUntargetableUntil = this.time + 0.5;
       }
@@ -538,11 +538,11 @@ export function applyGameLootMixin(Game) {
       const isMiniBoss = !!(enemy.enemyTier === "miniBoss" || enemy.isFiery || enemy.isCursedChestGuardian);
       const isElite = !!(enemy.enemyTier === "elite" || enemy.enemyTier === "special" || enemy.isElite || enemy.isSpecial);
       let dropMult = this.hasBlessing("fortune") ? 2 : 1;
-      if (this.hasCharacterTalent("cubeMagnet")) {
+      if (this.hasRunTalent("cubeMagnet")) {
         if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("cubeMagnet", "Cube drop roll: +20% chance");
         dropMult *= 1.2;
       }
-      if (this.hasCharacterTalent("lootHoarder") && (this.lootHoarderUntil || 0) > this.time) dropMult *= 1.2;
+      if (this.hasRunTalent("lootHoarder") && (this.lootHoarderUntil || 0) > this.time) dropMult *= 1.2;
       dropMult *= getRingDropRateMult(this);
       const bandMult = enemy.dropChanceMult ?? 1;
 

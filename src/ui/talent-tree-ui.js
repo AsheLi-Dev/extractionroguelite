@@ -33,10 +33,6 @@ export function openTalentTree() {
   if (titleEl) titleEl.textContent = "Talent Tree";
 }
 
-export function openTalentTreeForCharacter(_charIndex) {
-  openTalentTree();
-}
-
 export function closeTalentTree() {
   const overlay = document.getElementById("talent-tree-overlay");
   if (overlay) overlay.classList.add("hidden");

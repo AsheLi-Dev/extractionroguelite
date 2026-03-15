@@ -801,6 +801,35 @@ export const ENEMY_ATTACK_KITS = {
     ]
   },
 
+  DeathBringer: {
+    base: [
+      {
+        id: "death_bringer_cleave",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.5, color: "heavy" },
+        execute: { damage: 1, range: 280, arc: 100 },
+        recover: 0.35,
+        cooldown: 2.5,
+        minRange: 40,
+        maxRange: 100,
+        weight: 1,
+        flags: { heavy: true }
+      },
+      {
+        id: "death_bringer_ground_spell",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 1.5, color: "magic", atTarget: true },
+        execute: { damage: 1.2, radius: 100, delay: 0, atTarget: true },
+        recover: 0.3,
+        cooldown: 5,
+        minRange: 120,
+        maxRange: 400,
+        weight: 0.7,
+        flags: { magic: true }
+      }
+    ]
+  },
+
   Banshee: {
     base: [
       {

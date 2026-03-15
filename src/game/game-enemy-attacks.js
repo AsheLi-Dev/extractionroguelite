@@ -369,6 +369,9 @@ export function applyGameEnemyAttacksMixin(Game) {
       const useCircleHitbox = typeof this.spawnEnemyCircleHitbox === 'function';
       this.delayedEnemyImpacts = this.delayedEnemyImpacts.filter((imp) => {
         if (now < imp.at) return true;
+        if (imp.attackId === 'death_bringer_ground_spell' && typeof this.spawnDeathBringerGroundSpellVfx === 'function') {
+          this.spawnDeathBringerGroundSpellVfx(imp.x, imp.y, imp.radius);
+        }
         if (useCircleHitbox) {
           this.spawnEnemyCircleHitbox(imp.sourceEnemy, imp.x, imp.y, imp.radius, imp.damage, imp.attackId || 'enemy_circle', {
             slowZone: imp.slowZone,

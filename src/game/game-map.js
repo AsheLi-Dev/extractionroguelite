@@ -1524,7 +1524,7 @@ export function applyGameMapMixin(Game) {
       this.lootSystem.setDifficulty(this.difficulty);
       this.lootSystem.setPlayerLuck(Math.max(0, Number(this.runCharacterAttributes?.luck) || 0));
 
-      if (this.hasCharacterTalent("immortal")) this.immortalShield = 30;
+      if (this.hasRunTalent("immortal")) this.immortalShield = 30;
 
       this.empowerStacks = [0, 0, 0, 0];
       this.enemySystem.setMap(targetMap);
@@ -1535,7 +1535,7 @@ export function applyGameMapMixin(Game) {
       if (isFirstVisit) {
         this.toughnessHitsThisMap = 0;
         this.secondBreathUsedThisMap = false;
-        if (this.hasCharacterTalent("vitality") && this.currentStats?.maxHealth > 0) {
+        if (this.hasRunTalent("vitality") && this.currentStats?.maxHealth > 0) {
           if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("vitality", "New map: healed 20% max HP");
           this.healPlayer(Math.round(this.currentStats.maxHealth * 0.2));
         }

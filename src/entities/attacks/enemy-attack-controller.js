@@ -1033,8 +1033,9 @@ export class EnemyAttackController {
     const a = this.currentAttack;
     const ex = enemy.position.x + enemy.size / 2;
     const ey = enemy.position.y + enemy.size / 2;
-    const sx = ex - camera.position.x;
-    const sy = ey - camera.position.y;
+    const useTargetPos = a.telegraph?.atTarget && this.targetSnapshot;
+    const sx = useTargetPos ? this.targetSnapshot.x - camera.position.x : ex - camera.position.x;
+    const sy = useTargetPos ? this.targetSnapshot.y - camera.position.y : ey - camera.position.y;
 
     const windup = a.telegraph?.windup ?? 0.5;
     const elapsed = windup - this.timer;

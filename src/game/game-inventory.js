@@ -292,7 +292,7 @@ export function applyGameInventoryMixin(Game) {
     },
 
     toggleVaultMasterSecureItem(item) {
-      if (!this.hasCharacterTalent("vaultMaster")) return false;
+      if (!this.hasRunTalent("vaultMaster")) return false;
       if (!item || !this.isItemEquippable(item)) return false;
       const set = this.getVaultMasterSecureSet();
       const key = String(item.id);
@@ -315,7 +315,7 @@ export function applyGameInventoryMixin(Game) {
     },
 
     transferVaultMasterSecuredItemsOnDeath() {
-      if (!this.hasCharacterTalent("vaultMaster")) return;
+      if (!this.hasRunTalent("vaultMaster")) return;
       if (this.vaultMasterSecureTransferred) return;
       const secured = this.getVaultMasterSecureSet();
       if (!secured || secured.size === 0) return;
@@ -665,7 +665,7 @@ export function applyGameInventoryMixin(Game) {
             const sellLabel = sellPrice != null ? ` <span class="inventory-item-sell-price" style="color:#facc15">[Sell ${sellPrice}g]</span>` : "";
             const selectedSellLabel = this.inventorySellState?.selectedItemKey === this.getInventorySellKey(item) ? ` <span style="color:#86efac">[Selected]</span>` : "";
             const sendLabel = this.rogueVaultState?.active ? ` <span style="color:#86efac">[Send 150g]</span>` : "";
-            const secureLabel = this.hasCharacterTalent("vaultMaster")
+            const secureLabel = this.hasRunTalent("vaultMaster")
               ? (this.isVaultMasterSecured(item)
                   ? ` <span style="color:#93c5fd">[Secured]</span>`
                   : ` <span style="color:#94a3b8">[Right-click: Secure]</span>`)
@@ -678,7 +678,7 @@ export function applyGameInventoryMixin(Game) {
             if (this.inventorySellState?.active && sellPrice != null) li.title += ` [Sell ${sellPrice}g]`;
             if (this.inventorySellState?.selectedItemKey === this.getInventorySellKey(item)) li.title += " [Selected]";
             if (this.rogueVaultState?.active) li.title += " [Send 150g]";
-            if (this.hasCharacterTalent("vaultMaster") && this.isVaultMasterSecured(item)) li.title += " [Secured]";
+            if (this.hasRunTalent("vaultMaster") && this.isVaultMasterSecured(item)) li.title += " [Secured]";
             void color; void forgedTag; void sellLabel; void selectedSellLabel; void sendLabel; void secureLabel;
           } else {
             li.textContent = this.rogueVaultState?.active ? `${item.name} [Send 150g]` : item.name;
@@ -709,7 +709,7 @@ export function applyGameInventoryMixin(Game) {
               this.populateInventoryOverlay();
             });
           } else {
-            if (this.hasCharacterTalent("vaultMaster") && !this.inventorySellState?.active && !this.rogueVaultState?.active) {
+            if (this.hasRunTalent("vaultMaster") && !this.inventorySellState?.active && !this.rogueVaultState?.active) {
               li.addEventListener("contextmenu", (e) => {
                 e.preventDefault();
                 if (this.toggleVaultMasterSecureItem(item) && this.inventoryOverlayOpen) this.populateInventoryOverlay();
@@ -1239,7 +1239,7 @@ export function applyGameInventoryMixin(Game) {
       }
       if (!crafted) return;
 
-      const cascadeSave = this.hasCharacterTalent("cubeCascade") && Math.random() < 0.1;
+      const cascadeSave = this.hasRunTalent("cubeCascade") && Math.random() < 0.1;
       if (cascadeSave && typeof this.logTalentTrigger === "function") this.logTalentTrigger("cubeCascade", "Cube used: 10% proc, cube not consumed (duplicate)");
       if (!cascadeSave) {
         this.cubeInventory[cubeKey] = count - 1;
@@ -1358,7 +1358,7 @@ export function applyGameInventoryMixin(Game) {
         item.rarity = "rare";
         item.modifiers = item.modifiers || [];
         const pool = getCraftModifierPoolForItem(item).filter((p) => !item.modifiers.some((m) => m.id === p.id));
-        const transmutationProc = this.hasCharacterTalent("transmutation") && Math.random() < 0.05;
+        const transmutationProc = this.hasRunTalent("transmutation") && Math.random() < 0.05;
         if (transmutationProc && typeof this.logTalentTrigger === "function") this.logTalentTrigger("transmutation", "Rare item from cube: 5% T1 modifier as base stat");
         const extraMods = transmutationProc ? 3 : 2;
         for (let i = 0; i < extraMods; i++) {
@@ -1536,7 +1536,7 @@ export function applyGameInventoryMixin(Game) {
           nameSpan.className = "inventory-item-name" + (item.rarity === "legendary" ? " inventory-item-legendary" : "");
           nameSpan.style.color = getItemRarityColor(item);
           nameSpan.textContent = item.blacksmithUpgraded ? `${item.name} (Forged)` : item.name;
-          if (this.hasCharacterTalent("vaultMaster") && this.isVaultMasterSecured(item)) {
+          if (this.hasRunTalent("vaultMaster") && this.isVaultMasterSecured(item)) {
             nameSpan.textContent += " [Secured]";
           }
 
@@ -1562,7 +1562,7 @@ export function applyGameInventoryMixin(Game) {
 
           li.addEventListener("mouseenter", (e) => showItemTooltip(e, item, this));
           li.addEventListener("mouseleave", hideItemTooltip);
-          if ((canAnytimeSell || this.hasCharacterTalent("vaultMaster")) && !this.inventorySellState?.active && !this.rogueVaultState?.active) {
+          if ((canAnytimeSell || this.hasRunTalent("vaultMaster")) && !this.inventorySellState?.active && !this.rogueVaultState?.active) {
             li.addEventListener("contextmenu", (e) => {
               e.preventDefault();
               if (canAnytimeSell && this.isItemEquippable(item)) {
@@ -1572,7 +1572,7 @@ export function applyGameInventoryMixin(Game) {
                 }
                 return;
               }
-              if (this.hasCharacterTalent("vaultMaster") && this.toggleVaultMasterSecureItem(item)) this.updateInventoryUI();
+              if (this.hasRunTalent("vaultMaster") && this.toggleVaultMasterSecureItem(item)) this.updateInventoryUI();
             });
           }
           li.addEventListener("click", () => this.handleInventoryItemClick(item));

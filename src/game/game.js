@@ -67,7 +67,7 @@ import { Obstacle } from '../entities/obstacle.js';
 import { HazardSystem } from '../entities/hazard.js';
 import {
   ENEMY_TYPES, BOSS_XP, AFFIX_DEFS, getAffixDef, getXpForLevel,
-  Enemy
+  Enemy, getDeathBringerGroundSpellSheet
 } from '../entities/enemy.js';
 import {
   PLAYER_PROJECTILE_SPEED, PLAYER_PROJECTILE_SIZE, PLAYER_PROJECTILE_MAX_DIST,

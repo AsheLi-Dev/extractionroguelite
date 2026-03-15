@@ -95,6 +95,7 @@ const NEW_ENEMY_DATA = [
   {"id":"m_5b_skeleton_archer","name":"Skeleton Archer","atlas":{"row":5,"col":"b"},"archetype":"Skeleton","base":{"size":86,"hp":55,"atk":9,"speed":75,"def":2},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"mid","notes":"Ranged skeleton. Great with Volatile."},
   {"id":"m_5c_lich","name":"Lich","atlas":{"row":5,"col":"c"},"spriteSet":"lich_regular","archetype":"Demon","base":{"size":86,"hp":85,"atk":12,"speed":60,"def":3},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"high","notes":"Caster boss-lite. Great with Lasering."},
   {"id":"m_5d_death_knight","name":"Death Knight","atlas":{"row":5,"col":"d"},"spriteSet":"death_knight_regular","archetype":"Demon","base":{"size":103,"hp":100,"atk":15,"speed":50,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Top-tier melee. Perfect Mini-boss."},
+  {"id":"m_5z_death_bringer","name":"DeathBringer","atlas":{"row":5,"col":"e"},"spriteSet":"death_bringer_regular","archetype":"Demon","base":{"size":103,"hp":90,"atk":12,"speed":55,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Caster with cone melee and delayed ground spell at player."},
   {"id":"m_5e_zombie","name":"Zombie","atlas":{"row":5,"col":"e"},"archetype":"Slime","base":{"size":86,"hp":70,"atk":8,"speed":55,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Slow tank. Good with Volatile/Orbiting."},
   {"id":"m_5g_small_dummy","name":"Small Dummy","atlas":{"row":5,"col":"e"},"spriteSet":"small_dummy_regular","archetype":"Slime","base":{"size":86,"hp":70,"atk":8,"speed":55,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Zombie-equivalent test enemy."},
   {"id":"m_5k_small_dwarfette","name":"Small Dwarfette","atlas":{"row":5,"col":"e"},"spriteSet":"small_dwarfette_regular","archetype":"Slime","base":{"size":86,"hp":70,"atk":8,"speed":55,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Small dummy variant with dash attack."},
@@ -311,6 +312,7 @@ const monsteryflySheetCache = new Map();
 const monsterSlasherSheetCache = new Map();
 const vampireArcherSheetCache = new Map();
 const mercenarySheetCache = new Map();
+const deathBringerSheetCache = new Map();
 
 function getCachedSpriteImage(cache, path, warningLabel) {
   let image = cache.get(path);
@@ -1146,8 +1148,42 @@ function preloadVampireArcherSheets() {
   getVampireArcherSheets();
 }
 
+function getDeathBringerSheets() {
+  const img = getCachedSpriteImage(deathBringerSheetCache, "assets/Enemies/Bringer-of-Death-SpritSheet.png", "DeathBringer sheet");
+  const totalRows = 8;
+  const framesPerRow = 8;
+  const cropRight = 0.3;
+  return {
+    idle: { image: img, frames: framesPerRow, row: 0, totalRows, fps: 8, cropRightRatio: cropRight },
+    move: { image: img, frames: framesPerRow, row: 1, totalRows, fps: 12, cropRightRatio: cropRight },
+    attack: { image: img, frames: framesPerRow, row: 2, totalRows, fps: 14, cropRightRatio: cropRight },
+    attackRecover: { image: img, frames: framesPerRow, row: 3, totalRows, fps: 12, cropRightRatio: cropRight },
+    death: { image: img, frames: framesPerRow, row: 4, totalRows, fps: 12, loop: false, cropRightRatio: cropRight },
+    attackCast: { image: img, frames: framesPerRow, row: 5, totalRows, fps: 12, cropRightRatio: cropRight },
+    groundSpell: { image: img, frames: framesPerRow, row: 6, totalRows, fps: 14, cropRightRatio: cropRight }
+  };
+}
+
+/** Returns sheet info for drawing the DeathBringer ground spell VFX at impact position (rows 7–8 = 0-based 6–7, 16 frames). */
+export function getDeathBringerGroundSpellSheet() {
+  const sheets = getDeathBringerSheets();
+  const g = sheets.groundSpell;
+  return {
+    image: g.image,
+    totalRows: 8,
+    framesPerRow: 8,
+    rowStart: 6,
+    frameCount: 16,
+    fps: g.fps || 14
+  };
+}
+
 function preloadMercenarySheets() {
   getMercenarySheets();
+}
+
+function preloadDeathBringerSheets() {
+  getDeathBringerSheets();
 }
 
 // Load the enemy sprite atlas automatically when module loads
@@ -1213,6 +1249,7 @@ preloadMonsteryflySheets();
 preloadMonsterSlasherSheets();
 preloadVampireArcherSheets();
 preloadMercenarySheets();
+preloadDeathBringerSheets();
 
 function parseTileFrameKey(key) {
   const match = /^tile_\d+_r(\d+)_c(\d+)$/.exec(String(key || ""));
@@ -1766,6 +1803,14 @@ export class Enemy {
       };
     } else if (typeDef.spriteSet === "mercenary_regular") {
       this.spriteSheets = getMercenarySheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "death_bringer_regular") {
+      this.spriteSheets = getDeathBringerSheets();
       this.spriteSheetFlipInverted = true;
       this.spriteAnimState = {
         state: "idle",
@@ -2409,13 +2454,22 @@ export class Enemy {
       const isCycloneEnd = !isCycloneAttack && (this._cycloneEndTimer > 0) && !!this.spriteSheets?.attackCycloneEnd;
       const isRollAttack = !!this._attackRollState && !!this.spriteSheets?.attackRoll;
       const isRollEnd = !isRollAttack && (this._attackRollEndTimer > 0) && !!this.spriteSheets?.attackRollEnd;
+      const isDeathBringerCast = !!(inAttack && this.attackCtrl?.currentAttack?.id === "death_bringer_ground_spell" && this.spriteSheets?.attackCast);
+      const isInRecoverWithRecoverSheet = !!(inAttack && this.attackCtrl?.state === "recover" && this.spriteSheets?.attackRecover);
+      const isDeadWithDeathSheet = !!((this.health <= 0 || this.isDead) && this.spriteSheets?.death);
       let nextState = "idle";
       if (specialHealing) {
         nextState = "specialHeal";
+      } else if (isDeadWithDeathSheet) {
+        nextState = "death";
       } else if (isFrogSpitFlight) {
         nextState = "idle";
       } else if (isMonsteryflyRecover) {
         nextState = "attackRecover";
+      } else if (isInRecoverWithRecoverSheet) {
+        nextState = "attackRecover";
+      } else if (isDeathBringerCast) {
+        nextState = "attackCast";
       } else if (isMonsteryflyPrepare) {
         nextState = "attackPrepare";
       } else if (isCycloneAttack) {
@@ -2599,11 +2653,16 @@ export class Enemy {
       const image = animDef?.image || null;
       const frames = Math.max(1, animDef?.frames || 1);
       if (image && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+        const totalRows = animDef?.totalRows ?? 1;
+        const rowIndex = animDef?.row ?? 0;
         const frameW = Math.max(1, Math.floor(image.naturalWidth / frames));
-        const frameH = Math.max(1, image.naturalHeight);
+        const frameH = totalRows > 1 ? Math.max(1, Math.floor(image.naturalHeight / totalRows)) : Math.max(1, image.naturalHeight);
+        const cropRightRatio = Math.max(0, Math.min(1, animDef?.cropRightRatio ?? 0));
+        const srcW = Math.max(1, Math.floor(frameW * (1 - cropRightRatio)));
         const frameIndex = Math.min(frames - 1, Math.max(0, this.spriteAnimState.frameIndex | 0));
         const srcX = frameIndex * frameW;
-        ctx.drawImage(image, srcX, 0, frameW, frameH, sx, sy, this.size, this.size);
+        const srcY = totalRows > 1 ? rowIndex * frameH : 0;
+        ctx.drawImage(image, srcX, srcY, srcW, frameH, sx, sy, this.size, this.size);
       } else {
         ctx.fillStyle = fillColor;
         ctx.fillRect(sx, sy, this.size, this.size);

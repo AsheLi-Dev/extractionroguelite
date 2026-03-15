@@ -264,9 +264,12 @@ export class EnemySystem {
     const pool = this.getSpawnPool(allowSpecialSpawn);
     if (!pool.length) return null;
 
-    let base = forceType
-      ? (pool.find((e) => e.name === forceType || e.id === forceType) || pool[Math.floor(Math.random() * pool.length)])
-      : pool[Math.floor(Math.random() * pool.length)];
+    let base = null;
+    if (forceType) {
+      base = pool.find((e) => e.name === forceType || e.id === forceType);
+      if (!base) base = ENEMY_TYPES.find((e) => e.name === forceType || e.id === forceType);
+    }
+    if (!base) base = pool[Math.floor(Math.random() * pool.length)];
     if (!forceType && this.hasCond("eliteSpawn")) {
       const idx = pool.findIndex((e) => e.name === base.name);
       base = pool[Math.min(idx + 1, pool.length - 1)] || base;

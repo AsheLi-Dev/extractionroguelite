@@ -19,7 +19,7 @@ import {
   UPGRADE_CATEGORIES
 } from '../data/level-up-data.js';
 import { getAllPillars } from '../data/pillars.js';
-import { hasTalent, getTalentsForCharacter } from '../data/talents.js';
+import { hasTalent, getPurchasedTalents } from '../data/talents.js';
 import { loadPillarProgressState } from '../systems/pillar-progress.js';
 import { getFriendsState, canSelectCompanion, setSelectedCompanion, saveFriendsState } from '../systems/friends-system.js';
 import { FRIENDS_CATALOG, FRIEND_IDS } from '../data/friends-data.js';
@@ -214,7 +214,6 @@ export function rollPreRunConditions() {
 export function renderPreRunScreen() {
   const saved = loadSavedCharacters();
   const preRunChar = pendingCharacterIndex != null ? saved[pendingCharacterIndex] : null;
-  const preRunTalents = preRunChar ? getTalentsForCharacter(preRunChar) : [];
   preRunRerollMax = 1;
 
   const charListEl = document.getElementById("pre-run-character-list");

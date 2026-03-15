@@ -121,7 +121,7 @@ export const SKILL_DEFS = [
 
 export function isSkillUnlocked(skillDef, game) {
   const u = getSkillUnlocks();
-  const hasT = game && game.hasCharacterTalent ? (id) => game.hasCharacterTalent(id) : () => false;
+  const hasT = game && game.hasRunTalent ? (id) => game.hasRunTalent(id) : () => false;
   if (skillDef.unlock === "always") return true;
   if (skillDef.unlock === "scavengerFull") {
     return ["lootTranscendence", "vaultMaster", "curator"].some((t) => hasT(t));

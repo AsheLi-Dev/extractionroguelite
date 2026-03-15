@@ -53,6 +53,19 @@ export class PlayerProjectile {
     this.canSteer = options.canSteer !== false;
     this.forceHoming = !!options.forceHoming;
     this.sniperPierceFalloff = options.sniperPierceFalloff || null;
+    this.zigzagSegmentSec = Math.max(0, Number(options.zigzagSegmentSec) || 0);
+    this.zigzagSegmentSecMin = Math.max(0, Number(options.zigzagSegmentSecMin) || this.zigzagSegmentSec);
+    this.zigzagSegmentSecMax = Math.max(this.zigzagSegmentSecMin, Number(options.zigzagSegmentSecMax) || this.zigzagSegmentSecMin);
+    this.zigzagLateralWeight = Math.max(0, Number(options.zigzagLateralWeight) || 0);
+    this.zigzagLateralWeightMin = Math.max(0, Number(options.zigzagLateralWeightMin) || this.zigzagLateralWeight);
+    this.zigzagLateralWeightMax = Math.max(this.zigzagLateralWeightMin, Number(options.zigzagLateralWeightMax) || this.zigzagLateralWeightMin);
+    this.zigzagMaxSegments = options.zigzagMaxSegments == null ? null : Math.max(0, Math.floor(Number(options.zigzagMaxSegments) || 0));
+    this.baseDirX = dx / dist;
+    this.baseDirY = dy / dist;
+    this._zigzagSegmentTimer = 0;
+    this._zigzagSegmentIndex = 0;
+    this._zigzagSegmentSign = 1;
+    this._zigzagSegmentLateralWeight = this.zigzagLateralWeightMin;
     this.currentDamageMult = 1;
     this._spawn = null;
     this.magicStyle = options.magicStyle ?? null;
@@ -182,6 +195,43 @@ export class PlayerProjectile {
       this._spawn = [p1, p2];
     }
 
+    if (this.zigzagSegmentSecMin > 0 && this.zigzagLateralWeight > 0) {
+      let remaining = dt;
+      let moveX = 0;
+      let moveY = 0;
+      const lateralX = -this.baseDirY;
+      const lateralY = this.baseDirX;
+      const speed = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2) || PLAYER_PROJECTILE_SPEED;
+      while (remaining > 1e-6) {
+        if ((this._zigzagSegmentTimer ?? 0) <= 1e-6) {
+          if ((this._zigzagSegmentIndex ?? 0) > 0) {
+            this._zigzagSegmentSign = (this._zigzagSegmentSign ?? 1) * -1;
+          }
+          this._zigzagSegmentTimer = this.zigzagSegmentSecMin + Math.random() * (this.zigzagSegmentSecMax - this.zigzagSegmentSecMin);
+          this._zigzagSegmentIndex = (this._zigzagSegmentIndex ?? 0) + 1;
+          this._zigzagSegmentLateralWeight = this.zigzagLateralWeightMin + Math.random() * (this.zigzagLateralWeightMax - this.zigzagLateralWeightMin);
+        }
+        const step = Math.min(remaining, this._zigzagSegmentTimer);
+        const sign = this.zigzagMaxSegments != null && (this._zigzagSegmentIndex ?? 1) > this.zigzagMaxSegments
+          ? 0
+          : (this._zigzagSegmentSign ?? 1);
+        const lateralWeight = Number(this._zigzagSegmentLateralWeight ?? this.zigzagLateralWeightMin) || 0;
+        const rawX = this.baseDirX + lateralX * sign * lateralWeight;
+        const rawY = this.baseDirY + lateralY * sign * lateralWeight;
+        const len = Math.sqrt(rawX * rawX + rawY * rawY) || 1;
+        this.velocity.x = (rawX / len) * speed;
+        this.velocity.y = (rawY / len) * speed;
+        moveX += this.velocity.x * step;
+        moveY += this.velocity.y * step;
+        this._zigzagSegmentTimer -= step;
+        remaining -= step;
+      }
+      this.position.x += moveX;
+      this.position.y += moveY;
+      this.distanceTraveled += Math.sqrt(moveX * moveX + moveY * moveY);
+      return;
+    }
+
     const moveX = this.velocity.x * dt;
     const moveY = this.velocity.y * dt;
     this.position.x += moveX;
@@ -239,6 +289,7 @@ export class PlayerProjectile {
       : el === "lightning"
         ? { trail: "254, 240, 138", glow: "250, 204, 21", core: "254, 249, 195", spark: "250, 204, 21" }
         : { trail: "255, 180, 100", glow: "251, 146, 60", core: "255, 220, 180", spark: "255, 150, 50" };
+    const windAlpha = el === "wind" ? 0.45 : 1;
 
     // Calculate speed and stretch factor
     const speed = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2);
@@ -268,8 +319,8 @@ export class PlayerProjectile {
 
         ctx.save();
         ctx.globalCompositeOperation = "lighter";
-        ctx.strokeStyle = `rgba(182, 244, 255, ${Math.max(0.02, alpha * 0.26)})`;
-        ctx.shadowColor = `rgba(200, 248, 255, ${Math.max(0.02, alpha * 0.42)})`;
+        ctx.strokeStyle = `rgba(182, 244, 255, ${Math.max(0.02, alpha * 0.26 * windAlpha)})`;
+        ctx.shadowColor = `rgba(200, 248, 255, ${Math.max(0.02, alpha * 0.42 * windAlpha)})`;
         ctx.shadowBlur = 10;
         ctx.lineWidth = width;
         ctx.lineCap = "round";
@@ -278,7 +329,7 @@ export class PlayerProjectile {
         ctx.lineTo(x2, y2);
         ctx.stroke();
         ctx.shadowBlur = 0;
-        ctx.fillStyle = `rgba(210, 250, 255, ${Math.max(0.02, alpha * 0.16)})`;
+        ctx.fillStyle = `rgba(210, 250, 255, ${Math.max(0.02, alpha * 0.16 * windAlpha)})`;
         ctx.beginPath();
         ctx.ellipse(x2, y2, width * 0.9, width * 0.55, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -328,18 +379,18 @@ export class PlayerProjectile {
     ctx.translate(cx, cy);
     ctx.rotate(angle);
     ctx.scale(scaleX, scaleY);
-    if (isRect) {
-      ctx.fillStyle = `rgba(${colors.glow}, 0.6)`;
+      if (isRect) {
+      ctx.fillStyle = `rgba(${colors.glow}, ${0.6 * windAlpha})`;
       ctx.fillRect(-w / 2 * 1.2, -h / 2 * 1.2, w * 1.2, h * 1.2);
-      ctx.fillStyle = `rgba(${colors.core}, 0.9)`;
+      ctx.fillStyle = `rgba(${colors.core}, ${0.9 * windAlpha})`;
       ctx.fillRect(-w / 2 * 0.7, -h / 2 * 0.7, w * 0.7, h * 0.7);
     } else {
       const windFill = el === "wind";
-      ctx.fillStyle = `rgba(${colors.glow}, ${windFill ? 0.2 : 0.6})`;
+      ctx.fillStyle = `rgba(${colors.glow}, ${windFill ? (0.2 * windAlpha) : 0.6})`;
       ctx.beginPath();
       ctx.ellipse(0, 0, this.size / 2 * 1.2, this.size / 2 * 1.2, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = `rgba(${colors.core}, ${windFill ? 0.7 : 0.9})`;
+      ctx.fillStyle = `rgba(${colors.core}, ${windFill ? (0.7 * windAlpha) : 0.9})`;
       ctx.beginPath();
       ctx.ellipse(0, 0, this.size / 2 * 0.7, this.size / 2 * 0.7, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -362,7 +413,7 @@ export class PlayerProjectile {
       const sparkAlpha = spark.lifetime / spark.maxLifetime;
       const sparkSize = 1.5 * sparkAlpha;
       
-      ctx.fillStyle = `rgba(${colors.spark}, ${sparkAlpha * 0.8})`;
+      ctx.fillStyle = `rgba(${colors.spark}, ${sparkAlpha * 0.8 * windAlpha})`;
       ctx.beginPath();
       ctx.arc(sparkSx, sparkSy, sparkSize, 0, Math.PI * 2);
       ctx.fill();
