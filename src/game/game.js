@@ -67,7 +67,7 @@ import { Obstacle } from '../entities/obstacle.js';
 import { HazardSystem } from '../entities/hazard.js';
 import {
   ENEMY_TYPES, BOSS_XP, AFFIX_DEFS, getAffixDef, getXpForLevel,
-  Enemy, getDeathBringerGroundSpellSheet
+  Enemy
 } from '../entities/enemy.js';
 import {
   PLAYER_PROJECTILE_SPEED, PLAYER_PROJECTILE_SIZE, PLAYER_PROJECTILE_MAX_DIST,
@@ -1342,7 +1342,7 @@ export class Game {
     const devSpawnMinibossBtn = document.getElementById("dev-spawn-miniboss");
     if (devMinibossSelect) {
       devMinibossSelect.innerHTML = '<option value="">-- Select enemy --</option>';
-      const attackKitEnemies = ["Orc", "Orc Wizard", "Goblin", "Goblin Archer", "Troll", "Ettin", "Big Slime", "Skeleton Archer", "Lich", "Death Knight", "Banshee", "Giant Spider", "Manticore", "Dryad", "Rock Golem", "Drake / Lesser Dragon"];
+      const attackKitEnemies = ["Orc", "Orc Wizard", "Goblin", "Goblin Archer", "Troll", "Ettin", "Big Slime", "Skeleton Archer", "Lich", "Death Knight", "Banshee", "Giant Spider", "Manticore", "Dryad", "Rock Golem", "Drake / Lesser Dragon", "GoblinKing", "RockGiant"];
       for (const name of attackKitEnemies) {
         const opt = document.createElement("option");
         opt.value = name;
@@ -7340,6 +7340,8 @@ export class Game {
         enemy.update(dt, enemyTarget, this.time, globalSlow, 400, this);
         this.updateSmallMimicBehavior(enemy, dt);
         this.updateLargeMimicBehavior(enemy, dt);
+        this.updateGhostBehavior(enemy, dt);
+        this.updateSkeletonBehavior(enemy, dt);
         this.updateEnemyAffixes(dt, enemy);
         this.processEnemyDebuffs(dt, enemy);
         // Attack ready telegraph
@@ -7406,6 +7408,11 @@ export class Game {
           });
         }
         const martyrMinions = this.dropLootFromEnemy(enemy);
+        if (enemy.name === "GoblinKing" && enemy.goblinKingMinions) {
+          for (const m of enemy.goblinKingMinions) {
+            if (m && !m.isDead) m._fleeFromPlayer = true;
+          }
+        }
         minionSurviving.push(...(martyrMinions || []));
       } else {
         minionSurviving.push(enemy);
@@ -7459,6 +7466,8 @@ export class Game {
       enemy.update(dt, enemyTarget, this.time, globalSlow, this.viewWidth / 4, this);
       this.updateSmallMimicBehavior(enemy, dt);
       this.updateLargeMimicBehavior(enemy, dt);
+      this.updateGhostBehavior(enemy, dt);
+      this.updateSkeletonBehavior(enemy, dt);
       this.updateEnemyAffixes(dt, enemy);
       this.processEnemyDebuffs(dt, enemy);
 
@@ -7514,6 +7523,11 @@ export class Game {
           });
         }
         const martyrMinions = this.dropLootFromEnemy(enemy);
+        if (enemy.name === "GoblinKing" && enemy.goblinKingMinions) {
+          for (const m of enemy.goblinKingMinions) {
+            if (m && !m.isDead) m._fleeFromPlayer = true;
+          }
+        }
         surviving.push(...(martyrMinions || []));
       } else {
         surviving.push(enemy);
@@ -8046,6 +8060,19 @@ export class Game {
       console.log("[Dev Create Dummy] damage:", dmg, "source:", source, { reason: opts.reason, skillId: opts.skillId, attackType: opts.attackType, sourceType: opts.sourceType, isDot: !!opts.isDot });
     }
     enemy.takeDamage(dmg);
+    if (enemy.name === "RockGiant" && dmg > 0 && !opts.isDot) {
+      const inAttack = enemy.attackCtrl?.currentAttack != null;
+      const inHealing = !!(enemy._rockGiantHealing);
+      const hitCooldownOk = (enemy._rockGiantHitReactionCooldownUntil == null || this.time >= enemy._rockGiantHitReactionCooldownUntil);
+      if (!inAttack && !inHealing && hitCooldownOk) {
+        enemy._rockGiantHitReaction = true;
+        enemy._rockGiantHitReactionCooldownUntil = this.time + 4;
+      }
+      if (enemy.maxHealth > 0 && enemy.health / enemy.maxHealth < 0.5 && !enemy._rockGiantHealUsed && !enemy._rockGiantHealing) {
+        enemy._rockGiantHealing = true;
+        enemy._rockGiantHealUsed = true;
+      }
+    }
     if (has("martyr") && !enemy._martyrTriggered && enemy.maxHealth > 0 && enemy.health / enemy.maxHealth <= 0.5 && enemy.health > 0) {
       enemy._martyrTriggered = true;
       this.pendingMartyrEffects = this.pendingMartyrEffects || [];
@@ -11260,6 +11287,65 @@ export class Game {
     if (!targetLoot) return;
     state.dashTargetLootId = targetLoot.id;
     state.dashDuration = 0.35;
+  }
+
+  updateGhostBehavior(enemy, dt) {
+    if (!enemy || enemy.enemyTypeId !== "m_6f_ghost" || enemy.isDead) return;
+    if (enemy._ghostFlickerTimer == null) {
+      enemy._ghostFlickerTimer = 2 + Math.random() * 0.5;
+    }
+    enemy._ghostFlickerTimer -= dt;
+    if (enemy._ghostFlickerTimer > 0) return;
+    enemy._ghostFlickerTimer = 2 + Math.random() * 0.3;
+
+    const cx = enemy.position.x + enemy.size / 2;
+    const cy = enemy.position.y + enemy.size / 2;
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random() * 100;
+    const nx = cx + Math.cos(angle) * dist - enemy.size / 2;
+    const ny = cy + Math.sin(angle) * dist - enemy.size / 2;
+
+    const worldWidth = enemy.worldBounds?.width ?? this.world?.width ?? 3600;
+    const worldHeight = enemy.worldBounds?.height ?? this.world?.height ?? 900;
+    const margin = this.world?.wallThickness ?? 32;
+    enemy.position.x = Math.max(margin, Math.min(nx, worldWidth - margin - enemy.size));
+    enemy.position.y = Math.max(margin, Math.min(ny, worldHeight - margin - enemy.size));
+  }
+
+  updateSkeletonBehavior(enemy, dt) {
+    if (!enemy || enemy.enemyTypeId !== "m_5a_skeleton" || enemy.isDead) return;
+    const player = this.player;
+    if (!player) return;
+
+    if (enemy._skeletonDashState) {
+      const state = enemy._skeletonDashState;
+      const dashSpeed = 80 / 0.2;
+      const move = Math.min(dashSpeed * dt, 80 - state.totalMoved);
+      enemy.position.x += state.dirX * move;
+      enemy.position.y += state.dirY * move;
+      state.totalMoved += move;
+      if (state.totalMoved >= 80) {
+        enemy._skeletonDashState = null;
+        enemy._skeletonDashCooldown = 4;
+      }
+      return;
+    }
+
+    if (enemy._skeletonDashCooldown != null && enemy._skeletonDashCooldown > 0) {
+      enemy._skeletonDashCooldown -= dt;
+      return;
+    }
+
+    const ex = enemy.position.x + enemy.size / 2;
+    const ey = enemy.position.y + enemy.size / 2;
+    const px = player.position.x + player.size / 2;
+    const py = player.position.y + player.size / 2;
+    const dist = Math.sqrt((px - ex) ** 2 + (py - ey) ** 2);
+    if (dist > 200 || dist < 1) return;
+
+    const dirX = (px - ex) / dist;
+    const dirY = (py - ey) / dist;
+    enemy._skeletonDashState = { dirX, dirY, totalMoved: 0 };
   }
 
   updateLargeMimicBehavior(enemy, dt) {

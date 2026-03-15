@@ -281,6 +281,9 @@ export class EnemySystem {
     let atk = Math.round(base.attack * this.diffMult * s.attack * tm.atk);
     let spd = Math.round(base.speed * s.speed);
     let size = Math.max(16, Math.round(base.size * tm.size));
+    if (base.name === "GoblinKing") hp = 2000;
+    else if (base.name === "GoblinElite") hp = 100;
+    else if (base.name === "GoblinNormal") hp = 50;
     if (game?._biomeCellArchetype === BIOME_ARCHETYPE.CORRIDORS) {
       size = Math.max(8, Math.round(size / 3));
     }
@@ -368,6 +371,19 @@ export class EnemySystem {
       this.spawnOne("minion", null, anchor, game, "m_5o_small_mimic", false);
     }
 
+    if (spawnEscorts && enemy.enemyTier === "miniBoss" && enemy.name === "GoblinKing") {
+      const anchor = { x: enemy.position.x + enemy.size / 2, y: enemy.position.y + enemy.size / 2 };
+      const minions = [];
+      for (let i = 0; i < 2; i++) {
+        const e = this.spawnOne("elite", null, anchor, game, "GoblinElite", false);
+        if (e) minions.push(e);
+      }
+      for (let i = 0; i < 4; i++) {
+        const e = this.spawnOne("minion", null, anchor, game, "GoblinNormal", false);
+        if (e) minions.push(e);
+      }
+      enemy.goblinKingMinions = minions;
+    }
     if (spawnEscorts && enemy.enemyTier === "miniBoss" && enemy.enemyTypeId === "m_5n_large_dwarfette_ball") {
       const anchor = {
         x: enemy.position.x + enemy.size / 2,
@@ -752,9 +768,19 @@ export class EnemySystem {
     }
   }
 
+  spawnGoblinKingEncounter(game) {
+    if (!game) return;
+    const kingSize = 96;
+    const kingPos = this.randomPosition(kingSize, game);
+    if (!kingPos) return;
+    const king = this.spawnOne("miniBoss", null, kingPos, game, "GoblinKing", true);
+    if (king) king.goblinKingMinions = king.goblinKingMinions || [];
+  }
+
   spawnInitialBiome(game = null) {
     const data = this.world.archetypeGrid;
     if (!data?.grid) return;
+    if (game) game._goblinKingSpawnRolled = false;
     for (let row = 0; row < BIOME_GRID_ROWS; row++) {
       for (let col = 0; col < BIOME_GRID_COLS; col++) {
         const archetype = data.grid[row][col];
@@ -764,6 +790,10 @@ export class EnemySystem {
         game._biomeCellArchetype = archetype;
         try {
           if (archetype === BIOME_ARCHETYPE.OPEN_SPACE) {
+            if (game && !game._goblinKingSpawnRolled) {
+              game._goblinKingSpawnRolled = true;
+              if (Math.random() < 0.05) this.spawnGoblinKingEncounter(game);
+            }
             for (let i = 0; i < 4; i++) this.spawnGroup('minion', game);
             if (Math.random() < 0.7) this.spawnGroup('elite', game);
             if (Math.random() < 0.5) this.spawnGroup('elite', game);
@@ -818,12 +848,11 @@ export class EnemySystem {
     } else {
       // Spawn one miniBoss
       this.spawnGroup("miniBoss", game);
-      
+      // 5% chance per map for GoblinKing encounter (open space / full map)
+      if (Math.random() < 0.05) this.spawnGoblinKingEncounter(game);
       // Spawn groups of minions and elites
-      // Target around 20-30 total enemies, so spawn 4-6 groups
       const groupCount = 4 + Math.floor(Math.random() * 3);
       for (let i = 0; i < groupCount; i++) {
-        // 79% chance for minion group, 21% chance for elite group
         const tier = Math.random() < 0.79 ? "minion" : "elite";
         this.spawnGroup(tier, game);
       }

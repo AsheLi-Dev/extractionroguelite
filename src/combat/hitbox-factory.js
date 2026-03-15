@@ -40,6 +40,7 @@ function nextId() {
  * @property {number} [homingStrength]
  * @property {number} [zigzagAmplitude]
  * @property {number} [zigzagFrequency]
+ * @property {number} [zigzagPhaseOffset]
  * @property {number} [spiralDirection]
  * @property {number} [spiralTurnRate]
  * @property {(hitbox: import('./hitbox-types.js').HitboxInstance, world: unknown) => void} [onHit]
@@ -112,6 +113,7 @@ export function createHitboxInstance(def, spawn) {
   const homingStrength = Math.max(0, Number(spawn?.homingStrength ?? def?.homingStrength) ?? 2);
   const zigzagAmplitude = Math.max(0, Number(spawn?.zigzagAmplitude ?? def?.zigzagAmplitude) ?? 20);
   const zigzagFrequency = Math.max(0, Number(spawn?.zigzagFrequency ?? def?.zigzagFrequency) ?? 6);
+  const zigzagPhaseOffset = Number(spawn?.zigzagPhaseOffset ?? def?.zigzagPhaseOffset) || 0;
   const spiralDirection = Number(spawn?.spiralDirection ?? def?.spiralDirection) || 1;
   const spiralTurnRate = Number(spawn?.spiralTurnRate ?? def?.spiralTurnRate) || 2.5;
   const zigzagSegmentSec = Math.max(0.01, Number(spawn?.zigzagSegmentSec ?? def?.zigzagSegmentSec) || 0.08);
@@ -192,6 +194,7 @@ export function createHitboxInstance(def, spawn) {
       instance._zigzagStartY = y0;
       instance.zigzagAmplitude = zigzagAmplitude;
       instance.zigzagFrequency = zigzagFrequency;
+      instance.zigzagPhaseOffset = zigzagPhaseOffset;
     }
     if (moveMode === 'segment_zigzag') {
       instance.zigzagSegmentSec = zigzagSegmentSec;

@@ -78,11 +78,12 @@ export function updateProjectileMotion(h, dt, world) {
     const perpY = (h.forwardX ?? h.dirX);
     const amp = h.zigzagAmplitude ?? 20;
     const freq = h.zigzagFrequency ?? 6;
-    const offset = amp * Math.sin(freq * travelTime);
+    const phase = Number(h.zigzagPhaseOffset) || 0;
+    const offset = amp * Math.sin(freq * travelTime + phase);
     h.x = startX + (h.forwardX ?? h.dirX) * dist + perpX * offset;
     h.y = startY + (h.forwardY ?? h.dirY) * dist + perpY * offset;
-    const tangentX = (h.forwardX ?? h.dirX) * h.moveSpeed + perpX * (amp * freq * Math.cos(freq * travelTime));
-    const tangentY = (h.forwardY ?? h.dirY) * h.moveSpeed + perpY * (amp * freq * Math.cos(freq * travelTime));
+    const tangentX = (h.forwardX ?? h.dirX) * h.moveSpeed + perpX * (amp * freq * Math.cos(freq * travelTime + phase));
+    const tangentY = (h.forwardY ?? h.dirY) * h.moveSpeed + perpY * (amp * freq * Math.cos(freq * travelTime + phase));
     const len = Math.sqrt(tangentX * tangentX + tangentY * tangentY) || 1;
     h.dirX = tangentX / len;
     h.dirY = tangentY / len;

@@ -52,7 +52,7 @@ export const ENEMY_ATTACK_KITS = {
           randomSpreadDeg: 30,
           color: "#a855f7",
           size: 10,
-          magicStyle: { preset: "fireOrb" },
+          animatedSprite: { preset: "ghostOrb" },
           useHitbox: true
         },
         recover: 0.5,
@@ -367,6 +367,7 @@ export const ENEMY_ATTACK_KITS = {
           count: 1,
           color: "#7c3aed",
           size: 84,
+          animatedSprite: { preset: "ghostOrb" },
           moveMode: "accelerating",
           maxSpeed: 300,
           accel: 169,
@@ -885,6 +886,7 @@ export const ENEMY_ATTACK_KITS = {
           count: 6,
           arcSpreadDeg: 60,
           color: "#94a3b8",
+          animatedSprite: { preset: "acidProjectile" },
           size: 12,
           slowZone: true,
           slowRadius: 50,
@@ -980,13 +982,15 @@ export const ENEMY_ATTACK_KITS = {
         execute: {
           damage: 0.7,
           speed: 154,
-          volleyCount: 10,
-          randomSpreadDeg: 90,
+          count: 5,
+          arcSpreadDeg: 70,
           color: "#22c55e",
-          size: 3.6,
+          animatedSprite: { preset: "acidProjectile" },
+          size: 10.8,
           movementType: "zigzag",
           zigzagAmplitude: 18,
           zigzagFrequency: 6,
+          zigzagPhaseStepRad: 1.5707963267948966,
           poisonOnHit: true,
           poisonDuration: 4,
           poisonDmgPerSec: 2,
@@ -1070,6 +1074,23 @@ export const ENEMY_ATTACK_KITS = {
         minRange: 80,
         maxRange: 250,
         weight: 0.4,
+        flags: { heavy: true }
+      }
+    ]
+  },
+
+  Dragon: {
+    base: [
+      {
+        id: "dragon_fire_breath",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.7, color: "heavy" },
+        execute: { damage: 1.3, range: 520, arc: 75 },
+        recover: 0.4,
+        cooldown: 3.5,
+        minRange: 60,
+        maxRange: 180,
+        weight: 1,
         flags: { heavy: true }
       }
     ]
@@ -1243,6 +1264,35 @@ export const ENEMY_ATTACK_KITS = {
         cooldown: 1.6,
         minRange: 20,
         maxRange: 170,
+        weight: 1,
+        flags: { heavy: true }
+      }
+    ]
+  },
+
+  RockGiant: {
+    base: [
+      {
+        id: "rock_giant_falling_rocks",
+        kind: "falling_rocks",
+        telegraph: { shape: "falling_rocks", windup: 1, color: "heavy", count: 5, radius: 48, atTarget: true },
+        execute: { damage: 1.1, radius: 48, count: 5, impactDelay: 0, atTarget: true },
+        recover: 0.4,
+        cooldown: 5,
+        minRange: 60,
+        maxRange: 320,
+        weight: 1,
+        flags: { heavy: true }
+      },
+      {
+        id: "rock_giant_cone",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.5, color: "heavy" },
+        execute: { damage: 1.2, range: 140, arc: 100 },
+        recover: 0.35,
+        cooldown: 2.5,
+        minRange: 30,
+        maxRange: 130,
         weight: 1,
         flags: { heavy: true }
       }

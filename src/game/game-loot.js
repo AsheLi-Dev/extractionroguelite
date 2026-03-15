@@ -289,7 +289,12 @@ export function applyGameLootMixin(Game) {
       const bandMult = enemy.dropChanceMult ?? 1;
       const dropChanceInputs = { dropMult, equipDropMult, bandMult };
 
-      if (tier === "miniBoss") {
+      if (enemy.name === "GoblinKing") {
+        for (let i = 0; i < 3; i++) {
+          emitEquipment(generateEquipmentItem(types[Math.floor(Math.random() * types.length)], lootQual, 0.5, "rare", equipOpts));
+        }
+      }
+      if (tier === "miniBoss" && enemy.name !== "GoblinKing") {
         emitEquipment(
           generateEquipmentItem(types[Math.floor(Math.random() * types.length)], lootQual, 0, "rare", equipOpts)
         );
@@ -299,7 +304,7 @@ export function applyGameLootMixin(Game) {
 
         const miniChance = getMiniBossSecondaryDropChance("miniBoss", dropChanceInputs.dropMult, dropChanceInputs.equipDropMult, dropChanceInputs.bandMult);
         const secRoll = Math.random();
-        if (secRoll < (miniChance.secondary?.rare || 0)) {
+        if (enemy.name !== "GoblinKing" && secRoll < (miniChance.secondary?.rare || 0)) {
           emitEquipment(generateEquipmentItem(types[Math.floor(Math.random() * types.length)], lootQual, 0, "rare", equipOpts));
           if (this.hasRunTalent("keenEye") && typeof this.logTalentTrigger === "function") {
             this.logTalentTrigger("keenEye", "Mini-boss: extra rare roll succeeded.");

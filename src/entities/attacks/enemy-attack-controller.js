@@ -59,6 +59,7 @@ export class EnemyAttackController {
     if (e._attackRollState) return false;
     if (e._cycloneState) return false;
     if ((e._cycloneEndTimer || 0) > 0) return false;
+    if (e.name === "RockGiant" && (e._rockGiantHealing || e._rockGiantHitReaction)) return false;
     return true;
   }
 
@@ -283,6 +284,24 @@ export class EnemyAttackController {
         }
         break;
       }
+      case "falling_rocks": {
+        const r = a.execute?.radius ?? 48;
+        const count = Math.max(1, a.execute?.count ?? 5);
+        const impactDelay = Math.max(0, a.execute?.impactDelay ?? 1);
+        const impactX = a.execute?.atTarget ? tx : ex;
+        const impactY = a.execute?.atTarget ? ty : ey;
+        const useHitbox = typeof game.spawnEnemyCircleHitbox === "function";
+        if (game.addDelayedEnemyImpact) {
+          const jitter = 35;
+          for (let i = 0; i < count; i++) {
+            const ix = impactX + (Math.random() - 0.5) * jitter * 2;
+            const iy = impactY + (Math.random() - 0.5) * jitter * 2;
+            const atTime = game.time + impactDelay;
+            game.addDelayedEnemyImpact(atTime, ix, iy, r, Math.round(baseDmg / count), enemy, false, 0, useHitbox ? a.id : null);
+          }
+        }
+        break;
+      }
       case "ring": {
         const inner = a.execute?.innerRadius ?? 40;
         const outer = a.execute?.outerRadius ?? 100;
@@ -464,14 +483,19 @@ export class EnemyAttackController {
           const arcRad = (arcSpreadDeg * Math.PI) / 180;
           const startAngle = dirAngle - arcRad * 0.5;
           const step = count > 1 ? arcRad / (count - 1) : 0;
+          const zigzagPhaseStepRad = Number(a.execute?.zigzagPhaseStepRad) || 0;
           for (let i = 0; i < count; i++) {
             const angle = startAngle + step * i;
-            spawnOne(ex, ey, angle, baseDmg, a.execute, 0);
+            const opts = zigzagPhaseStepRad !== 0
+              ? { ...a.execute, zigzagPhaseOffset: (i - (count - 1) / 2) * zigzagPhaseStepRad }
+              : a.execute;
+            spawnOne(ex, ey, angle, baseDmg, opts, 0);
           }
         } else if (a.execute?.comboShots) {
           spawnOne(ex, ey, dirAngle, baseDmg, a.execute, 0);
         } else {
           const useHitbox = a.execute?.useHitbox === true && typeof game.spawnEnemyProjectileHitbox === "function";
+          const zigzagPhaseStepRad = Number(a.execute?.zigzagPhaseStepRad) || 0;
           for (let b = 0; b < burstCount; b++) {
             const shotAt = burstInterval * b;
             for (let i = 0; i < count; i++) {
@@ -480,21 +504,24 @@ export class EnemyAttackController {
                 const offset = (i - (count - 1) / 2) * spread;
                 angle = dirAngle + offset;
               }
+              const opts = zigzagPhaseStepRad !== 0
+                ? { ...a.execute, zigzagPhaseOffset: (i - (count - 1) / 2) * zigzagPhaseStepRad }
+                : a.execute;
               const vx = Math.cos(angle) * speed;
               const vy = Math.sin(angle) * speed;
               if (b === 0) {
                 if (useHitbox) {
-                  game.spawnEnemyProjectileHitbox(ex, ey, Math.cos(angle), Math.sin(angle), baseDmg, a.execute, enemy);
+                  game.spawnEnemyProjectileHitbox(ex, ey, Math.cos(angle), Math.sin(angle), baseDmg, opts, enemy);
                 } else {
-                  game.spawnEnemyProjectile(ex, ey, vx, vy, baseDmg, size, color, a.execute, enemy);
+                  game.spawnEnemyProjectile(ex, ey, vx, vy, baseDmg, size, color, opts, enemy);
                 }
               } else if (typeof game.addDelayedEnemyProjectile === "function") {
-                game.addDelayedEnemyProjectile(game.time + shotAt, ex, ey, vx, vy, baseDmg, size, color, a.execute, enemy, useHitbox ? { useHitbox: true } : {});
+                game.addDelayedEnemyProjectile(game.time + shotAt, ex, ey, vx, vy, baseDmg, size, color, opts, enemy, useHitbox ? { useHitbox: true } : {});
               } else {
                 if (useHitbox) {
-                  game.spawnEnemyProjectileHitbox(ex, ey, Math.cos(angle), Math.sin(angle), baseDmg, a.execute, enemy);
+                  game.spawnEnemyProjectileHitbox(ex, ey, Math.cos(angle), Math.sin(angle), baseDmg, opts, enemy);
                 } else {
-                  game.spawnEnemyProjectile(ex, ey, vx, vy, baseDmg, size, color, a.execute, enemy);
+                  game.spawnEnemyProjectile(ex, ey, vx, vy, baseDmg, size, color, opts, enemy);
                 }
               }
             }
@@ -1050,6 +1077,19 @@ export class EnemyAttackController {
       case "circle":
         drawCircleTelegraph(ctx, pos, a.execute?.radius ?? 70, alpha, color);
         break;
+      case "falling_rocks": {
+        const count = Math.max(1, a.telegraph?.count ?? 5);
+        const radius = a.execute?.radius ?? a.telegraph?.radius ?? 48;
+        const growRadius = radius * (elapsed / windup);
+        const spread = 28;
+        for (let i = 0; i < count; i++) {
+          const angle = (i / count) * Math.PI * 2;
+          const ox = sx + Math.cos(angle) * spread;
+          const oy = sy + Math.sin(angle) * spread;
+          drawCircleTelegraph(ctx, { x: ox, y: oy }, growRadius, alpha, color);
+        }
+        break;
+      }
       case "ring":
         drawRingTelegraph(ctx, pos, a.execute?.outerRadius ?? 100, 15, alpha, color);
         break;

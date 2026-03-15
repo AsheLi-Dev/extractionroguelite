@@ -71,6 +71,7 @@ export function applyGameEnemyAttacksMixin(Game) {
         homingStrength: homingTurnRate > 0 ? Math.min(8, homingTurnRate * 15) : 2,
         zigzagAmplitude: Number(executeOpts?.zigzagAmplitude) || Math.max(size * 1.4, speed * 0.04),
         zigzagFrequency: Number(executeOpts?.zigzagFrequency) || 8,
+        zigzagPhaseOffset: Number(executeOpts?.zigzagPhaseOffset) || 0,
         spiralDirection: Number(executeOpts?.spiralDirection) || 1,
         spiralTurnRate: Number(executeOpts?.spiralTurnRate) || 2.5,
         speedRampEnd,
@@ -86,8 +87,9 @@ export function applyGameEnemyAttacksMixin(Game) {
           radius: size / 2,
           color: spawn?.color ?? executeOpts?.color ?? '#a855f7',
           spritePath: executeOpts?.spritePath ?? null,
+          animatedSprite: executeOpts?.animatedSprite ?? null,
           magicStyle: executeOpts?.magicStyle ?? null,
-          trailEnabled: executeOpts?.trailEnabled ?? !(executeOpts?.spritePath),
+          trailEnabled: executeOpts?.trailEnabled ?? !(executeOpts?.spritePath || executeOpts?.animatedSprite),
           trailLife: Number.isFinite(executeOpts?.trailLife) ? executeOpts.trailLife : undefined,
           trailMaxPoints: Number.isFinite(executeOpts?.trailMaxPoints) ? executeOpts.trailMaxPoints : undefined
         },
@@ -255,7 +257,7 @@ export function applyGameEnemyAttacksMixin(Game) {
           damage,
           size,
           color,
-          {},
+          { animatedSprite: { preset: 'ghostOrb' } },
           proj.sourceEnemy || proj.sourceEntity || null
         );
       }
@@ -369,9 +371,6 @@ export function applyGameEnemyAttacksMixin(Game) {
       const useCircleHitbox = typeof this.spawnEnemyCircleHitbox === 'function';
       this.delayedEnemyImpacts = this.delayedEnemyImpacts.filter((imp) => {
         if (now < imp.at) return true;
-        if (imp.attackId === 'death_bringer_ground_spell' && typeof this.spawnDeathBringerGroundSpellVfx === 'function') {
-          this.spawnDeathBringerGroundSpellVfx(imp.x, imp.y, imp.radius);
-        }
         if (useCircleHitbox) {
           this.spawnEnemyCircleHitbox(imp.sourceEnemy, imp.x, imp.y, imp.radius, imp.damage, imp.attackId || 'enemy_circle', {
             slowZone: imp.slowZone,
