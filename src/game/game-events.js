@@ -3,7 +3,7 @@
 // This module adds methods to Game.prototype when imported
 
 import { EVENT_DEFS, SHRINE_DEFS } from '../data/shrines.js';
-import { ATTACK_UPGRADE_DEFS } from '../data/level-up-data.js';
+import { ATTACK_UPGRADE_DEFS, getAttackUpgradeDefById, getBuildUpgradePoolForAttackType } from '../data/level-up-data.js';
 import { rollUpgradeValue } from '../data/level-up-data.js';
 import { generateEquipmentItem } from '../data/loot-data.js';
 import { ENEMY_TYPES, Enemy } from '../entities/enemy.js';
@@ -15,6 +15,9 @@ import { addGold, canSpendGold, spendGold } from './economy.js';
 import { SCHEMA_SACRIFICE_PCTS } from '../data/npc-data.js';
 import { showItemTooltip, hideItemTooltip } from '../ui/tooltips.js';
 import { onRingNpcInteracted } from './ring-effects.js';
+import { REST_ROOM_REFORGE_COST, REST_ROOM_VENDOR_COSTS, REST_ROOM_VENDOR_OFFER_COUNT, isRestRoomMapId } from '../data/rest-room.js';
+import { getSnackById } from '../data/snack.js';
+import { META_ATTRIBUTES } from '../data/character-attributes.js';
 
 export function applyGameEventsMixin(Game) {
   Object.assign(Game.prototype, {
@@ -91,6 +94,234 @@ export function applyGameEventsMixin(Game) {
       cancelBtn.onclick = () => this.closeEventOverlay();
       choicesEl.appendChild(cancelBtn);
       overlay.classList.remove("hidden");
+    },
+
+    getRestRoomVendorOffers(obj) {
+      if (Array.isArray(obj?.vendorOffers)) return obj.vendorOffers;
+      const defs = ATTACK_UPGRADE_DEFS[this.attackType];
+      const pool = [...(defs?.standardUpgrades || [])].filter((entry) => entry.buildSelectable !== false);
+      const offers = [];
+      const used = new Set();
+      while (pool.length > 0 && offers.length < REST_ROOM_VENDOR_OFFER_COUNT) {
+        const index = Math.floor(Math.random() * pool.length);
+        const def = pool.splice(index, 1)[0];
+        if (!def || used.has(def.id)) continue;
+        const currentStacks = typeof this.getAttackUpgradeStackCount === "function"
+          ? this.getAttackUpgradeStackCount(def.id)
+          : (this.runAttackUpgrades || []).filter((upgrade) => upgrade.id === def.id).length;
+        const maxLevel = Math.max(1, Number(def.maxLevel) || 1);
+        if (currentStacks >= maxLevel) continue;
+        used.add(def.id);
+        offers.push({
+          id: def.id,
+          name: def.name,
+          description: def.description,
+          category: def.category,
+          rarity: def.rarity || "common",
+          maxLevel,
+          valueRange: def.valueRange || null,
+          cost: REST_ROOM_VENDOR_COSTS[def.rarity] || REST_ROOM_VENDOR_COSTS.common,
+          percent: !!def.valueRange?.percent
+        });
+      }
+      if (obj) obj.vendorOffers = offers;
+      return offers;
+    },
+
+    buyRestRoomVendorOffer(obj, offer) {
+      if (!obj || !offer) return false;
+      const currentStacks = typeof this.getAttackUpgradeStackCount === "function"
+        ? this.getAttackUpgradeStackCount(offer.id)
+        : (this.runAttackUpgrades || []).filter((upgrade) => upgrade.id === offer.id).length;
+      if (currentStacks >= Math.max(1, Number(offer.maxLevel) || 1)) {
+        obj.vendorOffers = (obj.vendorOffers || []).filter((entry) => entry.id !== offer.id);
+        return false;
+      }
+      const cost = Math.max(0, Number(offer.cost) || 0);
+      if (!canSpendGold(this, cost)) {
+        if (typeof this.addFloatingText === "function") {
+          const px = (this.player?.position?.x || 0) + (this.player?.size || 0) / 2;
+          const py = (this.player?.position?.y || 0) + (this.player?.size || 0) / 2;
+          this.addFloatingText(px, py, "Need More Gold", "damage");
+        }
+        return false;
+      }
+      spendGold(this, cost, "rest_room_vendor", { upgradeId: offer.id });
+      const appliedUpgrade = {
+        id: offer.id,
+        name: offer.name,
+        description: offer.description,
+        value: offer.valueRange ? rollUpgradeValue(offer) : undefined,
+        percent: !!offer.percent,
+        category: offer.category,
+        level: 1,
+        maxLevel: offer.maxLevel
+      };
+      this.runAttackUpgrades = this.runAttackUpgrades || [];
+      this.runAttackUpgrades.push(appliedUpgrade);
+      if (this.categoryCounts && offer.category != null) {
+        this.categoryCounts[offer.category] = (this.categoryCounts[offer.category] || 0) + 1;
+      }
+      obj.vendorOffers = (obj.vendorOffers || []).filter((entry) => entry.id !== offer.id);
+      this.recalculateStats?.();
+      this.updateMapUI?.();
+      if (this.buildLogRefresh) this.buildLogRefresh();
+      if (typeof this.addFloatingText === "function") {
+        const px = (this.player?.position?.x || 0) + (this.player?.size || 0) / 2;
+        const py = (this.player?.position?.y || 0) + (this.player?.size || 0) / 2;
+        this.addFloatingText(px, py, offer.name, "skill");
+      }
+      return true;
+    },
+
+    openRestRoomUpgradeVendor(obj) {
+      const offers = this.getRestRoomVendorOffers(obj);
+      if (!offers.length) return;
+      this.openNpcChoiceCard(
+        "Upgrade Vendor",
+        "Buy one upgrade for this run.",
+        offers.map((offer) => ({
+          label: `${offer.name} (${offer.rarity}) - ${offer.cost}g`,
+          onPick: () => {
+            this.buyRestRoomVendorOffer(obj, offer);
+          }
+        })),
+        "Leave"
+      );
+    },
+
+    getRestRoomReforgeChoices() {
+      const seen = new Set();
+      return (this.runAttackUpgrades || []).filter((upgrade) => {
+        if (!upgrade?.id || seen.has(upgrade.id)) return false;
+        const def = getAttackUpgradeDefById(this.attackType, upgrade.id);
+        if (!def || def.buildSelectable === false) return false;
+        seen.add(upgrade.id);
+        return true;
+      });
+    },
+
+    reforgeRunUpgrade(upgradeId) {
+      if (!upgradeId) return false;
+      const cost = Math.max(0, Number(REST_ROOM_REFORGE_COST) || 0);
+      if (!canSpendGold(this, cost)) {
+        if (typeof this.addFloatingText === "function") {
+          const px = (this.player?.position?.x || 0) + (this.player?.size || 0) / 2;
+          const py = (this.player?.position?.y || 0) + (this.player?.size || 0) / 2;
+          this.addFloatingText(px, py, "Need More Gold", "damage");
+        }
+        return false;
+      }
+      const removed = this.removeUpgradeById(upgradeId);
+      if (!removed) return false;
+      if (this.categoryCounts && removed.category != null) {
+        this.categoryCounts[removed.category] = Math.max(0, (this.categoryCounts[removed.category] || 0) - 1);
+      }
+
+      const currentCounts = new Map();
+      for (const upgrade of this.runAttackUpgrades || []) {
+        currentCounts.set(upgrade.id, (currentCounts.get(upgrade.id) || 0) + 1);
+      }
+      const pool = getBuildUpgradePoolForAttackType(this.attackType).filter((def) => {
+        const current = currentCounts.get(def.id) || 0;
+        const maxLevel = Math.max(1, Number(def.maxLevel) || 1);
+        return current < maxLevel;
+      });
+      if (!pool.length) {
+        if (removed) {
+          this.runAttackUpgrades.push(removed);
+          if (this.categoryCounts && removed.category != null) {
+            this.categoryCounts[removed.category] = (this.categoryCounts[removed.category] || 0) + 1;
+          }
+        }
+        return false;
+      }
+      const replacementDef = pool[Math.floor(Math.random() * pool.length)];
+      spendGold(this, cost, "rest_room_reforge", { removedUpgradeId: upgradeId, replacementUpgradeId: replacementDef.id });
+      const replacement = {
+        id: replacementDef.id,
+        name: replacementDef.name,
+        description: replacementDef.description,
+        value: replacementDef.valueRange ? rollUpgradeValue(replacementDef) : undefined,
+        percent: !!replacementDef.valueRange?.percent,
+        category: replacementDef.category,
+        level: 1,
+        maxLevel: replacementDef.maxLevel
+      };
+      this.runAttackUpgrades.push(replacement);
+      if (this.categoryCounts && replacement.category != null) {
+        this.categoryCounts[replacement.category] = (this.categoryCounts[replacement.category] || 0) + 1;
+      }
+      this.recalculateStats?.();
+      this.updateMapUI?.();
+      if (this.buildLogRefresh) this.buildLogRefresh();
+      if (typeof this.addFloatingText === "function") {
+        const px = (this.player?.position?.x || 0) + (this.player?.size || 0) / 2;
+        const py = (this.player?.position?.y || 0) + (this.player?.size || 0) / 2;
+        this.addFloatingText(px, py, `Reforged: ${replacement.name}`, "skill");
+      }
+      return true;
+    },
+
+    openRestRoomUpgradeReforge(_obj) {
+      const choices = this.getRestRoomReforgeChoices();
+      if (!choices.length) return;
+      this.openNpcChoiceCard(
+        "Upgrade Reforge",
+        `Replace one owned upgrade for ${REST_ROOM_REFORGE_COST} gold.`,
+        choices.map((upgrade) => ({
+          label: `${upgrade.name} - ${REST_ROOM_REFORGE_COST}g`,
+          onPick: () => {
+            this.reforgeRunUpgrade(upgrade.id);
+          }
+        })),
+        "Leave"
+      );
+    },
+
+    grantRestRoomAttribute(obj, attributeId) {
+      if (!obj || obj.used || !attributeId) return false;
+      this.runCharacterAttributes = this.runCharacterAttributes || {};
+      const current = Math.max(0, Number(this.runCharacterAttributes[attributeId]) || 0);
+      this.runCharacterAttributes[attributeId] = current + 1;
+      if (attributeId === "brutality") {
+        this.baseStats.attack = Math.max(1, Number(this.baseStats.attack) || 0) + 1;
+      } else if (attributeId === "agility") {
+        this.baseStats.speed = Math.max(1, Number(this.baseStats.speed) || 0) + 10;
+      } else if (attributeId === "vitality") {
+        this.baseStats.maxHealth = Math.max(1, Number(this.baseStats.maxHealth) || 0) + 5;
+        this.currentHealth = Math.min(
+          (Number(this.currentHealth) || 0) + 5,
+          Math.max(1, Number(this.baseStats.maxHealth) || 1)
+        );
+      } else if (attributeId === "luck") {
+        this.lootSystem?.setPlayerLuck?.(Math.max(0, Number(this.runCharacterAttributes.luck) || 0));
+      }
+      obj.used = true;
+      this.recalculateStats?.();
+      this.updateMapUI?.();
+      if (typeof this.addFloatingText === "function") {
+        const px = (this.player?.position?.x || 0) + (this.player?.size || 0) / 2;
+        const py = (this.player?.position?.y || 0) + (this.player?.size || 0) / 2;
+        const meta = META_ATTRIBUTES.find((entry) => entry.id === attributeId);
+        this.addFloatingText(px, py, `+1 ${meta?.name || "Attribute"}`, "skill");
+      }
+      return true;
+    },
+
+    openRestRoomAttributes(obj) {
+      if (!obj || obj.used) return;
+      this.openNpcChoiceCard(
+        "Attributes",
+        "Gain 1 run-only attribute point.",
+        META_ATTRIBUTES.map((meta) => ({
+          label: `+1 ${meta.name}`,
+          onPick: () => {
+            this.grantRestRoomAttribute(obj, meta.id);
+          }
+        })),
+        "Leave"
+      );
     },
 
     addEquipmentDefToInventory(def) {
@@ -744,6 +975,33 @@ export function applyGameEventsMixin(Game) {
         }
       } else if (obj.type === "shrine" && !obj.used) {
         this.openShrineInteraction(obj);
+      } else if (obj.type === "restSnackStand") {
+        if (obj.used) return;
+        if (!this.runSnackId) return;
+        const snackDef = getSnackById(this.runSnackId);
+        const maxUses = Math.max(0, Number(snackDef?.maxUses) || 0);
+        const currentUses = Math.max(0, Number(this.snackUsesRemaining) || 0);
+        if (maxUses <= 0 || currentUses >= maxUses) return;
+        this.snackUsesRemaining = maxUses;
+        obj.used = true;
+        this.updateMapUI?.();
+        if (typeof this.addFloatingText === "function") {
+          const px = (this.player?.position?.x || 0) + (this.player?.size || 0) / 2;
+          const py = (this.player?.position?.y || 0) + (this.player?.size || 0) / 2;
+          this.addFloatingText(px, py, "Snack Refilled!", "heal");
+        }
+      } else if (obj.type === "restUpgradeVendor") {
+        this.openRestRoomUpgradeVendor(obj);
+      } else if (obj.type === "restUpgradeReforge") {
+        this.openRestRoomUpgradeReforge(obj);
+      } else if (obj.type === "restAttributes") {
+        this.openRestRoomAttributes(obj);
+      } else if (obj.type === "restRoomExit") {
+        const next = this.pendingRestRoomExit;
+        if (next && isRestRoomMapId(this.currentMapId)) {
+          this.pendingRestRoomExit = null;
+          this.transitionToMap(next.targetMapId, next.spawnSide || "left");
+        }
       }
     },
 

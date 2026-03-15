@@ -189,6 +189,8 @@ const CAMERA_VIEW_HEIGHT = 281; // zoomed out 1.2x from 234
 export class Game {
   constructor(canvas, legacyItems = [], runConfig = {}) {
     this.runConfig = runConfig;
+    this.restRoomEnabled = true;
+    this.pendingRestRoomExit = null;
     this.characterTalents = Array.isArray(runConfig.selectedCharacter?.talents) ? runConfig.selectedCharacter.talents : [];
     this.difficulty = runConfig.difficulty ?? 1;
     this.conditions = enforceConditionLimits(runConfig.conditions ?? []);
@@ -460,13 +462,27 @@ export class Game {
         this.currentStats = { ...this.baseStats };
         this.currentHealth = this.baseStats.maxHealth;
       }
-      const attrs = char.attributes || {};
+      this.runCharacterAttributes = {
+        brutality: Math.max(0, Number(char?.attributes?.brutality) || 0),
+        agility: Math.max(0, Number(char?.attributes?.agility) || 0),
+        vitality: Math.max(0, Number(char?.attributes?.vitality) || 0),
+        luck: Math.max(0, Number(char?.attributes?.luck) || 0)
+      };
+      const attrs = this.runCharacterAttributes;
       const brutality = Math.max(0, Number(attrs.brutality) || 0);
       const agility = Math.max(0, Number(attrs.agility) || 0);
       const vitality = Math.max(0, Number(attrs.vitality) || 0);
       this.baseStats.attack += brutality;
       this.baseStats.speed += agility * 10;
       this.baseStats.maxHealth += vitality * 5;
+    } else {
+      const attrs = runConfig?.selectedCharacter?.attributes || {};
+      this.runCharacterAttributes = {
+        brutality: Math.max(0, Number(attrs.brutality) || 0),
+        agility: Math.max(0, Number(attrs.agility) || 0),
+        vitality: Math.max(0, Number(attrs.vitality) || 0),
+        luck: Math.max(0, Number(attrs.luck) || 0)
+      };
     }
 
     this.shopRerollCountByShopId = {};
@@ -623,6 +639,11 @@ export class Game {
     this.enemyDeathSmokeFrameH = 64;
     this.enemyDeathSmokeFrames = 11;
     this.enemyDeathSmokeFps = 20;
+    this.levelUpVfxSheet = new Image();
+    this.levelUpVfxSheet.src = "assets/images/level up.png";
+    this.levelUpVfxStartTime = -Infinity;
+    this.levelUpVfxFrames = 18;
+    this.levelUpVfxFps = 24;
     this.dashChargeIconFull = new Image();
     this.dashChargeIconFull.src = DASH_CHARGE_ICON_FULL_SRC;
     this.dashChargeIconEmpty = new Image();
@@ -660,7 +681,7 @@ export class Game {
     const lootQual = this.currentMap.lootQuality;
     this.lootSystem.setMapLootQuality(lootQual);
     this.lootSystem.setDifficulty(this.difficulty);
-    this.lootSystem.setPlayerLuck(Math.max(0, Number(this.runConfig?.selectedCharacter?.attributes?.luck) || 0));
+    this.lootSystem.setPlayerLuck(Math.max(0, Number(this.runCharacterAttributes?.luck) || 0));
 
     // Initialize mapInteractables before spawnObstacles (which checks for overlaps)
     this.mapInteractables = [];
@@ -3422,6 +3443,7 @@ export class Game {
 
     this.lootSystem.update(dt, this.player, (item) => this.handleLootPickup(item), this.getLootPickupRadiusMult());
     this.updateEnemyDeathSmokeVfx(dt);
+    this.updateLevelUpVfx(dt);
     this.updateUpgradeCardEffects(dt);
     if (this.hazardSystem) this.hazardSystem.update(dt, this);
     // Update obstacles
@@ -3606,6 +3628,7 @@ export class Game {
       this.nearInteractable = null;
       for (const obj of this.mapInteractables) {
         if (obj.type === "vault") continue;
+        if (obj.interactive === false) continue;
         const cx = obj.x + obj.w / 2;
         const cy = obj.y + obj.h / 2;
         if (Math.abs(px - cx) < 80 && Math.abs(py - cy) < 80) {
@@ -4139,7 +4162,7 @@ export class Game {
     const lootQual = targetMap.lootQuality;
     this.lootSystem.setMapLootQuality(lootQual);
     this.lootSystem.setDifficulty(this.difficulty);
-    this.lootSystem.setPlayerLuck(Math.max(0, Number(this.runConfig?.selectedCharacter?.attributes?.luck) || 0));
+    this.lootSystem.setPlayerLuck(Math.max(0, Number(this.runCharacterAttributes?.luck) || 0));
 
     if (this.hasCharacterTalent("immortal")) this.immortalShield = 30;
 
@@ -4677,7 +4700,9 @@ export class Game {
       this.levelUpChoices = null;
       return;
     }
-    const overlay = document.getElementById("level-up-overlay");
+    const overlay = typeof this.showLevelUpOverlayShell === "function"
+      ? this.showLevelUpOverlayShell("Level Up!", "Choose a bonus:", { evolution: false })
+      : document.getElementById("level-up-overlay");
     const choicesEl = document.getElementById("level-up-choices");
     const rerollBtn = document.getElementById("level-up-reroll");
     if (!overlay || !choicesEl) return;
@@ -4701,7 +4726,6 @@ export class Game {
       rerollBtn.classList.add("hidden");
       rerollBtn.onclick = null;
     }
-    overlay.classList.remove("hidden");
     const buildLogPanel = document.getElementById("build-log-panel");
     if (buildLogPanel) {
       buildLogPanel.classList.remove("hidden");
@@ -7585,7 +7609,7 @@ export class Game {
       dmg = Math.max(1, Math.round(dmg * 1.5));
     }
     if (this.hasCharacterTalent("luckyShot")) {
-      const luckAttr = Math.max(0, Number(this.runConfig?.selectedCharacter?.attributes?.luck) || 0);
+      const luckAttr = Math.max(0, Number(this.runCharacterAttributes?.luck) || 0);
       if (luckAttr > 0) this.logTalentTrigger("luckyShot", `Hit: +${luckAttr * 10}% damage (Luck)`);
       dmg = Math.max(1, Math.round(dmg * (1 + luckAttr * 0.1)));
     }
@@ -13576,6 +13600,42 @@ export class Game {
     ctx.imageSmoothingEnabled = prevSmoothing;
   }
 
+  updateLevelUpVfx(_dt) {
+    const duration = (this.levelUpVfxFrames || 18) / (this.levelUpVfxFps || 24);
+    if ((this.time - (this.levelUpVfxStartTime || -Infinity)) > duration) {
+      this.levelUpVfxStartTime = -Infinity;
+    }
+  }
+
+  drawLevelUpVfx(ctx) {
+    const sheet = this.levelUpVfxSheet;
+    if (!sheet || !sheet.complete || !sheet.naturalWidth || !this.player) return;
+    const startTime = this.levelUpVfxStartTime || -Infinity;
+    const elapsed = this.time - startTime;
+    const frameCount = this.levelUpVfxFrames || 18;
+    const fps = this.levelUpVfxFps || 24;
+    const duration = frameCount / fps;
+    if (elapsed < 0 || elapsed >= duration) return;
+
+    const frame = Math.min(frameCount - 1, Math.floor(elapsed * fps));
+    const frameWidth = Math.max(1, Math.floor(sheet.naturalWidth / frameCount));
+    const frameHeight = Math.max(1, sheet.naturalHeight || frameWidth);
+    const px = this.player.position.x + this.player.size / 2;
+    const py = this.player.position.y + this.player.size / 2;
+    const scale = 1.75;
+    const drawWidth = frameWidth * scale;
+    const drawHeight = frameHeight * scale;
+    const dx = Math.floor(px - this.camera.position.x - drawWidth / 2);
+    const verticalOffset = this.player.size * 0.8;
+    const dy = Math.floor(py - this.camera.position.y - drawHeight / 2 - verticalOffset);
+    const sx = frame * frameWidth;
+
+    const prevSmoothing = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(sheet, sx, 0, frameWidth, frameHeight, dx, dy, drawWidth, drawHeight);
+    ctx.imageSmoothingEnabled = prevSmoothing;
+  }
+
   drawObstacleHitboxDebug(ctx) {
     if (!this.debugDrawObstacleHitboxes) return;
     for (const obstacle of this.obstacles || []) {
@@ -13849,6 +13909,37 @@ export class Game {
         draw: () => this.drawNpcInteractable(ctx, obj, renderScale)
       });
     }
+    for (const obj of this.mapInteractables || []) {
+      if (this.isNpcInteractable(obj) || !obj?.spriteSrc) continue;
+      const collision = obj.collisionRect || null;
+      const sortY = obj.y + (collision ? collision.y + collision.h : (obj.h || 0));
+      actors.push({
+        sortY,
+        draw: () => {
+          const sx = obj.x - this.camera.position.x;
+          const sy = obj.y - this.camera.position.y;
+          if (!obj.__spriteImage) {
+            obj.__spriteImage = new Image();
+            obj.__spriteImage.src = obj.spriteSrc;
+          }
+          const sprite = obj.__spriteImage;
+          if (sprite.complete && sprite.naturalWidth) {
+            const prevSmoothing = ctx.imageSmoothingEnabled;
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(sprite, sx, sy, obj.w, obj.h);
+            ctx.imageSmoothingEnabled = prevSmoothing;
+          }
+          ctx.font = "bold 12px system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "alphabetic";
+          ctx.fillStyle = "#e2e8f0";
+          const labelY = sy + (Number(obj.labelOffsetY) || -10);
+          ctx.fillText(obj.label || "Station", sx + obj.w / 2, labelY);
+          ctx.textAlign = "start";
+          ctx.textBaseline = "alphabetic";
+        }
+      });
+    }
     for (const enemy of this.enemySystem?.enemies || []) {
       if (!enemy || enemy.isDead) continue;
       actors.push({
@@ -13908,6 +13999,7 @@ export class Game {
 
     if (this.hazardSystem) this.hazardSystem.draw(ctx, this.camera, this.time);
     this.lootSystem.draw(ctx, this.camera, this.time);
+    this.drawLevelUpVfx(ctx);
     this.drawWorldActorsYSorted(ctx, scale);
     if (typeof this.drawMartyrChargeCircles === "function") this.drawMartyrChargeCircles(ctx);
     if (typeof this.drawGuardedEffects === "function") this.drawGuardedEffects(ctx);
@@ -14013,7 +14105,7 @@ export class Game {
         }
         continue;
       }
-      if (this.isNpcInteractable(obj)) continue;
+      if (this.isNpcInteractable(obj) || obj.spriteSrc) continue;
       const sx = obj.x - this.camera.position.x;
       const sy = obj.y - this.camera.position.y;
       const pulse = 0.7 + Math.sin(this.time * 4 + obj.x) * 0.15;
@@ -14045,6 +14137,9 @@ export class Game {
           ctx.fill();
           ctx.globalAlpha = 1;
         }
+      } else if (obj.type === "restRoomExit") {
+        fill = "#22c55e";
+        label = " Exit";
       }
       if (!drewSprite) {
         ctx.fillStyle = fill;
@@ -14100,7 +14195,12 @@ export class Game {
       ctx.fillStyle = "#e2e8f0";
       ctx.font = "14px system-ui, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("Press E to interact", this.viewWidth / 2, sy + 16);
+      const promptText = this.nearInteractable.type === "restRoomExit"
+        ? "Press E to continue"
+        : (this.nearInteractable.promptLabel
+          ? `Press E to ${this.nearInteractable.promptLabel}`
+          : "Press E to interact");
+      ctx.fillText(promptText, this.viewWidth / 2, sy + 16);
       ctx.textAlign = "start";
     } else if (this.nearSearchableProp && !this.nearSearchableProp.isSearched && !this.searchingProp) {
       const sx = this.viewWidth / 2 - 90;

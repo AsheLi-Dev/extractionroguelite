@@ -326,7 +326,7 @@ export function applyGameLootMixin(Game) {
         const outcome = rollEquipmentDropOutcome("miniBoss", 0, dropMult, equipDropMult, bandMult);
         if (outcome) {
           const type = types[Math.floor(Math.random() * types.length)];
-          const def = generateEquipmentItem(type, lootQual, outcome.qualityBonus, null, equipOpts);
+          const def = generateEquipmentItem(type, lootQual, outcome.qualityBonus, "rare", equipOpts);
           emitEquipment(def);
         }
         const extraChance = Math.max(

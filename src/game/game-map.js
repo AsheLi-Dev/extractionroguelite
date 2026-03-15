@@ -3,6 +3,7 @@
 // This module adds methods to Game.prototype when imported
 
 import { MAP_DEFS, createProceduralWorld, PRESET_MEDIUM, getBiomeCellBounds, BIOME_ARCHETYPE, BIOME_GRID_COLS, BIOME_GRID_ROWS } from '../data/maps.js';
+import { REST_ROOM_LAYOUT, REST_ROOM_MAP_DEF, REST_ROOM_MAP_ID, REST_ROOM_WORLD_PRESET, isRestRoomMapId } from '../data/rest-room.js';
 import { OBSTACLE_TYPES } from '../data/obstacles.js';
 import { BREAKABLE_DEFS } from '../data/breakables-data.js';
 import { SEARCHABLE_PROP_DEFS } from '../data/searchable-props-data.js';
@@ -21,6 +22,30 @@ import { Totem } from '../entities/totem.js';
 
 export function applyGameMapMixin(Game) {
   Object.assign(Game.prototype, {
+    getMapDefById(mapId) {
+      if (isRestRoomMapId(mapId)) return REST_ROOM_MAP_DEF;
+      return MAP_DEFS.find((m) => m.id === mapId) || null;
+    },
+
+    shouldVisitRestRoomBeforeMap(targetMapId, spawnSide) {
+      const currentId = Number(this.currentMapId);
+      const nextId = Number(targetMapId);
+      if (this.restRoomEnabled === false) return false;
+      if (isRestRoomMapId(this.currentMapId) || isRestRoomMapId(targetMapId)) return false;
+      if (!Number.isFinite(currentId) || !Number.isFinite(nextId)) return false;
+      if (spawnSide !== "left") return false;
+      return nextId > currentId;
+    },
+
+    setupRestRoomMapInteractables() {
+      this.mapInteractables = [
+        ...REST_ROOM_LAYOUT.stations.map((entry) => ({ ...entry })),
+        { ...REST_ROOM_LAYOUT.exit }
+      ];
+      this.breakables = [];
+      this.searchableProps = [];
+    },
+
     /** Returns true if rect (x, y, w, h) overlaps any procedural tile wall. */
     overlapsTileWall(x, y, w, h) {
       const walls = this.world?.tileWallRects;
@@ -1446,10 +1471,17 @@ export function applyGameMapMixin(Game) {
     },
 
     transitionToMap(targetMapId, spawnSide) {
-      const targetMap = MAP_DEFS.find((m) => m.id === targetMapId);
+      if (this.shouldVisitRestRoomBeforeMap(targetMapId, spawnSide)) {
+        this.pendingRestRoomExit = { targetMapId, spawnSide };
+        targetMapId = REST_ROOM_MAP_ID;
+        spawnSide = "left";
+      }
+
+      const targetMap = this.getMapDefById(targetMapId);
       if (!targetMap) return;
-      const bossMapId = MAP_DEFS.length - 1;
+      const bossMapId = MAP_DEFS[MAP_DEFS.length - 1]?.id;
       const isBossRoom = targetMapId === bossMapId;
+      const isRestRoom = isRestRoomMapId(targetMapId);
 
       // Track exit reached for tutorial
       if (this.tutorialMode && this.tutorialSystem) {
@@ -1466,8 +1498,10 @@ export function applyGameMapMixin(Game) {
       this.currentMap = targetMap;
 
       if (this.useProceduralMap) {
-        const seed = (this.proceduralSeed ?? Date.now()) + targetMapId * 1000;
-        const preset = targetMapId === 4
+        const seed = (this.proceduralSeed ?? Date.now()) + Number(targetMapId) * 1000;
+        const preset = isRestRoom
+          ? { W: REST_ROOM_WORLD_PRESET.W, H: REST_ROOM_WORLD_PRESET.H, config: PRESET_MEDIUM.config }
+          : targetMapId === 4
           ? { W: 30, H: 30, config: PRESET_MEDIUM.config }
           : PRESET_MEDIUM;
         const { world } = createProceduralWorld(preset, seed, targetMap);
@@ -1478,7 +1512,7 @@ export function applyGameMapMixin(Game) {
         this.world.setTheme(targetMap);
       }
 
-      this.hazardSystem = new HazardSystem(this.world, this.conditions);
+      this.hazardSystem = isRestRoom ? null : new HazardSystem(this.world, this.conditions);
 
       this.lootSystem.items = [];
       this.playerProjectiles = [];
@@ -1496,7 +1530,7 @@ export function applyGameMapMixin(Game) {
       this.enemySystem.setMap(targetMap);
       
       // Check if we've visited this map before
-      const isFirstVisit = !this.visitedMaps.has(targetMapId);
+      const isFirstVisit = isRestRoom ? true : !this.visitedMaps.has(targetMapId);
       
       if (isFirstVisit) {
         this.toughnessHitsThisMap = 0;
@@ -1507,12 +1541,19 @@ export function applyGameMapMixin(Game) {
         }
         // First visit: initialize mapInteractables and spawn obstacles and sub-areas
         this.mapInteractables = [];
-        if (!isBossRoom) this.spawnMapNpcsForVisit(targetMapId);
-        
-        this.spawnObstacles(targetMapId);
-        this.spawnBreakablesForMap(targetMap, () => Math.random());
-        this.spawnSearchableProps(targetMap, () => Math.random());
-        if (this.world.vaultZones && this.world.vaultZones.length) {
+        if (isRestRoom) {
+          this.setupRestRoomMapInteractables();
+          this.enemySystem.enemies = [];
+          this.enemySystem.boss = null;
+          this.enemySystem.projectiles = [];
+          this.enemySystem.respawnQueue = [];
+        } else {
+          if (!isBossRoom) this.spawnMapNpcsForVisit(targetMapId);
+          this.spawnObstacles(targetMapId);
+          this.spawnBreakablesForMap(targetMap, () => Math.random());
+          this.spawnSearchableProps(targetMap, () => Math.random());
+        }
+        if (!isRestRoom && this.world.vaultZones && this.world.vaultZones.length) {
           for (const v of this.world.vaultZones) {
             this.mapInteractables.push({
               type: "vault",
@@ -1529,18 +1570,20 @@ export function applyGameMapMixin(Game) {
           }
           preloadSound("portcullisGate");
         }
-        this.spawnSubAreas(targetMapId);
-        // Save the environmental state for future visits
-        this.saveMapEnvironmentalState(targetMapId);
-        
-        // Spawn initial enemies (after sub-areas are spawned)
-        this.enemySystem.enemies = [];
-        this.enemySystem.boss = null;
-        this.enemySystem.projectiles = [];
-        this.enemySystem.respawnQueue = [];
-        this.enemySystem.spawnInitial(this);
-        this.trySpawnUndeadHeroForCurrentMap();
-        this.visitedMaps.add(targetMapId);
+        if (!isRestRoom) {
+          this.spawnSubAreas(targetMapId);
+          // Save the environmental state for future visits
+          this.saveMapEnvironmentalState(targetMapId);
+          
+          // Spawn initial enemies (after sub-areas are spawned)
+          this.enemySystem.enemies = [];
+          this.enemySystem.boss = null;
+          this.enemySystem.projectiles = [];
+          this.enemySystem.respawnQueue = [];
+          this.enemySystem.spawnInitial(this);
+          this.trySpawnUndeadHeroForCurrentMap();
+          this.visitedMaps.add(targetMapId);
+        }
       } else {
         // Returning to a visited map: restore environmental elements and enemy state
         this.restoreMapEnvironmentalState(targetMapId);
@@ -1556,7 +1599,7 @@ export function applyGameMapMixin(Game) {
       
       // Spawn shrine based on interval
       this.shrineSpawnCounter++;
-      if (!isBossRoom && this.shrineSpawnCounter >= this.shrineSpawnInterval) {
+      if (!isRestRoom && !isBossRoom && this.shrineSpawnCounter >= this.shrineSpawnInterval) {
         const shrineDef = SHRINE_DEFS[Math.floor(Math.random() * SHRINE_DEFS.length)];
         const margin = this.world.wallThickness + 80;
         

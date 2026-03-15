@@ -279,6 +279,15 @@ export function applyGameCollisionMixin(Game) {
           if (isDashingNow && obstacle.type === "ancientTree") continue;
           blockingRects.push(getObstacleCollisionRect(obstacle));
         }
+        for (const obj of this.mapInteractables || []) {
+          if (!obj?.collisionRect) continue;
+          blockingRects.push({
+            x: obj.x + (obj.collisionRect.x || 0),
+            y: obj.y + (obj.collisionRect.y || 0),
+            w: obj.collisionRect.w || 0,
+            h: obj.collisionRect.h || 0
+          });
+        }
 
         for (const oRect of blockingRects) {
           if (!overlapsRect(pRect, oRect)) continue;

@@ -299,7 +299,11 @@ export function drawHitboxDebug(ctx, camera, hitboxes = activeHitboxes) {
     if (h.destroyed) continue;
     const sx = h.x - camX;
     const sy = h.y - camY;
-    ctx.strokeStyle = 'rgba(255, 200, 0, 0.9)';
+    const isPlayer = h.faction === 'player';
+    const stroke = isPlayer ? 'rgba(34, 197, 94, 0.95)' : 'rgba(239, 68, 68, 0.95)';
+    const fill = isPlayer ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)';
+    ctx.strokeStyle = stroke;
+    ctx.fillStyle = fill;
     ctx.lineWidth = 1;
     if (h.shape === 'circle') {
       ctx.beginPath();
@@ -310,6 +314,7 @@ export function drawHitboxDebug(ctx, camera, hitboxes = activeHitboxes) {
       } else {
         ctx.arc(sx, sy, h.radius, 0, Math.PI * 2);
       }
+      ctx.fill();
       ctx.stroke();
     } else if (h.shape === 'rect') {
       const rcx = sx + h.width / 2;
@@ -318,6 +323,7 @@ export function drawHitboxDebug(ctx, camera, hitboxes = activeHitboxes) {
       ctx.save();
       ctx.translate(rcx, rcy);
       ctx.rotate(angleRad);
+      ctx.fillRect(-h.width / 2, -h.height / 2, h.width, h.height);
       ctx.strokeRect(-h.width / 2, -h.height / 2, h.width, h.height);
       ctx.restore();
     } else if (h.shape === 'cone') {
@@ -331,6 +337,7 @@ export function drawHitboxDebug(ctx, camera, hitboxes = activeHitboxes) {
       ctx.lineTo(endX + perpX * spread, endY + perpY * spread);
       ctx.lineTo(endX - perpX * spread, endY - perpY * spread);
       ctx.closePath();
+      ctx.fill();
       ctx.stroke();
     }
   }

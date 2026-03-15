@@ -25,7 +25,8 @@ const SOUNDS = {
   enemyHurt: "assets/Audio/enemy_hurt.wav",
   chestOpen: "assets/Audio/01_chest_open_4.wav",
   collectGold: "assets/Audio/collect_gold.wav",
-  portcullisGate: "assets/Audio/Portcullis Gate.wav"
+  portcullisGate: "assets/Audio/Portcullis Gate.wav",
+  levelUp: "assets/Audio/level up.mp3"
 };
 
 const ATTACK_SOUNDS = new Set(["projectileShot", "fanStrike", "pulseShot", "fireball", "iceHard"]);
@@ -182,4 +183,3 @@ export function stopBgm() {
     bgmAudio.currentTime = 0;
   } catch (_) {}
 }
-

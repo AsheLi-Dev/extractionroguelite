@@ -39,7 +39,7 @@ let pendingSnackId = null;
 
 let pendingSkillsForRun = [null, null, null, null];
 let pendingAttackType = "projectile";
-let pendingSecondaryAttackType = "fanStrike";
+let pendingSecondaryAttackType = "bladeBlast";
 let dualTechniqueActiveForRun = false;
 let pendingSelectedUpgradeIds = [];
 

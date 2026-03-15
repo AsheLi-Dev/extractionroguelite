@@ -17,6 +17,7 @@ import { Breakable } from '../entities/breakable.js';
 import { SearchableProp } from '../entities/searchable-prop.js';
 import { getAllRingDefs, getRingDefById, getRingSpriteCell } from '../data/rings-data.js';
 import { setRingProcLogging } from './ring-effects.js';
+import { addGold } from './economy.js';
 
 export function applyGameDevMixin(Game) {
   Object.assign(Game.prototype, {
@@ -47,6 +48,12 @@ export function applyGameDevMixin(Game) {
       const devGiveAllCubesEl = document.getElementById("dev-give-all-cubes");
       if (devGiveAllCubesEl) {
         this.addManagedListener(devGiveAllCubesEl, "click", () => this.handleDevGiveAllCubes());
+      }
+      const devGiveGoldEl = document.getElementById("dev-give-gold");
+      if (devGiveGoldEl) {
+        this.addManagedListener(devGiveGoldEl, "click", () => {
+          addGold(this, 100, "dev_grant_gold", {});
+        });
       }
       const devRandomItemEl = document.getElementById("dev-random-item");
       if (devRandomItemEl) {

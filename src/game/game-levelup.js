@@ -28,6 +28,7 @@ import {
   getSoulSiphonSecondEvolutionOptions
 } from '../data/soul-siphon-evolution.js';
 import { onRingLevelUp } from './ring-effects.js';
+import { play as playSfx } from '../audio.js';
 
 const PROJECTILE_BASE_WEAPON_ID = "ProjectileShot";
 const CATEGORY_ORDER = ["damage", "rhythm", "control", "onhit"];
@@ -75,7 +76,10 @@ function getDominantCategories(counts) {
 function closeLevelUpOverlay(game) {
   const overlay = document.getElementById("level-up-overlay");
   const rerollBtn = document.getElementById("level-up-reroll");
-  if (overlay) overlay.classList.add("hidden");
+  if (overlay) {
+    overlay.classList.remove("level-up-overlay-visible", "level-up-overlay-evolution");
+    overlay.classList.add("hidden");
+  }
   if (rerollBtn) {
     rerollBtn.classList.add("hidden");
     rerollBtn.onclick = null;
@@ -91,6 +95,20 @@ function closeLevelUpOverlay(game) {
 
 export function applyGameLevelUpMixin(Game) {
   Object.assign(Game.prototype, {
+    showLevelUpOverlayShell(title, subtitle, options = {}) {
+      const overlay = document.getElementById("level-up-overlay");
+      const titleEl = overlay?.querySelector(".level-up-title");
+      const subtitleEl = overlay?.querySelector(".level-up-subtitle");
+      if (!overlay || !titleEl || !subtitleEl) return null;
+      titleEl.textContent = title || "Level Up!";
+      subtitleEl.textContent = subtitle || "";
+      overlay.classList.toggle("level-up-overlay-evolution", !!options.evolution);
+      overlay.classList.remove("hidden", "level-up-overlay-visible");
+      void overlay.offsetWidth;
+      overlay.classList.add("level-up-overlay-visible");
+      return overlay;
+    },
+
     ensureUpgradeOnlyStats() {
       if (!this.upgradeOnlyStats) {
         this.upgradeOnlyStats = {
@@ -499,6 +517,11 @@ export function applyGameLevelUpMixin(Game) {
         level: selectedUpgrade.level,
         maxLevel: selectedUpgrade.maxLevel
       });
+      if (typeof this.addFloatingUpgradeText === "function" && this.player) {
+        const px = this.player.position.x + this.player.size / 2;
+        const py = this.player.position.y - 10;
+        this.addFloatingUpgradeText(px, py, `Level Up: ${selectedUpgrade.name}`);
+      }
       if (!this.categoryCounts) this.categoryCounts = createEmptyCategoryCounts();
       if (this.categoryCounts[selectedUpgrade.category] == null) {
         this.categoryCounts[selectedUpgrade.category] = 0;
@@ -567,15 +590,14 @@ export function applyGameLevelUpMixin(Game) {
         delayAllowed: !!options.delayAllowed
       };
 
-      const overlay = document.getElementById("level-up-overlay");
-      const titleEl = overlay?.querySelector(".level-up-title");
-      const subtitleEl = overlay?.querySelector(".level-up-subtitle");
       const choicesEl = document.getElementById("level-up-choices");
       const rerollBtn = document.getElementById("level-up-reroll");
-      if (!overlay || !titleEl || !subtitleEl || !choicesEl) return false;
-
-      titleEl.textContent = context.title || "Evolution";
-      subtitleEl.textContent = context.subtitle || "Choose an evolution.";
+      const overlay = this.showLevelUpOverlayShell(
+        context.title || "Evolution",
+        context.subtitle || "Choose an evolution.",
+        { evolution: true }
+      );
+      if (!overlay || !choicesEl) return false;
       choicesEl.innerHTML = "";
       for (const choice of this.levelUpChoices) {
         const btn = document.createElement("button");
@@ -603,7 +625,6 @@ export function applyGameLevelUpMixin(Game) {
         }
       }
 
-      overlay.classList.remove("hidden");
       this.paused = true;
       if (this.pauseToggleEl) {
         this.pauseToggleEl.textContent = "Resume";
@@ -628,15 +649,14 @@ export function applyGameLevelUpMixin(Game) {
       }));
       this.levelUpChoiceContext = { ...context, delayAllowed: false };
 
-      const overlay = document.getElementById("level-up-overlay");
-      const titleEl = overlay?.querySelector(".level-up-title");
-      const subtitleEl = overlay?.querySelector(".level-up-subtitle");
       const choicesEl = document.getElementById("level-up-choices");
       const rerollBtn = document.getElementById("level-up-reroll");
-      if (!overlay || !titleEl || !subtitleEl || !choicesEl) return false;
-
-      titleEl.textContent = context.title || "Evolution";
-      subtitleEl.textContent = context.subtitle || "";
+      const overlay = this.showLevelUpOverlayShell(
+        context.title || "Evolution",
+        context.subtitle || "",
+        { evolution: true }
+      );
+      if (!overlay || !choicesEl) return false;
       choicesEl.innerHTML = "";
       for (const choice of this.levelUpChoices) {
         const btn = document.createElement("button");
@@ -658,7 +678,6 @@ export function applyGameLevelUpMixin(Game) {
         rerollBtn.onclick = null;
       }
 
-      overlay.classList.remove("hidden");
       this.paused = true;
       if (this.pauseToggleEl) {
         this.pauseToggleEl.textContent = "Resume";
@@ -683,15 +702,14 @@ export function applyGameLevelUpMixin(Game) {
       }));
       this.levelUpChoiceContext = { ...context, delayAllowed: false };
 
-      const overlay = document.getElementById("level-up-overlay");
-      const titleEl = overlay?.querySelector(".level-up-title");
-      const subtitleEl = overlay?.querySelector(".level-up-subtitle");
       const choicesEl = document.getElementById("level-up-choices");
       const rerollBtn = document.getElementById("level-up-reroll");
-      if (!overlay || !titleEl || !subtitleEl || !choicesEl) return false;
-
-      titleEl.textContent = context.title || "Evolution";
-      subtitleEl.textContent = context.subtitle || "";
+      const overlay = this.showLevelUpOverlayShell(
+        context.title || "Evolution",
+        context.subtitle || "",
+        { evolution: true }
+      );
+      if (!overlay || !choicesEl) return false;
       choicesEl.innerHTML = "";
       for (const choice of this.levelUpChoices) {
         const btn = document.createElement("button");
@@ -713,7 +731,6 @@ export function applyGameLevelUpMixin(Game) {
         rerollBtn.onclick = null;
       }
 
-      overlay.classList.remove("hidden");
       this.paused = true;
       if (this.pauseToggleEl) {
         this.pauseToggleEl.textContent = "Resume";
@@ -877,6 +894,8 @@ export function applyGameLevelUpMixin(Game) {
         this.level++;
         leveled = true;
         onRingLevelUp(this);
+        if (typeof playSfx === "function") playSfx("levelUp");
+        this.levelUpVfxStartTime = this.time;
         this.updateXpUI();
 
         if (this.maybeOpenElementalShotFirstEvolutionPrompt()) break;
