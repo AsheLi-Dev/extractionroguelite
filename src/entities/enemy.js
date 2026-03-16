@@ -2094,7 +2094,7 @@ export class Enemy {
     // Alerted when player enters alerted range (3x detection range); moves at 0.4x speed
     this.alerted = false;
 
-    // Debuffs from modification cards (element mods)
+    // Migrated statuses are mirrored here for legacy readers; the status manager owns runtime state.
     this.defense = typeDef.defense ?? 0;
     this.burnUntil = null;
     this.burnDps = 0;

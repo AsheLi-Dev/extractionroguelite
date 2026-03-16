@@ -100,14 +100,15 @@ describe("Elemental Shot – upgrade effects (deterministic)", () => {
     const log = createEventLog();
     const ctx = await createElementalShotTestContext({
       seed: 10,
-      runAttackUpgrades: [{ id: "burning_power", level: 1 }]
+      runAttackUpgrades: [{ id: "burning_power", level: 1 }],
+      currentStats: { attack: 80, maxHealth: 100 }
     });
     await syncProfile(ctx, log);
     const e = createTestDummy("e1");
     simulateProjectileHit(ctx, log, e, { element: "fire", baseDamage: 100 });
     const burn = log.getEventsByType("burn_applied")[0];
-    // base burn is baseDmg * 0.2; +20% => *1.2
-    assert.strictEqual(Math.round(burn.dps), Math.round(100 * 0.2 * 1.2));
+    // burn scales from the player's attack stat, not the on-hit base damage.
+    assert.strictEqual(Math.round(burn.dps), Math.round(80 * 0.2 * 1.2));
   });
 
   it("wind_bleed can deterministically proc with seed (chance treated as value)", async () => {
@@ -150,6 +151,22 @@ describe("Elemental Shot – upgrade effects (deterministic)", () => {
     simulateProjectileHit(ctx, log, e, { element: "wind", baseDamage: 10 });
     assert.strictEqual(log.getEventsByType("wind_knockback").length, 1);
   });
+
+  it("wind prolongs active burn by 0.2s", async () => {
+    const log = createEventLog();
+    const ctx = await createElementalShotTestContext({
+      seed: 21,
+      currentStats: { attack: 50, maxHealth: 100 }
+    });
+    await syncProfile(ctx, log);
+    const e = createTestDummy("e1");
+    simulateProjectileHit(ctx, log, e, { element: "fire", baseDamage: 10 });
+    const before = e.burnUntil;
+    simulateProjectileHit(ctx, log, e, { element: "wind", baseDamage: 10 });
+    assert.ok(Math.abs(e.burnUntil - (before + 0.2)) < 1e-9);
+    const prolonged = log.getEventsByType("burn_prolonged")[0];
+    assert.strictEqual(prolonged.seconds, 0.2);
+  });
 });
 
 // --- EVOLUTION RUNTIME TESTS (first evolutions) ---
@@ -157,7 +174,11 @@ describe("Elemental Shot – upgrade effects (deterministic)", () => {
 describe("Elemental Shot – first evolution runtime behavior (profile-driven)", () => {
   it("Inferno Core: burn stack limit = 3 and burn damage mult = 2", async () => {
     const log = createEventLog();
-    const ctx = await createElementalShotTestContext({ seed: 30, evolution: { first: "damage", second: null } });
+    const ctx = await createElementalShotTestContext({
+      seed: 30,
+      evolution: { first: "damage", second: null },
+      currentStats: { attack: 75, maxHealth: 100 }
+    });
     await syncProfile(ctx, log);
     const e = createTestDummy("e1");
     simulateProjectileHit(ctx, log, e, { element: "fire", baseDamage: 100 });
@@ -165,9 +186,9 @@ describe("Elemental Shot – first evolution runtime behavior (profile-driven)",
     simulateProjectileHit(ctx, log, e, { element: "fire", baseDamage: 100 });
     simulateProjectileHit(ctx, log, e, { element: "fire", baseDamage: 100 });
     assert.strictEqual(e.burnStacks, 3);
-    // burnDamageMult=2 doubles base burn DPS
+    // burnDamageMult=2 doubles burn DPS from attack stat.
     const burn = log.getEventsByType("burn_applied")[0];
-    assert.strictEqual(Math.round(burn.dps), Math.round(100 * 0.2 * 2));
+    assert.strictEqual(Math.round(burn.dps), Math.round(75 * 0.2 * 2));
   });
 
   it("Storm Engine: lightning feeds charge", async () => {
@@ -228,6 +249,30 @@ describe("Elemental Shot – second evolution key forms (smoke tests)", () => {
     assert.strictEqual(log.getEventsByType("storm_tick").length, 1);
     // slow applied
     assert.ok(e.slowUntil > 0);
+  });
+
+  it("Storm Circle: lightning detonation consumes one burn stack", async () => {
+    const log = createEventLog();
+    const ctx = await createElementalShotTestContext({
+      seed: 411,
+      evolution: { first: "rhythm", second: "control" },
+      currentStats: { attack: 80, maxHealth: 100 }
+    });
+    await syncProfile(ctx, log);
+    const e = createTestDummy("e1");
+    ctx.enemies = [e];
+    e.burnUntil = (ctx.time || 0) + 2;
+    e.burnDps = 32;
+    e.burnStacks = 2;
+    e.burnAccum = 0;
+    const beforeDps = e.burnDps;
+    assert.strictEqual(e.burnStacks, 2);
+    simulateProjectileHit(ctx, log, e, { element: "lightning", baseDamage: 10 });
+    assert.strictEqual(log.getEventsByType("burn_detonated").length, 1);
+    assert.strictEqual(e.burnStacks, 1);
+    assert.ok(e.burnUntil > 0);
+    assert.ok(e.burnDps > 0);
+    assert.ok(e.burnDps < beforeDps);
   });
 
   it("Overcharged Core: modifier surge behavior present", async () => {
@@ -415,4 +460,3 @@ describe("Elemental Shot – safety bounds", () => {
     assert.ok(log.getEventsByType("storm_tick").length <= 10);
   });
 });
-

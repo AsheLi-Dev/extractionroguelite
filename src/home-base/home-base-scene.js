@@ -1,6 +1,8 @@
 import { Camera } from "../camera.js";
 import { Input } from "../input.js";
 import { Player } from "../player.js";
+import { getSelectedPlayableCharacterIdFromStorage } from "../ui/pre-run.js";
+import { getPlayableCharacterOrDefault } from "../data/playable-characters.js";
 import { HomeBaseUIController } from "./home-base-ui.js";
 import { createHomeBaseLayout } from "./home-base-layout.js";
 import { PortalPrepFlowController } from "./portal-prep-flow.js";
@@ -134,7 +136,9 @@ export class HomeBaseScene {
 
     const campfire = this.interactables.find((item) => item.id === "campfire");
     const campfireCenter = campfire ? campfire.getCenter() : { x: this.world.width * 0.5, y: this.world.height * 0.5 };
-    this.player = new Player(campfireCenter.x - 50, campfireCenter.y - 50);
+    this.playerPlayableCharacterId = getSelectedPlayableCharacterIdFromStorage();
+    const playableDef = getPlayableCharacterOrDefault(this.playerPlayableCharacterId);
+    this.player = new Player(campfireCenter.x - 50, campfireCenter.y - 50, { playableCharacter: playableDef });
     this.player.speed = 220;
     this.camera = new Camera(DESIGN_WIDTH, DESIGN_HEIGHT);
 
@@ -1073,6 +1077,15 @@ export class HomeBaseScene {
     window.addEventListener("resize", this.boundResize, { signal: this.abortController.signal });
     this.canvas.addEventListener("mousedown", this.boundHubTileDebugClick, { signal: this.abortController.signal });
 
+    const currentHeroId = getSelectedPlayableCharacterIdFromStorage();
+    if (currentHeroId !== this.playerPlayableCharacterId) {
+      this.playerPlayableCharacterId = currentHeroId;
+      const playableDef = getPlayableCharacterOrDefault(currentHeroId);
+      const campfire = this.interactables.find((item) => item.id === "campfire");
+      const center = campfire ? campfire.getCenter() : { x: this.world.width * 0.5, y: this.world.height * 0.5 };
+      this.player = new Player(center.x - 50, center.y - 50, { playableCharacter: playableDef });
+      this.player.speed = 220;
+    }
     this.resetPlayerToCampfire();
     this.resizeCanvas();
     this.camera.snapTo(this.player, this.world.width, this.world.height);
@@ -1335,6 +1348,14 @@ export class HomeBaseScene {
         const handled = this.callbacks.onOpenFriends?.() === true;
         if (!handled) {
           this.ui.openPlaceholder("Companions");
+        }
+        break;
+      }
+      case "select-hero": {
+        this.ui.close();
+        const handled = this.callbacks.onOpenSelectHero?.() === true;
+        if (!handled) {
+          this.ui.openPlaceholder("Select Hero");
         }
         break;
       }

@@ -40,6 +40,7 @@ export class Boss {
     this.minionTimer = 0;
 
     this.defense = 5;
+    // Migrated statuses are mirrored here for legacy readers; the status manager owns runtime state.
     this.burnUntil = null;
     this.burnDps = 0;
     this.burnAccum = 0;

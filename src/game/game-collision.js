@@ -7,6 +7,106 @@ import { PLAYER_WALL_COLLISION_INSET, PLAYER_HITBOX_SCALE } from '../data/consta
 
 export function applyGameCollisionMixin(Game) {
   Object.assign(Game.prototype, {
+    getPlayerCollisionRectAt(x, y) {
+      const player = this.player;
+      if (!player) return null;
+      const pi = PLAYER_WALL_COLLISION_INSET;
+      const pBase = Math.max(1, player.size - 2 * pi);
+      const pw = Math.max(1, pBase * 0.25 * PLAYER_HITBOX_SCALE);
+      const ph = Math.max(1, pBase * 0.5 * PLAYER_HITBOX_SCALE);
+      const pxo = pi + (pBase - pw) / 2;
+      const pyo = pi + (pBase - ph) / 2;
+      return { x: x + pxo, y: y + pyo, w: pw, h: ph };
+    },
+
+    playerPositionHasBlockingCollision(x, y) {
+      const rect = this.getPlayerCollisionRectAt(x, y);
+      if (!rect) return false;
+      const overlapsRect = (a, b) => (
+        a.x < b.x + b.w &&
+        a.x + a.w > b.x &&
+        a.y < b.y + b.h &&
+        a.y + a.h > b.y
+      );
+
+      for (const obstacle of this.obstacles || []) {
+        if (obstacle.destroyed || !obstacle.blocksMovement) continue;
+        if (obstacleIntersectsRect(obstacle, rect)) return true;
+      }
+
+      for (const obj of this.mapInteractables || []) {
+        if (!obj?.collisionRect) continue;
+        const objRect = {
+          x: obj.x + (obj.collisionRect.x || 0),
+          y: obj.y + (obj.collisionRect.y || 0),
+          w: obj.collisionRect.w || 0,
+          h: obj.collisionRect.h || 0
+        };
+        if (overlapsRect(rect, objRect)) return true;
+      }
+
+      for (const wall of this.world?.tileWallRects || []) {
+        const wallRect = getWallCollisionRect(wall);
+        if (overlapsRect(rect, wallRect)) return true;
+      }
+
+      return false;
+    },
+
+    movePlayerByWithCollision(deltaX, deltaY) {
+      const player = this.player;
+      if (!player) return;
+      const originalX = player.position.x;
+      const originalY = player.position.y;
+      const margin = this.world?.wallCollisionThickness ?? this.world?.wallThickness ?? 0;
+      const maxX = (this.world?.width ?? originalX + player.size) - margin - player.size;
+      const maxY = (this.world?.height ?? originalY + player.size) - margin - player.size;
+      const clampX = (value) => Math.max(margin, Math.min(value, maxX));
+      const clampY = (value) => Math.max(margin, Math.min(value, maxY));
+      const targetX = clampX(originalX + deltaX);
+      const targetY = clampY(originalY + deltaY);
+
+      const trySetPosition = (x, y) => {
+        const nextX = clampX(x);
+        const nextY = clampY(y);
+        if (this.playerPositionHasBlockingCollision(nextX, nextY)) return false;
+        player.position.x = nextX;
+        player.position.y = nextY;
+        return true;
+      };
+
+      if (!trySetPosition(targetX, targetY)) {
+        const preferX = Math.abs(deltaX) >= Math.abs(deltaY);
+        const axisCandidates = preferX
+          ? [
+              [targetX, originalY],
+              [originalX, targetY]
+            ]
+          : [
+              [originalX, targetY],
+              [targetX, originalY]
+            ];
+        let moved = false;
+        for (const [x, y] of axisCandidates) {
+          if (trySetPosition(x, y)) {
+            moved = true;
+            break;
+          }
+        }
+        if (!moved) {
+          player.position.x = originalX;
+          player.position.y = originalY;
+        }
+      }
+
+      this.ensurePlayerNotStuck?.();
+      if (this.playerPositionHasBlockingCollision(player.position.x, player.position.y)) {
+        player.position.x = originalX;
+        player.position.y = originalY;
+        this.ensurePlayerNotStuck?.();
+      }
+    },
+
     resolveSquareOverlap(a, b) {
       const ax1 = a.position.x, ay1 = a.position.y, asz = a.size;
       const bx1 = b.position.x, by1 = b.position.y, bsz = b.size;
@@ -216,7 +316,7 @@ export function applyGameCollisionMixin(Game) {
       const maxY = this.world.height - margin - player.size;
 
       const allEnemies = [...es.enemies, ...(es.boss ? [es.boss] : [])].filter((e) => !e.isDead);
-      const skipPlayerCollision = this.bladeDashActive || this.dashActive;
+      const skipPlayerCollision = this.bladeDashActive || this.dashActive || this.knightSlideActive;
       for (let iter = 0; iter < 2; iter++) {
         if (!skipPlayerCollision) {
           for (const enemy of allEnemies) {
@@ -261,7 +361,7 @@ export function applyGameCollisionMixin(Game) {
       const pyo = pi + (pBase - ph) / 2;
       const pSide = Math.max(1, Math.min(pw, ph));
 
-      const isDashingNow = !!(this.dashActive || this.bladeDashActive || this.dashStrikeState || this.backfireDashState);
+      const isDashingNow = !!(this.dashActive || this.bladeDashActive || this.knightSlideActive || this.dashStrikeState || this.backfireDashState);
       const overlapsRect = (a, b) => (
         a.x < b.x + b.w &&
         a.x + a.w > b.x &&

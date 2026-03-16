@@ -56,6 +56,7 @@ export function createHomeBaseLayout(world) {
   const portal = byId.get("portal-gate");
   const lure = byId.get("lure-altar");
   const companion = byId.get("companion");
+  const peachPillar = byId.get("peach-pillar");
   const returnMenu = byId.get("return-menu");
 
   const fallbackCenter = { x: world.width * 0.5, y: world.height * 0.5 };
@@ -68,6 +69,7 @@ export function createHomeBaseLayout(world) {
   const portalCenter = getCenter(portal, fallbackCenter);
   const lureCenter = getCenter(lure, fallbackCenter);
   const companionCenter = getCenter(companion, fallbackCenter);
+  const peachPillarCenter = getCenter(peachPillar, fallbackCenter);
 
   const areas = [
     { id: "campfire-area", interactableId: "campfire", padX: 200, padY: 150, label: "Campfire Grounds", shortLabel: "Campfire", color: "rgba(249, 115, 22, 0.14)", borderColor: "rgba(251, 146, 60, 0.26)", priority: 3, ...around(campfire, 200, 150) },
@@ -79,6 +81,7 @@ export function createHomeBaseLayout(world) {
     { id: "portal-area", interactableId: "portal-gate", padX: 150, padY: 120, label: "Portal Gate", shortLabel: "Portal Gate", color: "rgba(59, 130, 246, 0.13)", borderColor: "rgba(96, 165, 250, 0.31)", priority: 6, ...around(portal, 150, 120) },
     { id: "altar-area", interactableId: "lure-altar", padX: 120, padY: 90, label: "Lure Altar", shortLabel: "Lure Altar", color: "rgba(34, 211, 238, 0.12)", borderColor: "rgba(103, 232, 249, 0.3)", priority: 5, ...around(lure, 120, 90) },
     { id: "companion-area", interactableId: "companion", padX: 80, padY: 60, label: "Companions", shortLabel: "Companions", color: "rgba(244, 114, 182, 0.12)", borderColor: "rgba(251, 113, 133, 0.3)", priority: 4, ...around(companion, 80, 60) },
+    { id: "peach-pillar-area", interactableId: "peach-pillar", padX: 80, padY: 60, label: "Peach Pillar", shortLabel: "Select Hero", color: "rgba(245, 158, 11, 0.12)", borderColor: "rgba(251, 191, 36, 0.3)", priority: 4, ...around(peachPillar, 80, 60) },
     { id: "return-menu-area", interactableId: "return-menu", padX: 45, padY: 35, label: "Return Shrine", shortLabel: "Return Shrine", color: "rgba(148, 163, 184, 0.08)", borderColor: "rgba(148, 163, 184, 0.24)", priority: 2, ...around(returnMenu, 45, 35) }
   ];
 
@@ -122,7 +125,10 @@ export function createHomeBaseLayout(world) {
     makeStructure("lure-rune-ring", lureCenter.x - 68, lureCenter.y - 48, 136, 96, "rune", false, { shape: "ring" }),
 
     // Companion area — calm shrine placeholder
-    makeStructure("companion-shrine", companionCenter.x - 30, companionCenter.y - 20, 60, 40, "altar")
+    makeStructure("companion-shrine", companionCenter.x - 30, companionCenter.y - 20, 60, 40, "altar"),
+
+    // Peach Pillar — Select Hero
+    makeStructure("peach-pillar-shrine", peachPillarCenter.x - 30, peachPillarCenter.y - 20, 60, 40, "altar")
   ];
 
   const markerById = {
@@ -135,6 +141,7 @@ export function createHomeBaseLayout(world) {
     "portal-gate": { icon: "R", subtitle: "Expedition" },
     "lure-altar": { icon: "L", subtitle: "Lures" },
     companion: { icon: "F", subtitle: "Companions" },
+    "peach-pillar": { icon: "H", subtitle: "Select Hero" },
     "return-menu": { icon: "M", subtitle: "Main Menu" }
   };
 

@@ -57,38 +57,82 @@ export function applyElementDebuffsFromMods(game, enemy, mods, skillDamage, game
   const mult = getModEffectMult(game);
   if (mods.includes("ignite")) {
     const dps = (0.15 * skillDamage) * mult;
-    enemy.burnUntil = gameTime + 3;
-    enemy.burnDps = Math.max(enemy.burnDps || 0, dps);
-    enemy.burnAccum = 0;
+    if (typeof game?.applyStatusToEntity === "function") {
+      game.applyStatusToEntity(enemy.id, "burn", {
+        duration: 3,
+        magnitude: dps,
+        stacks: Math.max(1, enemy.burnStacks || 1),
+        sourceId: "player",
+        sourceType: "skill_mod",
+        data: {
+          damageModel: "dps",
+          reason: "enemy_burn_tick"
+        }
+      });
+    } else {
+      enemy.burnUntil = gameTime + 3;
+      enemy.burnDps = Math.max(enemy.burnDps || 0, dps);
+      enemy.burnAccum = 0;
+    }
   }
   if (mods.includes("chill")) {
     const slowMult = 1 - 0.2 * mult;
-    enemy.slowUntil = Math.max(enemy.slowUntil || 0, gameTime + 2);
-    enemy.slowMult = Math.min(enemy.slowMult ?? 1, slowMult);
+    if (typeof game?.applyStatusToEntity === "function") {
+      game.applyStatusToEntity(enemy.id, "slow", {
+        duration: 2,
+        magnitude: slowMult,
+        sourceId: "player",
+        sourceType: "skill_mod"
+      });
+    } else {
+      enemy.slowUntil = Math.max(enemy.slowUntil || 0, gameTime + 2);
+      enemy.slowMult = Math.min(enemy.slowMult ?? 1, slowMult);
+    }
   }
   if (mods.includes("shock") && Math.random() < 0.25 * mult) {
-    enemy.stunUntil = Math.max(enemy.stunUntil || 0, gameTime + 0.5);
+    if (typeof game?.applyStatusToEntity === "function") {
+      game.applyStatusToEntity(enemy.id, "stun", {
+        duration: 0.5,
+        sourceId: "player",
+        sourceType: "skill_mod"
+      });
+    } else {
+      enemy.stunUntil = Math.max(enemy.stunUntil || 0, gameTime + 0.5);
+    }
   }
   if (mods.includes("toxic")) {
-    if (typeof game?.applyStackDelta === "function") {
-      game.applyStackDelta(enemy, "enemy.toxic", 1, {
-        stackKey: "toxicStacks",
-        targetType: "enemy",
-        source: "skill_mod_toxic",
-        reason: "toxic_on_hit",
-        mode: "add",
-        min: 0,
-        max: 3
+    if (typeof game?.applyStatusToEntity === "function") {
+      game.applyStatusToEntity(enemy.id, "poison", {
+        duration: 3,
+        magnitude: enemy.maxHealth * 0.05,
+        maxStacks: 3,
+        stackDelta: 1,
+        stackingMode: "stack_refresh",
+        sourceId: "player",
+        sourceType: "skill_mod",
+        data: {
+          reason: "skill_mod_toxic_tick"
+        }
       });
     } else {
       enemy.toxicStacks = Math.min(3, (enemy.toxicStacks || 0) + 1);
+      enemy.toxicUntil = gameTime + 3;
+      enemy.toxicAccum = 0;
     }
-    enemy.toxicUntil = gameTime + 3;
-    enemy.toxicAccum = 0;
   }
   if (mods.includes("void")) {
-    enemy.voidDefenseUntil = gameTime + 4;
-    enemy.voidDefenseMult = 1 - 0.2 * mult;
+    const voidMult = 1 - 0.2 * mult;
+    if (typeof game?.applyStatusToEntity === "function") {
+      game.applyStatusToEntity(enemy.id, "void", {
+        duration: 4,
+        magnitude: voidMult,
+        sourceId: "player",
+        sourceType: "skill_mod"
+      });
+    } else {
+      enemy.voidDefenseUntil = gameTime + 4;
+      enemy.voidDefenseMult = voidMult;
+    }
   }
 }
 
@@ -116,7 +160,13 @@ export const SKILL_DEFS = [
   { id: "flameAura", name: "Flame Aura", icon: "spr_skill_flameAura", illustration: "assets/UI/Flame Aura.png", baseCd: 0, desc: "Toggle: burn nearby enemies, 0.5% HP/s", unlock: "always", category: "aura", auraUpkeep: 0.005, tags: ["aura", "area"] },
   { id: "thunderAura", name: "Thunder Aura", icon: "spr_skill_thunderAura", illustration: "assets/UI/Thunder Aura.png", baseCd: 0, desc: "Toggle: lightning to nearest every 1.5s, 1% HP/s", unlock: "always", category: "aura", auraUpkeep: 0.01, tags: ["aura", "ranged"] },
   { id: "barrierAura", name: "Barrier Aura", icon: "spr_skill_barrierAura", illustration: "assets/UI/Barrier Aura.png", baseCd: 0, desc: "Toggle: -15% damage taken, 1.5% HP/s", unlock: "fortified", category: "aura", auraUpkeep: 0.015, tags: ["aura", "defense", "utility"] },
-  { id: "soulAura", name: "Soul Aura", icon: "spr_skill_soulAura", illustration: "assets/UI/Soul Aura.png", baseCd: 0, desc: "Toggle: 50% damage to healing, 2% HP/s", unlock: "vampiric50", category: "aura", auraUpkeep: 0.02, tags: ["aura", "defense"] }
+  { id: "soulAura", name: "Soul Aura", icon: "spr_skill_soulAura", illustration: "assets/UI/Soul Aura.png", baseCd: 0, desc: "Toggle: 50% damage to healing, 2% HP/s", unlock: "vampiric50", category: "aura", auraUpkeep: 0.02, tags: ["aura", "defense"] },
+  // Hero-unique skills (only assigned via playable character; not in skill picker)
+  { id: "reaper_scythe", name: "Reveal", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 20, desc: "Reveal and become hostile for 10s: +15% damage and attack speed, heal 1 on kill", unlock: "always", category: "melee", tags: ["melee", "utility"], heroOnly: true },
+  { id: "strider_gust", name: "Gust", icon: "spr_skill_iceShard", illustration: "assets/UI/Ice Shard.png", baseCd: 4, desc: "Wind burst at target location, damages and knocks back", unlock: "always", category: "projectile", tags: ["area", "crowd_control"], heroOnly: true },
+  { id: "panda_focus", name: "Focus", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 12, desc: "Gain +20% damage and +15% damage reduction for 4s", unlock: "always", category: "projectile", tags: ["defense", "utility"], heroOnly: true },
+  { id: "knight_slide", name: "Slide", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 7, desc: "Slide through enemies, damaging and stunning them", unlock: "always", category: "melee", tags: ["melee", "utility", "crowd_control"], heroOnly: true },
+  { id: "scavenger_rush", name: "Rush", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 20, desc: "+20% movement and chest open speed for 10s", unlock: "always", category: "projectile", tags: ["utility"], heroOnly: true }
 ];
 
 export function isSkillUnlocked(skillDef, game) {
@@ -140,5 +190,9 @@ export function isSkillUnlocked(skillDef, game) {
 }
 
 export function getUnlockedSkills(game) {
-  return SKILL_DEFS.filter((s) => isSkillUnlocked(s, game));
+  return SKILL_DEFS.filter((s) => isSkillUnlocked(s, game) && !s.heroOnly);
+}
+
+export function getSkillById(skillId) {
+  return SKILL_DEFS.find((s) => s.id === skillId) || null;
 }

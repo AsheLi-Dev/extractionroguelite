@@ -129,9 +129,10 @@ function applyBurn(ctx, eventLog, enemy, baseDmg) {
   const burnMult = 1 + (ctx.getAttackUpgradeValue?.("burning_power") || 0);
   const burnDamageMult = profile?.elementalInteractions?.burnDamageMult ?? 1;
   const burnStackLimit = Math.max(1, profile?.elementalInteractions?.burnStackLimit ?? 1);
+  const burnBaseAttack = Math.max(0, ctx.currentStats?.attack || 0);
   enemy.burnUntil = ctx.time + 2;
   enemy.burnStacks = Math.min(burnStackLimit, (enemy.burnStacks || 0) + 1);
-  enemy.burnDps = baseDmg * 0.2 * burnMult * burnDamageMult * (enemy.burnStacks || 1);
+  enemy.burnDps = burnBaseAttack * 0.2 * burnMult * burnDamageMult * (enemy.burnStacks || 1);
   enemy.burnAccum = 0;
   enemy._burnDoubledByWind = false;
   const { time, tick } = nowTick(ctx, eventLog);
@@ -147,9 +148,9 @@ function applyWindOnHit(ctx, eventLog, enemy, baseDmg) {
       const { time, tick } = nowTick(ctx, eventLog);
       eventLog.log("burn_amplified", { time, tick, targetId: enemy.id, mult: 2 });
     }
-    enemy.burnUntil = enemy.burnUntil + 1;
+    enemy.burnUntil = enemy.burnUntil + 0.2;
     const { time, tick } = nowTick(ctx, eventLog);
-    eventLog.log("burn_prolonged", { time, tick, targetId: enemy.id, seconds: 1, until: enemy.burnUntil });
+    eventLog.log("burn_prolonged", { time, tick, targetId: enemy.id, seconds: 0.2, until: enemy.burnUntil });
   }
 
   // bleed
@@ -224,10 +225,17 @@ function applyLightningOnHit(ctx, eventLog, enemy, baseDmg) {
     const { time, tick } = nowTick(ctx, eventLog);
     eventLog.log("burn_detonated", { time, tick, targetId: enemy.id, damage: detDmg, consumed: !!det.burnConsumedOnDetonate });
     if (det.burnConsumedOnDetonate) {
-      enemy.burnUntil = null;
-      enemy.burnDps = 0;
       enemy.burnAccum = 0;
-      enemy.burnStacks = 0;
+      const currentStacks = Math.max(1, Number(enemy.burnStacks) || 1);
+      const nextStacks = currentStacks - 1;
+      if (nextStacks <= 0) {
+        enemy.burnUntil = null;
+        enemy.burnDps = 0;
+        enemy.burnStacks = 0;
+      } else {
+        enemy.burnStacks = nextStacks;
+        enemy.burnDps = Math.max(0, (Number(enemy.burnDps) || 0) * (nextStacks / currentStacks));
+      }
     }
   }
 }
@@ -372,4 +380,3 @@ module.exports = {
   endSurgeIfExpired,
   gainChargeFromHit
 };
-

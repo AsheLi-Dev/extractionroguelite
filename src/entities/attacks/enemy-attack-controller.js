@@ -658,8 +658,12 @@ export class EnemyAttackController {
     const exec = a.execute;
     if (!exec) return;
     if (exec.slow) {
-      game.playerSlowUntil = game.time + (exec.slowDuration ?? 1.5);
-      game.playerSlowMult = 1 - (exec.slow ?? 0.3);
+      game.applyStatusToEntity?.('player', 'slow', {
+        duration: exec.slowDuration ?? 1.5,
+        magnitude: 1 - (exec.slow ?? 0.3),
+        sourceId: this.enemy?.id ?? null,
+        sourceType: 'enemy_attack'
+      });
     }
   }
 

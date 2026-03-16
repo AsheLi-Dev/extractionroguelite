@@ -229,6 +229,123 @@
   color: #fbbf24;
 }
 
+.pre-run-hero {
+  margin-bottom: 20px;
+}
+
+.pre-run-hero label {
+  display: block;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.pre-run-hero-row {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.pre-run-hero-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex: 0 1 320px;
+}
+
+.pre-run-hero-details {
+  flex: 1;
+  min-width: 200px;
+  padding: 14px;
+  border-radius: 8px;
+  border: 2px solid #374151;
+  background: #0f172a;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.pre-run-hero-details-title {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: #fbbf24;
+  border-bottom: 1px solid #374151;
+  padding-bottom: 6px;
+}
+
+.pre-run-hero-details h4 {
+  margin: 10px 0 4px 0;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.pre-run-hero-details-stats ul.pre-run-hero-stats-list {
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.pre-run-hero-details-stats li {
+  margin: 2px 0;
+}
+
+.pre-run-hero-passive-name,
+.pre-run-hero-skill-name {
+  font-weight: 600;
+  color: #e2e8f0;
+  margin: 4px 0 2px 0;
+}
+
+.pre-run-hero-passive-desc,
+.pre-run-hero-skill-desc {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.pre-run-hero-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 140px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 2px solid #374151;
+  background: #111827;
+  color: #9ca3af;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.pre-run-hero-btn .pre-run-hero-name {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.pre-run-hero-btn .pre-run-hero-desc {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.pre-run-hero-btn:hover {
+  border-color: #f59e0b;
+  color: #fbbf24;
+}
+
+.pre-run-hero-btn:hover .pre-run-hero-desc {
+  color: #9ca3af;
+}
+
+.pre-run-hero-btn.selected {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
 .pre-run-difficulty {
   margin-bottom: 20px;
 }
@@ -473,6 +590,76 @@
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+/* Select Hero screen (standalone from main menu) */
+.select-hero-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: rgba(5, 6, 10, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.select-hero-overlay.hidden {
+  display: none;
+}
+
+.select-hero-box {
+  background: #020617;
+  border: 2px solid #f59e0b;
+  border-radius: 16px;
+  max-width: 520px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 28px 32px;
+  box-shadow: 0 24px 60px rgba(245, 158, 11, 0.2);
+}
+
+.select-hero-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fbbf24;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.select-hero-hero-row {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.select-hero-hero-row .pre-run-hero-btns {
+  flex: 0 1 320px;
+}
+
+.select-hero-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.select-hero-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid #4b5563;
+  background: #111827;
+  color: #9ca3af;
+}
+
+.select-hero-btn:hover {
+  background: #1f2937;
+  color: #e5e7eb;
 }
 
 .pre-run-btn {

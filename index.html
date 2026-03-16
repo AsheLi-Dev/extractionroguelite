@@ -12,6 +12,7 @@
         <h1 class="main-menu-title">Extract Da Panda</h1>
         <p class="main-menu-subtitle">Fight through shifting biomes, grow stronger, and escape alive.</p>
         <button id="main-menu-new-game" class="main-menu-btn">New Game</button>
+        <button id="main-menu-select-hero" class="main-menu-btn main-menu-btn-secondary">Select Hero</button>
         <button id="main-menu-tutorial" class="main-menu-btn main-menu-btn-secondary">Tutorial</button>
         <button id="main-menu-instructions" class="main-menu-btn main-menu-btn-secondary">Instructions</button>
         <button id="main-menu-options" class="main-menu-btn main-menu-btn-secondary">Options</button>
@@ -148,6 +149,18 @@
           <label>Character</label>
           <div id="pre-run-character-list" class="pre-run-character-btns"></div>
         </div>
+        <div class="pre-run-hero">
+          <label>Hero</label>
+          <div class="pre-run-hero-row">
+            <div id="pre-run-hero-list" class="pre-run-hero-btns"></div>
+            <div id="pre-run-hero-details" class="pre-run-hero-details">
+              <h3 class="pre-run-hero-details-title">Hero Details</h3>
+              <div class="pre-run-hero-details-stats"></div>
+              <div class="pre-run-hero-details-passive"></div>
+              <div class="pre-run-hero-details-skills"></div>
+            </div>
+          </div>
+        </div>
         <div class="pre-run-difficulty">
           <label>Difficulty</label>
           <div class="pre-run-difficulty-btns">
@@ -178,6 +191,24 @@
           <button id="pre-run-back" class="pre-run-btn pre-run-back">Back</button>
           <button id="pre-run-reroll" class="pre-run-btn pre-run-reroll">Reroll Conditions</button>
           <button id="pre-run-accept" class="pre-run-btn pre-run-accept">Accept and Start</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="select-hero-overlay" class="select-hero-overlay hidden">
+      <div class="select-hero-box">
+        <h1 class="select-hero-title">Select Hero</h1>
+        <div class="select-hero-hero-row">
+          <div id="select-hero-list" class="pre-run-hero-btns"></div>
+          <div id="select-hero-details" class="pre-run-hero-details">
+            <h3 class="pre-run-hero-details-title">Hero Details</h3>
+            <div class="pre-run-hero-details-stats"></div>
+            <div class="pre-run-hero-details-passive"></div>
+            <div class="pre-run-hero-details-skills"></div>
+          </div>
+        </div>
+        <div class="select-hero-actions">
+          <button id="select-hero-back" class="select-hero-btn">Back</button>
         </div>
       </div>
     </div>

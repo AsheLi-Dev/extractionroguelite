@@ -99,9 +99,15 @@ function updateAvalanche(dt, game, zone, state, cfg) {
       const dx = px - orb.x;
       const dy = py - orb.y;
       if (dx * dx + dy * dy <= (pr + orb.radius) ** 2) {
-        game.stunTimer = Math.max(game.stunTimer || 0, cfg.stunDuration ?? 0.2);
-        game.playerSlowUntil = game.time + (cfg.slowDuration ?? 1);
-        game.playerSlowMult = cfg.slowMult ?? 0.8;
+        game.applyStatusToEntity?.('player', 'stun', {
+          duration: cfg.stunDuration ?? 0.2,
+          sourceType: 'hazard'
+        });
+        game.applyStatusToEntity?.('player', 'slow', {
+          duration: cfg.slowDuration ?? 1,
+          magnitude: cfg.slowMult ?? 0.8,
+          sourceType: 'hazard'
+        });
         return false;
       }
     }
@@ -144,8 +150,11 @@ function updateEarthquake(dt, game, zone, state, cfg) {
             canKill: true,
           });
         }
-        game.playerSlowUntil = game.time + (cfg.slowDuration ?? 1);
-        game.playerSlowMult = cfg.slowMult ?? 0.85;
+        game.applyStatusToEntity?.('player', 'slow', {
+          duration: cfg.slowDuration ?? 1,
+          magnitude: cfg.slowMult ?? 0.85,
+          sourceType: 'hazard'
+        });
       }
     }
     return false;
@@ -189,8 +198,11 @@ function updateSwamp(dt, game, zone, state, cfg) {
   const playerInZone = isPlayerInZone(player, zone.bounds);
   if (state.swampStacks > 0 && playerInZone) {
     const slowPerStack = cfg.slowPerStack ?? 0.05;
-    game.playerSlowUntil = game.time + 0.5;
-    game.playerSlowMult = 1 - state.swampStacks * slowPerStack;
+    game.applyStatusToEntity?.('player', 'slow', {
+      duration: 0.5,
+      magnitude: 1 - state.swampStacks * slowPerStack,
+      sourceType: 'hazard'
+    });
     const poisonPerStack = (cfg.poisonPerStackPerSecond ?? 0.5) * dt;
     if (game.swampPoisonAccum == null) game.swampPoisonAccum = 0;
     game.swampPoisonAccum += state.swampStacks * poisonPerStack;
@@ -248,8 +260,15 @@ function updateVolcano(dt, game, zone, state, cfg) {
             canKill: true,
           });
         }
-        game.playerBurnUntil = game.time + (cfg.burnDuration ?? 5);
-        game.playerBurnDmg = (cfg.burnDamagePerSecond ?? 1) * 0.5;
+        game.applyStatusToEntity?.('player', 'burn', {
+          duration: cfg.burnDuration ?? 5,
+          magnitude: (cfg.burnDamagePerSecond ?? 1) * 0.5,
+          sourceType: 'hazard',
+          data: {
+            damageModel: 'per_tick',
+            reason: 'player_burn_tick'
+          }
+        });
       }
     }
     return false;

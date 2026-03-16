@@ -2,9 +2,11 @@ import { Vec2, clamp } from './utils.js';
 import { obstacleIntersectsRect } from './utils.js';
 
 export class Player {
-  constructor(x, y) {
+  constructor(x, y, options = {}) {
     this.position = new Vec2(x, y);
     this.size = 120;
+    this.drawWidth = 120;
+    this.drawHeight = 120;
     this.speed = 44; // 20% of original 220
     this.color = "#ffff4d";
     
@@ -65,6 +67,7 @@ export class Player {
     // Combo state: 0 = main, 1 = continue, 2 = mid (4-10), 3 = continue, 4 = mid, ...
     this.attackComboIndex = 0;
     this.lastAttackStartTime = -1e9;
+    this.lastAttackWasSecond = false; // Knight: true if last attack played was attack 2 (for 0.3s follow-up rule)
     this.COMBO_RESET_SEC = 1.4; // Must be longer than attack cooldown so next attack within cooldown counts as combo
     
     this.spriteSheet = {
@@ -126,14 +129,14 @@ export class Player {
         right_up: runSide,
       },
       dash: {
-        down: this._createDirectionalSheet('assets/images/player/Dash_Dust_Down.png', 'dash down'),
-        up: this._createDirectionalSheet('assets/images/player/Dash_Dust_Up.png', 'dash up'),
-        left: this._createDirectionalSheet('assets/images/player/Dash_Dust_left_Down.png', 'dash left'),
-        right: this._createDirectionalSheet('assets/images/player/Dash_Dust_right_Down.png', 'dash right'),
-        left_down: this._createDirectionalSheet('assets/images/player/Dash_Dust_left_Down.png', 'dash left down'),
-        left_up: this._createDirectionalSheet('assets/images/player/Dash_Dust_left_Up.png', 'dash left up'),
-        right_down: this._createDirectionalSheet('assets/images/player/Dash_Dust_right_Down.png', 'dash right down'),
-        right_up: this._createDirectionalSheet('assets/images/player/Dash_Dust_right_Up.png', 'dash right up'),
+        down: this._createEmptyDirectionalSheet(),
+        up: this._createEmptyDirectionalSheet(),
+        left: this._createEmptyDirectionalSheet(),
+        right: this._createEmptyDirectionalSheet(),
+        left_down: this._createEmptyDirectionalSheet(),
+        left_up: this._createEmptyDirectionalSheet(),
+        right_down: this._createEmptyDirectionalSheet(),
+        right_up: this._createEmptyDirectionalSheet(),
       },
       dead: {
         down: this._loadFrameArrayNoDirection('assets/images/player/dead', 'death', 8, 'dead'),
@@ -161,6 +164,13 @@ export class Player {
     this.spriteSets.dead.left_up = this.spriteSets.dead.down;
     this.spriteSets.dead.right_down = this.spriteSets.dead.down;
     this.spriteSets.dead.right_up = this.spriteSets.dead.down;
+
+    if (options?.playableCharacter?.spriteAssetBase && options?.playableCharacter?.spriteOverrides) {
+      this.characterId = options.playableCharacter.id;
+      this._applyCharacterSpriteOverrides(options.playableCharacter);
+    } else {
+      this.characterId = null;
+    }
 
     // Compatibility fields used by trail rendering in game.js.
     this.walkingSprite = null; // Set when run (walk) loads; getTrailSpriteDrawData uses first frame
@@ -264,6 +274,7 @@ export class Player {
   
   /**
    * Triggers attack animation. Combo: 1st = main, 2nd = continue, 3rd = mid (4-10), 4th = continue, then repeat mid/continue.
+   * Knight: first attack = attack 1 (4 frames); if player attacks again within 0.3s = attack 2 (6 frames); then resets to attack 1.
    * @param {number} attackDurationSeconds - Available attack duration (default: 0.6)
    * @param {number} [gameTime] - Game time for combo reset; if elapsed since last attack > COMBO_RESET_SEC, combo resets to main
    */
@@ -277,7 +288,27 @@ export class Player {
     this.lastAttackStartTime = now;
     this.attackComboIndex = combo + 1;
 
-    const { steps, recoveryHold } = this.buildAttackTimeline(attackDurationSeconds, sequenceType);
+    // Knight: attack 1 by default; attack 2 only if second input within 1s of previous attack start
+    const QUICK_FOLLOW_UP_SEC = 1;
+    let steps;
+    let recoveryHold;
+    if (this.characterId === 'knight' && this.knightAttackSheets?.length >= 2) {
+      const quickFollowUp = (now - (this._lastAttackStartTimeForKnight ?? -1e9)) <= QUICK_FOLLOW_UP_SEC;
+      const playAttack2 = quickFollowUp && !this.lastAttackWasSecond;
+      this._lastAttackStartTimeForKnight = now;
+      this.lastAttackWasSecond = playAttack2;
+      this.knightAttackSheetIndex = playAttack2 ? 1 : 0;
+      const frameCount = playAttack2 ? 6 : 4;
+      recoveryHold = Math.max(this.RECOVERY_HOLD_MIN, Math.min(this.RECOVERY_HOLD_MAX, attackDurationSeconds * this.RECOVERY_HOLD_RATIO));
+      const remainingDuration = Math.max(0, attackDurationSeconds - recoveryHold);
+      const frameDuration = remainingDuration / frameCount;
+      steps = [];
+      for (let i = 0; i < frameCount; i++) steps.push({ frame: i, duration: frameDuration });
+    } else {
+      const built = this.buildAttackTimeline(attackDurationSeconds, sequenceType);
+      steps = built.steps;
+      recoveryHold = built.recoveryHold;
+    }
 
     this.attackFacingDirection = this.facingDirection;
     this.attackState = {
@@ -338,6 +369,137 @@ export class Player {
     }
   }
 
+  /**
+   * Apply playable character sprite overrides. spriteOverrides: { idle_down: 'file.png', run_side: '...', dash_down: '...', ... }.
+   * Directions: idle/run use down, up, side (side used for left/right and diagonals). Dash uses down, up, left, right, or side.
+   */
+  _applyCharacterSpriteOverrides(character) {
+    const base = character.spriteAssetBase.replace(/\/$/, '');
+    const overrides = character.spriteOverrides || {};
+    const frameSize = character.spriteFrameSize || { width: 160, height: 128 };
+    const framesByType = character.spriteFrames || {};
+    const defaultFrames = 8;
+
+    const cropTop = character.spriteCropTop ?? 0;
+    const loadEntry = (filename, frames = defaultFrames, fw = frameSize.width, fh = frameSize.height) => {
+      const sheet = { frameWidth: fw, frameHeight: fh, frames, cropTop };
+      const state = { image: new Image(), sheet, loaded: false };
+      state.image.onload = () => { state.loaded = true; };
+      state.image.onerror = () => { console.warn(`Failed to load character sprite: ${base}/${filename}`); state.loaded = true; };
+      state.image.src = `${base}/${filename}`;
+      return state;
+    };
+
+    const dirsSide = ['left', 'right', 'left_down', 'left_up', 'right_down', 'right_up'];
+    const idleFrames = framesByType.idle ?? defaultFrames;
+    if (overrides.idle_down) {
+      const e = loadEntry(overrides.idle_down, idleFrames);
+      this.spriteSets.idle.down = e;
+    }
+    if (overrides.idle_up) {
+      const e = loadEntry(overrides.idle_up, idleFrames);
+      this.spriteSets.idle.up = e;
+    }
+    if (overrides.idle_side) {
+      const e = loadEntry(overrides.idle_side, idleFrames);
+      for (const d of dirsSide) this.spriteSets.idle[d] = e;
+    }
+    const runFrames = framesByType.run ?? defaultFrames;
+    if (overrides.run_down) {
+      const e = loadEntry(overrides.run_down, runFrames);
+      this.spriteSets.walk.down = e;
+    }
+    if (overrides.run_up) {
+      const e = loadEntry(overrides.run_up, runFrames);
+      this.spriteSets.walk.up = e;
+    }
+    if (overrides.run_side) {
+      const e = loadEntry(overrides.run_side, runFrames);
+      for (const d of dirsSide) this.spriteSets.walk[d] = e;
+      this.walkingSpriteLoaded = false;
+      this.walkingSprite = null;
+      e.image.onload = () => {
+        this.walkingSpriteLoaded = true;
+        this.walkingSprite = e.image;
+        this.walkingSpriteSheet = e.sheet;
+      };
+    }
+    const dashDirs = ['down', 'up', 'left', 'right', 'left_down', 'left_up', 'right_down', 'right_up'];
+    const dashFrames = framesByType.dash ?? defaultFrames;
+    if (overrides.dash_down) {
+      const e = loadEntry(overrides.dash_down, dashFrames);
+      this.spriteSets.dash.down = e;
+    }
+    if (overrides.dash_up) {
+      const e = loadEntry(overrides.dash_up, dashFrames);
+      this.spriteSets.dash.up = e;
+    }
+    if (overrides.dash_left) {
+      const e = loadEntry(overrides.dash_left, dashFrames);
+      this.spriteSets.dash.left = e;
+      this.spriteSets.dash.left_down = e;
+      this.spriteSets.dash.left_up = e;
+    }
+    if (overrides.dash_right) {
+      const e = loadEntry(overrides.dash_right, dashFrames);
+      this.spriteSets.dash.right = e;
+      this.spriteSets.dash.right_down = e;
+      this.spriteSets.dash.right_up = e;
+    }
+    if (overrides.dash_side) {
+      const e = loadEntry(overrides.dash_side, dashFrames);
+      for (const d of dashDirs) {
+        if (!this.spriteSets.dash[d]) this.spriteSets.dash[d] = e;
+      }
+    }
+    if (overrides.attack_1 && overrides.attack_2) {
+      const a1Frames = framesByType.attack_1 ?? 4;
+      const a2Frames = framesByType.attack_2 ?? 6;
+      const e1 = loadEntry(overrides.attack_1, a1Frames);
+      const e2 = loadEntry(overrides.attack_2, a2Frames);
+      this.knightAttackSheets = [e1, e2];
+      this.knightAttackSheetIndex = 0; // 0 = attack 1, 1 = attack 2 (set in triggerAttackAnimation by 0.3s follow-up rule)
+      for (const d of ['down', 'up', 'left', 'right', 'left_down', 'left_up', 'right_down', 'right_up']) {
+        this.spriteSets.attack[d] = e1;
+      }
+      this.attackAlternateFrames = true;
+    }
+    const slideFrames = framesByType.slide ?? defaultFrames;
+    if (overrides.slide_down || overrides.slide_side) {
+      this.spriteSets.slide = this.spriteSets.slide || {};
+      const slideEntry = overrides.slide_down ? loadEntry(overrides.slide_down, slideFrames) : loadEntry(overrides.slide_side, slideFrames);
+      for (const d of dashDirs) this.spriteSets.slide[d] = slideEntry;
+      if (overrides.slide_up) this.spriteSets.slide.up = loadEntry(overrides.slide_up, slideFrames);
+      if (overrides.slide_side) {
+        for (const d of ['left', 'right', 'left_down', 'left_up', 'right_down', 'right_up']) this.spriteSets.slide[d] = this.spriteSets.slide[d] || loadEntry(overrides.slide_side, slideFrames);
+      }
+    }
+    if (character.id === 'knight') {
+      const knightScale = 1.5;
+      this.drawWidth = Math.round((this.size / 2) * knightScale);
+      this.drawHeight = Math.round((this.size / 3) * knightScale);
+    }
+    if (character.id === 'reaper') {
+      const reaperScale = 0.6;
+      this.drawWidth = Math.round(120 * reaperScale);
+      this.drawHeight = Math.round(120 * reaperScale);
+      const dirs = ['down', 'up', 'left', 'right', 'left_down', 'left_up', 'right_down', 'right_up'];
+      for (const d of dirs) {
+        this.spriteSets.attack[d] = this.spriteSets.idle.down || this.spriteSets.idle[d];
+      }
+      const hostile = character.reaperHostileSprites;
+      const revealSheet = character.reaperRevealSheet;
+      const holsterSheet = character.reaperHolsterSheet;
+      if (hostile && base) {
+        this.reaperHostileIdle = loadEntry(hostile.idle, framesByType.idle ?? 5);
+        this.reaperHostileWalk = loadEntry(hostile.run, framesByType.run ?? 8);
+        this.reaperHostileAttack = loadEntry(hostile.attack, 8);
+      }
+      if (revealSheet && base) this.reaperRevealSheet = loadEntry(revealSheet, 8);
+      if (holsterSheet && base) this.reaperHolsterSheet = loadEntry(holsterSheet, 8);
+    }
+  }
+
   _createDirectionalSheet(src, label) {
     const image = new Image();
     const sheet = {
@@ -365,6 +527,12 @@ export class Player {
     };
     image.src = src;
     return state;
+  }
+
+  /** Returns a placeholder dash entry that never loads (no network request). Used when Dash_Dust assets are omitted. */
+  _createEmptyDirectionalSheet() {
+    const sheet = { frameWidth: 160, frameHeight: 128, columns: 8, rows: 1, frames: 8 };
+    return { image: null, loaded: false, sheet };
   }
 
   /**
@@ -630,21 +798,44 @@ export class Player {
     }
 
     let drawn = false;
+    const cropTop = sheet.cropTop || 0;
+    const sourceH = sheet.frameHeight - cropTop;
     if (entry.images) {
       if (entry.loaded && entry.images[f]?.complete) {
         const img = entry.images[f];
-        ctx.drawImage(img, 0, 0, sheet.frameWidth, sheet.frameHeight, dx, dy, dw, dh);
+        ctx.drawImage(img, 0, cropTop, sheet.frameWidth, sourceH, dx, dy, dw, dh);
         drawn = true;
       }
     } else if (entry.loaded && entry.image?.complete) {
       const sourceX = f * sheet.frameWidth;
-      const sourceY = 0;
-      ctx.drawImage(entry.image, sourceX, sourceY, sheet.frameWidth, sheet.frameHeight, dx, dy, dw, dh);
+      const cropTop = sheet.cropTop || 0;
+      const sourceY = cropTop;
+      const sourceH = sheet.frameHeight - cropTop;
+      ctx.drawImage(entry.image, sourceX, sourceY, sheet.frameWidth, sourceH, dx, dy, dw, dh);
       drawn = true;
     }
 
     if (flipH) ctx.restore();
     return drawn;
+  }
+
+  _drawEntryFrame(ctx, entry, frame, dx, dy, dw, dh, flipH = false) {
+    if (!entry?.loaded || !entry.image?.complete) return false;
+    const sheet = entry.sheet;
+    const total = Math.max(1, sheet.frames);
+    const f = ((frame % total) + total) % total;
+    const cropTop = sheet.cropTop || 0;
+    const sourceH = sheet.frameHeight - cropTop;
+    if (flipH) {
+      ctx.save();
+      ctx.translate(dx + dw / 2, dy + dh / 2);
+      ctx.scale(-1, 1);
+      ctx.translate(-(dx + dw / 2), -(dy + dh / 2));
+    }
+    const sourceX = f * sheet.frameWidth;
+    ctx.drawImage(entry.image, sourceX, cropTop, sheet.frameWidth, sourceH, dx, dy, dw, dh);
+    if (flipH) ctx.restore();
+    return true;
   }
 
   getTrailSpriteDrawData() {
@@ -707,15 +898,16 @@ export class Player {
     const wasMoving = this.isMoving;
     this.isMoving = Math.abs(axis.x) > 0.01 || Math.abs(axis.y) > 0.01;
 
-    // Facing: cursor angle when valid, else movement
+    // Facing: when moving use movement direction so run animation always plays; when idle use cursor angle if valid
     if (!this.attackState?.active) {
+      const moving = Math.abs(axis.x) > 0.01 || Math.abs(axis.y) > 0.01;
       const cx = this.position.x + this.size / 2;
       const cy = this.position.y + this.size / 2;
       const useCursor = cursorWorld && typeof cursorWorld.x === 'number' && typeof cursorWorld.y === 'number';
       const dx = useCursor ? cursorWorld.x - cx : 0;
       const dy = useCursor ? cursorWorld.y - cy : 0;
       const distSq = dx * dx + dy * dy;
-      if (useCursor && distSq > 1) {
+      if (!moving && useCursor && distSq > 1) {
         this.facingDirection = this._getDirectionFromAngle(Math.atan2(dy, dx));
       } else {
         this.facingDirection = this._pickFacingDirection(axis);
@@ -783,9 +975,11 @@ export class Player {
     this.position.set(nx, ny);
   }
 
-  draw(ctx, camera, isDashing = false, isDead = false) {
+  draw(ctx, camera, isDashing = false, isDead = false, isSliding = false) {
     const sx = Math.floor(this.position.x - camera.position.x);
     const sy = Math.floor(this.position.y - camera.position.y);
+    const dx = Math.floor(sx + (this.size - this.drawWidth) / 2);
+    const dy = Math.floor(sy + (this.size - this.drawHeight) / 2);
     const flipH = this.facingDirection === 'left_down' || this.facingDirection === 'left_up' || this.facingDirection === 'left';
 
     ctx.imageSmoothingEnabled = false; // Keep pixel art crisp
@@ -796,35 +990,109 @@ export class Player {
       if (deadEntry?.loaded && deadEntry.images?.length) {
         const total = deadEntry.sheet.frames;
         const lastFrame = Math.min(7, total - 1);
-        drawn = this._drawDirectionalFrame(ctx, "dead", "down", lastFrame, sx, sy, this.size, this.size, false);
+        drawn = this._drawDirectionalFrame(ctx, "dead", "down", lastFrame, dx, dy, this.drawWidth, this.drawHeight, false);
       }
     }
-    if (!drawn && this.attackState?.active) {
-      const attackDir = this.attackFacingDirection ?? this.facingDirection;
-      const entry = this._getDirectionalSprite("attack", attackDir);
-      const maxFrame = entry?.sheet?.frames != null ? Math.max(0, entry.sheet.frames - 1) : 12;
-      const frame = Math.min(Math.max(0, this.attackState.currentFrame), maxFrame);
-      const attackFlipH = attackDir === 'left_down' || attackDir === 'left_up' || attackDir === 'left';
-      drawn = this._drawDirectionalFrame(ctx, "attack", attackDir, frame, sx, sy, this.size, this.size, attackFlipH);
+    if (!drawn && this.characterId === 'reaper') {
+      const t = this._reaperGameTime ?? 0;
+      if (this.reaperRevealAnimationUntil != null && t < this.reaperRevealAnimationUntil && this.reaperRevealSheet?.loaded) {
+        const start = this.reaperRevealAnimationStart ?? t;
+        const duration = (this.reaperRevealAnimationUntil - start) || 0.6;
+        const frames = this.reaperRevealSheet.sheet?.frames ?? 8;
+        const frame = Math.min(Math.max(0, Math.floor((t - start) / (duration / Math.max(1, frames)))), (frames || 8) - 1);
+        drawn = this._drawEntryFrame(ctx, this.reaperRevealSheet, frame, dx, dy, this.drawWidth, this.drawHeight, flipH);
+      }
+      if (!drawn && this.reaperHolsterAnimationUntil != null && t < this.reaperHolsterAnimationUntil && this.reaperHolsterSheet?.loaded) {
+        const start = this.reaperHolsterAnimationStart ?? t;
+        const duration = (this.reaperHolsterAnimationUntil - start) || 0.5;
+        const frames = this.reaperHolsterSheet.sheet?.frames ?? 8;
+        const frame = Math.min(Math.max(0, Math.floor((t - start) / (duration / Math.max(1, frames)))), (frames || 8) - 1);
+        drawn = this._drawEntryFrame(ctx, this.reaperHolsterSheet, frame, dx, dy, this.drawWidth, this.drawHeight, flipH);
+      }
+      if (!drawn && this.reaperHostileMode) {
+        if (this.attackState?.active && this.reaperHostileAttack?.loaded) {
+          const attackFlipH = (this.attackFacingDirection ?? this.facingDirection) === 'left_down' || (this.attackFacingDirection ?? this.facingDirection) === 'left_up' || (this.attackFacingDirection ?? this.facingDirection) === 'left';
+          const maxFrame = (this.reaperHostileAttack.sheet?.frames ?? 8) - 1;
+          const frame = Math.min(Math.max(0, this.attackState.currentFrame ?? 0), maxFrame);
+          drawn = this._drawEntryFrame(ctx, this.reaperHostileAttack, frame, dx, dy, this.drawWidth, this.drawHeight, attackFlipH);
+        }
+        if (!drawn && this.isMoving && this.reaperHostileWalk?.loaded) {
+          const walkFrames = Math.max(1, this.reaperHostileWalk.sheet?.frames ?? 8);
+          const walkFrame = Math.floor(this.animationFrame) % walkFrames;
+          drawn = this._drawEntryFrame(ctx, this.reaperHostileWalk, walkFrame, dx, dy, this.drawWidth, this.drawHeight, flipH);
+        }
+        if (!drawn && this.reaperHostileIdle?.loaded) {
+          const idleFrames = Math.max(1, this.reaperHostileIdle.sheet?.frames ?? 5);
+          const idleFrame = Math.floor(this.animationFrame) % idleFrames;
+          drawn = this._drawEntryFrame(ctx, this.reaperHostileIdle, idleFrame, dx, dy, this.drawWidth, this.drawHeight, flipH);
+        }
+      }
+    }
+    if (!drawn && this.knightSlideEndFrameUntil != null && this.knightSlideEnd != null) {
+      const now = typeof performance !== 'undefined' && performance.now ? performance.now() / 1000 : 0;
+      if (now < this.knightSlideEndFrameUntil) {
+        drawn = this._drawEntryFrame(ctx, this.knightSlideEnd, 0, dx, dy, this.drawWidth, this.drawHeight, flipH);
+      } else {
+        this.knightSlideEndFrameUntil = null;
+      }
+    }
+    if (!drawn && isSliding && this.knightSlideIntro != null && this.knightSlideHold != null) {
+      const duration = this.knightSlideDuration ?? 0.35;
+      const timer = this.knightSlideTimer ?? 0;
+      const elapsed = duration - timer;
+      const INTRO_DURATION = 0.1;
+      if (elapsed < INTRO_DURATION) {
+        const frame = Math.min(1, Math.floor(elapsed / (INTRO_DURATION / 2)));
+        drawn = this._drawEntryFrame(ctx, this.knightSlideIntro, frame, dx, dy, this.drawWidth, this.drawHeight, flipH);
+      } else {
+        drawn = this._drawEntryFrame(ctx, this.knightSlideHold, 0, dx, dy, this.drawWidth, this.drawHeight, flipH);
+      }
+    }
+    if (!drawn && isSliding && this.spriteSets.slide && this._getDirectionalSprite("slide", this.facingDirection)) {
+      const slideFrames = this._getAnimFrameCount("slide", this.facingDirection);
+      const slideFrame = Math.floor(this.dashAnimationTimer / this.dashAnimationSpeed) % Math.max(1, slideFrames);
+      drawn = this._drawDirectionalFrame(ctx, "slide", this.facingDirection, slideFrame, dx, dy, this.drawWidth, this.drawHeight, flipH);
     }
     if (!drawn && isDashing) {
       const dashFrames = this._getAnimFrameCount("dash", this.facingDirection);
       const dashFrame = Math.floor(this.dashAnimationTimer / this.dashAnimationSpeed) % Math.max(1, dashFrames);
-      drawn = this._drawDirectionalFrame(ctx, "dash", this.facingDirection, dashFrame, sx, sy, this.size, this.size, flipH);
+      drawn = this._drawDirectionalFrame(ctx, "dash", this.facingDirection, dashFrame, dx, dy, this.drawWidth, this.drawHeight, flipH);
+    }
+    if (!drawn && this.attackState?.active) {
+      const attackDir = this.attackFacingDirection ?? this.facingDirection;
+      const attackFlipH = attackDir === 'left_down' || attackDir === 'left_up' || attackDir === 'left';
+      if (this.characterId === 'knight' && this.knightAttackSheets?.length >= 2) {
+        const sheetIndex = this.knightAttackSheetIndex ?? 0;
+        const entry = this.knightAttackSheets[sheetIndex];
+        const maxFrame = Math.max(0, (entry?.sheet?.frames ?? 1) - 1);
+        const frame = Math.min(Math.max(0, this.attackState.currentFrame ?? 0), maxFrame);
+        drawn = this._drawEntryFrame(ctx, entry, frame, dx, dy, this.drawWidth, this.drawHeight, attackFlipH);
+      } else {
+        const entry = this._getDirectionalSprite("attack", attackDir);
+        const maxFrame = entry?.sheet?.frames != null ? Math.max(0, entry.sheet.frames - 1) : 12;
+        const frame = Math.min(Math.max(0, this.attackState.currentFrame), maxFrame);
+        drawn = this._drawDirectionalFrame(ctx, "attack", attackDir, frame, dx, dy, this.drawWidth, this.drawHeight, attackFlipH);
+      }
     }
     if (!drawn && this.isMoving) {
-      drawn = this._drawDirectionalFrame(ctx, "walk", this.facingDirection, this.animationFrame, sx, sy, this.size, this.size, flipH);
+      const walkDirs = [this.facingDirection, 'down', 'up', 'right_down', 'left', 'right', 'right_up', 'left_up', 'left_down'];
+      for (const dir of walkDirs) {
+        if (this._getDirectionalSprite('walk', dir)) {
+          drawn = this._drawDirectionalFrame(ctx, 'walk', dir, this.animationFrame, dx, dy, this.drawWidth, this.drawHeight, flipH);
+          if (drawn) break;
+        }
+      }
     }
     if (!drawn) {
-      drawn = this._drawDirectionalFrame(ctx, "idle", this.facingDirection, this.animationFrame, sx, sy, this.size, this.size, flipH);
+      drawn = this._drawDirectionalFrame(ctx, "idle", this.facingDirection, this.animationFrame, dx, dy, this.drawWidth, this.drawHeight, flipH);
     }
     if (!drawn) {
       // Fallback to colored rectangle while sprites load
       ctx.fillStyle = this.color;
-      ctx.fillRect(sx, sy, this.size, this.size);
+      ctx.fillRect(dx, dy, this.drawWidth, this.drawHeight);
       ctx.strokeStyle = "#000000";
       ctx.lineWidth = 2;
-      ctx.strokeRect(sx, sy, this.size, this.size);
+      ctx.strokeRect(dx, dy, this.drawWidth, this.drawHeight);
     }
 
     ctx.imageSmoothingEnabled = true; // Restore for other elements

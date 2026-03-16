@@ -29,6 +29,7 @@ import {
   setPendingDevMode, setSkillSelectBackTarget, getSkillSelectBackTarget,
   setPreRunStateForDevMode
 } from "./ui/pre-run.js";
+import { showSelectHeroScreen, hideSelectHeroScreen, setSelectHeroBackTarget } from "./ui/select-hero.js";
 import { installPillarSystem } from "./game/game-pillar.js";
 import {
   initializePillarDebugTools,
@@ -213,6 +214,11 @@ function enterHomeBaseImmediate() {
         return true;
       },
       onCloseFriends: () => closeFriends(),
+      onOpenSelectHero: () => {
+        setSelectHeroBackTarget("hub");
+        showSelectHeroScreen("hub");
+        return true;
+      },
       onCancelRunSetup: () => {
         closeRunSetupOverlays();
       },
@@ -405,6 +411,14 @@ function bootstrap() {
     if (newGameBtn) {
       newGameBtn.addEventListener("click", () => openPreRunFrom("menu", []));
     }
+    const selectHeroBtn = document.getElementById("main-menu-select-hero");
+    if (selectHeroBtn) {
+      selectHeroBtn.addEventListener("click", showSelectHeroScreen);
+    }
+    const selectHeroBackBtn = document.getElementById("select-hero-back");
+    if (selectHeroBackBtn) {
+      selectHeroBackBtn.addEventListener("click", hideSelectHeroScreen);
+    }
     window.addEventListener("keydown", (event) => {
       if (event.repeat) return;
       if (String(event.key || "").toLowerCase() !== "n") return;
@@ -424,6 +438,7 @@ function bootstrap() {
         "skill-library-overlay",
         "friends-overlay",
         "pre-run-overlay",
+        "select-hero-overlay",
         "skill-select-overlay",
         "pillar-overlay"
       ];

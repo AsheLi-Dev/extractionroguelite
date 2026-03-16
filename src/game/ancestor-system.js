@@ -216,33 +216,54 @@ function applyOracleSelfDebuff(game, debuffId) {
   const runtime = ensureAncestorRuntime(game);
   if (!hasActiveHook(runtime, "cursed_oracle_nyssa_reflect_debuffs")) return;
   if (debuffId === "freeze" || debuffId === "stun") {
-    game.stunTimer = Math.max(game.stunTimer || 0, 0.2);
+    game.applyStatusToEntity?.('player', 'stun', {
+      duration: 0.2,
+      sourceType: 'ancestor_debuff'
+    });
     if (game.playerDebuffVFX?.stun) {
       game.playerDebuffVFX.stun.active = true;
       game.playerDebuffVFX.stun.until = Math.max(game.playerDebuffVFX.stun.until || 0, game.time + 0.2);
     }
   } else if (debuffId === "slow") {
-    game.playerSlowUntil = Math.max(game.playerSlowUntil || 0, game.time + 2);
-    game.playerSlowMult = Math.min(game.playerSlowMult ?? 1, 0.8);
+    game.applyStatusToEntity?.('player', 'slow', {
+      duration: 2,
+      magnitude: 0.8,
+      sourceType: 'ancestor_debuff'
+    });
     if (game.playerDebuffVFX?.slow) {
       game.playerDebuffVFX.slow.active = true;
       game.playerDebuffVFX.slow.until = Math.max(game.playerDebuffVFX.slow.until || 0, game.time + 2);
     }
   } else if (debuffId === "burn") {
-    game.playerBurnUntil = Math.max(game.playerBurnUntil || 0, game.time + 2);
-    game.playerBurnDmg = Math.max(game.playerBurnDmg || 0, 4);
+    game.applyStatusToEntity?.('player', 'burn', {
+      duration: 2,
+      magnitude: 4,
+      sourceType: 'ancestor_debuff',
+      data: {
+        damageModel: 'per_tick',
+        reason: 'player_burn_tick'
+      }
+    });
     if (game.playerDebuffVFX?.burn) {
       game.playerDebuffVFX.burn.active = true;
       game.playerDebuffVFX.burn.until = Math.max(game.playerDebuffVFX.burn.until || 0, game.time + 2);
     }
   } else if (debuffId === "toxic") {
-    game.playerCursedWeakenUntil = Math.max(game.playerCursedWeakenUntil || 0, game.time + 2);
+    game.applyStatusToEntity?.('player', 'weaken', {
+      duration: 2,
+      magnitude: 0.8,
+      sourceType: 'ancestor_debuff'
+    });
     if (game.playerDebuffVFX?.weaken) {
       game.playerDebuffVFX.weaken.active = true;
       game.playerDebuffVFX.weaken.until = Math.max(game.playerDebuffVFX.weaken.until || 0, game.time + 2);
     }
   } else if (debuffId === "bleed" || debuffId === "vulnerability" || debuffId === "weaken" || debuffId === "void") {
-    game.playerWeakenUntil = Math.max(game.playerWeakenUntil || 0, game.time + 2);
+    game.applyStatusToEntity?.('player', 'weakening', {
+      duration: 2,
+      magnitude: 0.9,
+      sourceType: 'ancestor_debuff'
+    });
     if (game.playerDebuffVFX?.weakening) {
       game.playerDebuffVFX.weakening.active = true;
       game.playerDebuffVFX.weakening.until = Math.max(game.playerDebuffVFX.weakening.until || 0, game.time + 2);
@@ -264,7 +285,7 @@ function clearPlayerDebuffs(game) {
   const now = game.time || 0;
   if ((game.playerWeakenUntil || 0) > now) {
     removed += 1;
-    game.playerWeakenUntil = 0;
+    game.removeStatusFromEntity?.('player', 'weakening');
     if (game.playerDebuffVFX?.weakening) {
       game.playerDebuffVFX.weakening.active = false;
       game.playerDebuffVFX.weakening.until = 0;
@@ -272,8 +293,7 @@ function clearPlayerDebuffs(game) {
   }
   if ((game.playerSlowUntil || 0) > now) {
     removed += 1;
-    game.playerSlowUntil = 0;
-    game.playerSlowMult = 1;
+    game.removeStatusFromEntity?.('player', 'slow');
     if (game.playerDebuffVFX?.slow) {
       game.playerDebuffVFX.slow.active = false;
       game.playerDebuffVFX.slow.until = 0;
@@ -281,8 +301,7 @@ function clearPlayerDebuffs(game) {
   }
   if ((game.playerBurnUntil || 0) > now) {
     removed += 1;
-    game.playerBurnUntil = 0;
-    game.playerBurnDmg = 0;
+    game.removeStatusFromEntity?.('player', 'burn');
     game.playerBurnAccum = 0;
     if (game.playerDebuffVFX?.burn) {
       game.playerDebuffVFX.burn.active = false;
@@ -292,7 +311,7 @@ function clearPlayerDebuffs(game) {
   }
   if ((game.playerCursedWeakenUntil || 0) > now) {
     removed += 1;
-    game.playerCursedWeakenUntil = 0;
+    game.removeStatusFromEntity?.('player', 'weaken');
     if (game.playerDebuffVFX?.weaken) {
       game.playerDebuffVFX.weaken.active = false;
       game.playerDebuffVFX.weaken.until = 0;
@@ -301,7 +320,7 @@ function clearPlayerDebuffs(game) {
   }
   if ((game.stunTimer || 0) > 0) {
     removed += 1;
-    game.stunTimer = 0;
+    game.removeStatusFromEntity?.('player', 'stun');
     if (game.playerDebuffVFX?.stun) {
       game.playerDebuffVFX.stun.active = false;
       game.playerDebuffVFX.stun.until = 0;
@@ -594,11 +613,11 @@ export function tickAncestorSystem(game, dt) {
 
   if (hasActiveHook(runtime, "cursed_oracle_nyssa_debuff_expiry")) {
     const extra = dt * 0.5;
-    if (game.playerWeakenUntil > game.time) game.playerWeakenUntil = Math.max(game.time, game.playerWeakenUntil - extra);
-    if (game.playerSlowUntil > game.time) game.playerSlowUntil = Math.max(game.time, game.playerSlowUntil - extra);
-    if (game.playerBurnUntil > game.time) game.playerBurnUntil = Math.max(game.time, game.playerBurnUntil - extra);
-    if (game.playerCursedWeakenUntil > game.time) game.playerCursedWeakenUntil = Math.max(game.time, game.playerCursedWeakenUntil - extra);
-    if ((game.stunTimer || 0) > 0) game.stunTimer = Math.max(0, game.stunTimer - extra);
+    if (game.playerWeakenUntil > game.time) game.adjustStatusDuration?.('player', 'weakening', -extra);
+    if (game.playerSlowUntil > game.time) game.adjustStatusDuration?.('player', 'slow', -extra);
+    if (game.playerBurnUntil > game.time) game.adjustStatusDuration?.('player', 'burn', -extra);
+    if (game.playerCursedWeakenUntil > game.time) game.adjustStatusDuration?.('player', 'weaken', -extra);
+    if ((game.stunTimer || 0) > 0) game.adjustStatusDuration?.('player', 'stun', -extra);
   }
 
   const hadBerserk = (runtime.tempMods || []).some((mod) => mod?.id === "ancestor_berserk_as");
@@ -652,7 +671,10 @@ export function handleAncestorOnPlayerDamaged(game, info = {}) {
       const push = 45;
       enemy.position.x += (dx / dist) * push;
       enemy.position.y += (dy / dist) * push;
-      enemy.stunUntil = Math.max(enemy.stunUntil || 0, game.time + 0.2);
+      game.applyStatusToEntity?.(enemy.id, 'stun', {
+        duration: 0.2,
+        sourceType: 'ancestor_effect'
+      });
     }
   }
 
@@ -786,7 +808,10 @@ export function handleAncestorOnHit(game, info = {}) {
     changed = true;
   }
   if (isRangedHit && hasActiveHook(runtime, "frost_archer_lyra_ranged_freeze") && enemy && !enemy.isDead) {
-    enemy.stunUntil = Math.max(enemy.stunUntil || 0, game.time + 0.1);
+    game.applyStatusToEntity?.(enemy.id, 'stun', {
+      duration: 0.1,
+      sourceType: 'ancestor_effect'
+    });
   }
   if (isRangedHit && hasActiveHook(runtime, "warcaller_aresk_ranged_vulnerability") && enemy && !enemy.isDead) {
     applyAncestorStackDelta(game, enemy, "enemy.melee_vulnerability", 1, {

@@ -115,15 +115,23 @@ export function applyGameEnemyAttacksMixin(Game) {
             source.health = Math.min(source.maxHealth, source.health + 5);
           }
           if (attackHitbox.onHitStun && attackHitbox.stunDuration != null) {
-            world.stunTimer = Math.max(world.stunTimer || 0, attackHitbox.stunDuration);
+            world.applyStatusToEntity?.('player', 'stun', {
+              duration: attackHitbox.stunDuration,
+              sourceId: source?.id ?? null,
+              sourceType: 'enemy_projectile'
+            });
             if (world.playerDebuffVFX?.stun) {
               world.playerDebuffVFX.stun.active = true;
               world.playerDebuffVFX.stun.until = world.time + attackHitbox.stunDuration;
             }
           }
           if (attackHitbox.slowZone && attackHitbox.slowDuration != null) {
-            world.playerSlowUntil = world.time + attackHitbox.slowDuration;
-            world.playerSlowMult = attackHitbox.slowMult ?? 0.65;
+            world.applyStatusToEntity?.('player', 'slow', {
+              duration: attackHitbox.slowDuration,
+              magnitude: attackHitbox.slowMult ?? 0.65,
+              sourceId: source?.id ?? null,
+              sourceType: 'enemy_projectile'
+            });
             if (world.playerDebuffVFX?.slow) {
               world.playerDebuffVFX.slow.active = true;
               world.playerDebuffVFX.slow.until = world.time + attackHitbox.slowDuration;
@@ -133,11 +141,20 @@ export function applyGameEnemyAttacksMixin(Game) {
             world.hazardSystem.addTemporaryPatch('slowZone', attackHitbox.x, attackHitbox.y, attackHitbox.slowRadius ?? 50, attackHitbox.slowDuration ?? 1.5, 0, false, attackHitbox.slowMult ?? 0.6);
           }
           if (attackHitbox.poisonOnHit && attackHitbox.poisonDuration != null && attackHitbox.poisonDmgPerSec != null) {
-            world.playerPoisonUntil = world.time + attackHitbox.poisonDuration;
-            world.playerPoisonDmgPerSec = attackHitbox.poisonDmgPerSec;
+            world.applyStatusToEntity?.('player', 'poison', {
+              duration: attackHitbox.poisonDuration,
+              magnitude: attackHitbox.poisonDmgPerSec,
+              maxStacks: 1,
+              stacks: 1,
+              sourceId: source?.id ?? null,
+              sourceType: 'enemy_projectile',
+              data: {
+                reason: 'enemy_projectile_poison_tick'
+              }
+            });
             if (world.playerDebuffVFX?.poison) {
               world.playerDebuffVFX.poison.active = true;
-              world.playerDebuffVFX.poison.until = world.playerPoisonUntil;
+              world.playerDebuffVFX.poison.until = world.time + attackHitbox.poisonDuration;
             }
           }
         },

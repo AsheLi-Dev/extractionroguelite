@@ -103,6 +103,7 @@ import { PLAYER_FAN_CONE_DEF, DEATH_KNIGHT_CONE_DEF, PLAYER_THRUST_RECT_DEF, HUM
 import { refreshMainMenuLP } from '../ui/main-menu.js';
 import { consumeLegacyCubeStash, loadSavedCharacters, addConquerorBonusItem, addToLegacyCubeStash, SAVE_KEY, updateSavedCharacter } from '../ui/save-system.js';
 import { getDefaultAttributes, getWoundMultipliers } from '../data/character-attributes.js';
+import { getPlayableCharacterOrDefault, getDashSpeedCurve, DEFAULT_PLAYABLE_CHARACTER_ID } from '../data/playable-characters.js';
 import { getAttackEvolutionById } from '../data/attack-evolutions.js';
 import { getSnackById } from '../data/snack.js';
 import { computeSoulSiphonBeamStats } from './soul-siphon-stats.js';
@@ -181,6 +182,8 @@ import {
   grantVesselCube as grantAncestorVesselCube,
   printActiveSpiritsAndClans as printAncestorSummary
 } from './ancestor-system.js';
+import { STATUS_DEFS } from '../data/status-definitions.js';
+import { StatusManager } from '../systems/status-manager.js';
 
 const DASH_CHARGE_ICON_FULL_SRC = "assets/UI/UI_TravelBook_IconEnergy01a.png";
 const DASH_CHARGE_ICON_EMPTY_SRC = "assets/UI/UI_TravelBook_IconEnergy01g.png";
@@ -265,6 +268,7 @@ export class Game {
     this.empowerStacks = [0, 0, 0, 0];
     this.playerHasteUntil = 0;
     this.playerHasteMult = 1;
+    this.statusManager = new StatusManager(STATUS_DEFS);
     this.skillCascadeFlashUntil = {};
     this.devModOverrides = { 0: [], 1: [], 2: [], 3: [] };
     this.activeAuras = new Set();
@@ -275,6 +279,15 @@ export class Game {
     this.bladeDashSpeed = 600;
     this.bladeDashMult = 0.8;
     this.bladeDashHitIds = new Set();
+    this.knightSlideActive = false;
+    this.knightSlideTimer = 0;
+    this.knightSlideDirection = new Vec2(0, 0);
+    this.knightSlideSpeed = 480;
+    this.knightSlideHitIds = new Set();
+    this.knightSlideSlot = null;
+    this.knightConsecutiveBasicAttacks = 0;
+    this.knightDedicationActive = false;
+    this.lastBasicAttackHitTime = -1e9;
     this.earthquakeShakeUntil = 0;
     this.iceShardHitsThisRun = 0;
     this.damageSkillsUsedThisRun = new Set();
@@ -346,6 +359,8 @@ export class Game {
       if (firstCommon) firstCommon.livingItem = true;
     }
     const selectedChar = runConfig.selectedCharacter;
+    this.playableCharacterId = runConfig.playableCharacterId || DEFAULT_PLAYABLE_CHARACTER_ID;
+    this.playableCharacterDef = getPlayableCharacterOrDefault(this.playableCharacterId);
     if (selectedChar && selectedChar.cubeInventory) {
       this.cubeInventory = JSON.parse(JSON.stringify(selectedChar.cubeInventory));
     } else {
@@ -388,6 +403,13 @@ export class Game {
       if (this.hasCondition("startAttack")) this.baseStats.attack = Math.round(this.baseStats.attack * 0.8);
       if (this.hasCondition("startSpeed")) this.baseStats.speed = Math.round(this.baseStats.speed * 0.8);
     }
+    // Playable character stat modifiers (multiply final baseStats)
+    const charMods = this.playableCharacterDef?.statModifiers || {};
+    if (charMods.maxHealth != null) this.baseStats.maxHealth = Math.max(1, Math.round(this.baseStats.maxHealth * charMods.maxHealth));
+    if (charMods.defense != null) this.baseStats.defense = Math.max(0, Math.round(this.baseStats.defense * charMods.defense));
+    if (charMods.speed != null) this.baseStats.speed = Math.max(1, Math.round(this.baseStats.speed * charMods.speed));
+    if (charMods.attack != null) this.baseStats.attack = Math.max(1, Math.round(this.baseStats.attack * charMods.attack));
+    if (charMods.hazardDamageReduction != null) this.baseStats.hazardDamageReduction = Math.max(0, Math.round((this.baseStats.hazardDamageReduction || 0) * charMods.hazardDamageReduction));
     this.talentTriggerLogCount = {};
     this.rapidTalentUntil = 0;
     this.bloodRushUntil = 0;
@@ -675,7 +697,7 @@ export class Game {
       spawnX = Math.max(ts, Math.min(spawnX, this.world.width - ts - playerSize));
       spawnY = Math.max(ts, Math.min(spawnY, this.world.height - ts - playerSize));
     }
-    this.player = new Player(spawnX, spawnY);
+    this.player = new Player(spawnX, spawnY, { playableCharacter: this.playableCharacterDef });
     
     // Initialize tutorial system if in tutorial mode
     if (this.tutorialMode) {
@@ -771,6 +793,7 @@ export class Game {
     this.playerPoisonAccum = 0;
     this.playerCursedWeakenUntil = 0;
     this.lastDamagingEnemy = null;
+    this.syncAllStatusCompatibility();
 
     this.mapNameEl = document.getElementById("map-name");
     this.enemyCountEl = document.getElementById("enemy-count");
@@ -819,7 +842,8 @@ export class Game {
     this.searchingProp = null;
     this.activeBlessings = [];
 
-    this.dashDuration = 0.2;
+    const charDash = this.playableCharacterDef?.dash || {};
+    this.dashDuration = charDash.duration ?? 0.2;
     this.dashInvincibleStart = 0.1;
     this.dashInvincibleDuration = 0.1;
     let baseDash = this.hasRunTalent("agilitySwiftExtraction") ? 0.9 : 1.0;
@@ -827,7 +851,10 @@ export class Game {
     this.baseDashCooldownTime = baseDash;
     this.dashCooldownTime = this.baseDashCooldownTime;
     this.dashSpeedMult = 3;
-    this.dashDistanceMult = this.hasRunTalent("agilitySwiftExtraction") ? 0.5 * 1.25 : 0.5;
+    this.dashSpeedBase = charDash.speedBase ?? 750;
+    this.dashDistanceMult = charDash.distanceMult ?? 0.5;
+    if (this.hasRunTalent("agilitySwiftExtraction")) this.dashDistanceMult *= 1.25;
+    this.dashSpeedCurve = getDashSpeedCurve(charDash.pattern || 'linear');
     this.dashMaxCharges = 2;
     this.dashCharges = this.dashMaxCharges;
     this.dashRechargeTimer = 0;
@@ -2461,6 +2488,303 @@ export class Game {
     return null;
   }
 
+  applyStatusToEntity(targetOrId, statusId, statusData = {}) {
+    const entityId = typeof targetOrId === 'string' ? targetOrId : targetOrId?.id;
+    if (!entityId || !this.statusManager) return null;
+    const status = this.statusManager.applyStatus(entityId, {
+      statusId,
+      ...statusData
+    }, this);
+    this.syncEntityStatusCompatibility(entityId);
+    return status;
+  }
+
+  removeStatusFromEntity(targetOrId, statusId) {
+    const entityId = typeof targetOrId === 'string' ? targetOrId : targetOrId?.id;
+    if (!entityId || !this.statusManager) return false;
+    const removed = this.statusManager.removeStatus(entityId, statusId, this);
+    this.syncEntityStatusCompatibility(entityId);
+    return removed;
+  }
+
+  clearEntityStatuses(targetOrId) {
+    const entityId = typeof targetOrId === 'string' ? targetOrId : targetOrId?.id;
+    if (!entityId || !this.statusManager) return;
+    this.statusManager.clearStatuses(entityId, this);
+    this.syncEntityStatusCompatibility(entityId);
+  }
+
+  updateStatusForEntity(targetOrId, statusId, updater) {
+    const entityId = typeof targetOrId === 'string' ? targetOrId : targetOrId?.id;
+    if (!entityId || !this.statusManager || typeof updater !== 'function') return null;
+    const status = this.statusManager.updateStatus(entityId, statusId, updater);
+    this.syncEntityStatusCompatibility(entityId);
+    return status;
+  }
+
+  adjustStatusDuration(targetOrId, statusId, deltaSeconds) {
+    const entityId = typeof targetOrId === 'string' ? targetOrId : targetOrId?.id;
+    if (!entityId || !this.statusManager || !Number.isFinite(deltaSeconds)) return null;
+    const status = this.updateStatusForEntity(entityId, statusId, (entry) => {
+      entry.remaining = Math.max(0, (Number(entry.remaining) || 0) + deltaSeconds);
+      return entry;
+    });
+    return status;
+  }
+
+  applyBurnToEntity(targetOrId, burnData = {}) {
+    const entityRef = typeof targetOrId === 'string' ? this.getEntityById(targetOrId) : targetOrId;
+    const entityId = typeof targetOrId === 'string' ? targetOrId : targetOrId?.id;
+    if (!entityId) return null;
+    const maxStacks = Math.max(1, Number(burnData.maxStacks) || 1);
+    const currentStacks = this.statusManager?.getStatus(entityId, 'burn')?.stacks || entityRef?.burnStacks || 0;
+    const nextStacks = Math.max(
+      1,
+      Math.min(
+        maxStacks,
+        Number.isFinite(burnData.stacks)
+          ? Number(burnData.stacks)
+          : (currentStacks + (Number.isFinite(burnData.stackDelta) ? Number(burnData.stackDelta) : 1))
+      )
+    );
+    let status = null;
+    if (this.statusManager) {
+      status = this.applyStatusToEntity(entityId, 'burn', {
+        ...burnData,
+        maxStacks,
+        stacks: nextStacks
+      });
+      if (status) {
+        status = this.updateStatusForEntity(entityId, 'burn', (entry) => {
+          entry.stacks = nextStacks;
+          if (Number.isFinite(burnData.magnitude)) entry.magnitude = Number(burnData.magnitude);
+          if (burnData.data != null) entry.data = JSON.parse(JSON.stringify(burnData.data));
+          if (Number.isFinite(burnData.tickInterval) && burnData.tickInterval > 0) {
+            entry.tickInterval = Number(burnData.tickInterval);
+            entry.tickTimer = Math.min(Number(entry.tickTimer) || entry.tickInterval, entry.tickInterval);
+          }
+          if (burnData.sourceId !== undefined) entry.sourceId = burnData.sourceId;
+          if (burnData.sourceType !== undefined) entry.sourceType = burnData.sourceType;
+          return entry;
+        });
+      }
+    }
+
+    // Keep the target's legacy burn fields in sync immediately at hit time. The
+    // status manager is still the source of truth, but this avoids live-runtime
+    // misses if a path fails to resolve the target back through manager lookup.
+    if (entityRef) {
+      const duration = Number.isFinite(status?.remaining)
+        ? Number(status.remaining)
+        : Math.max(0, Number.isFinite(burnData.duration) ? Number(burnData.duration) : 0);
+      const magnitude = Number.isFinite(status?.magnitude)
+        ? Number(status.magnitude)
+        : Math.max(0, Number.isFinite(burnData.magnitude) ? Number(burnData.magnitude) : 0);
+      entityRef.burnUntil = duration > 0 ? this.time + duration : null;
+      entityRef.burnDps = magnitude;
+      entityRef.burnStacks = duration > 0 ? nextStacks : 0;
+    }
+
+    return status;
+  }
+
+  applyStatusDamage(entityId, amount, meta = {}) {
+    const target = this.getEntityById(entityId);
+    if (!target) return;
+    if (entityId === 'player') {
+      this.applyDamage({
+        targetType: 'player',
+        sourceEntity: meta.sourceEntity || null,
+        sourceType: meta.sourceType || 'status',
+        amount,
+        reason: meta.reason || `status_${meta.statusId || 'tick'}`,
+        effectKey: meta.effectKey || null,
+        damageClass: 'dot',
+        fromEnemy: !!meta.sourceEntity,
+        bypassMitigation: false,
+        canKill: true
+      });
+      return;
+    }
+    this.dealDamageToEnemy(target, amount, {
+      isDot: true,
+      sourceEntity: meta.sourceEntity || this.player,
+      sourceType: meta.sourceType || 'status',
+      reason: meta.reason || `status_${meta.statusId || 'tick'}`,
+      effectKey: meta.effectKey || null
+    });
+  }
+
+  syncEntityStatusCompatibility(entityId) {
+    if (!this.statusManager) return;
+    // Legacy timer fields remain as compatibility mirrors for untouched systems and VFX.
+    if (entityId === 'player') {
+      const burn = this.statusManager.getStatus('player', 'burn');
+      const slow = this.statusManager.getStatus('player', 'slow');
+      const stun = this.statusManager.getStatus('player', 'stun');
+      const poison = this.statusManager.getStatus('player', 'poison');
+      const haste = this.statusManager.getStatus('player', 'haste');
+      const weakening = this.statusManager.getStatus('player', 'weakening');
+      const weaken = this.statusManager.getStatus('player', 'weaken');
+      this.playerBurnUntil = burn ? this.time + burn.remaining : 0;
+      this.playerBurnDmg = burn?.magnitude ?? 0;
+      this.playerSlowUntil = slow ? this.time + slow.remaining : 0;
+      this.playerSlowMult = slow?.magnitude ?? 1;
+      this.stunTimer = stun?.remaining ?? 0;
+      this.playerPoisonUntil = poison ? this.time + poison.remaining : 0;
+      this.playerPoisonDmgPerSec = poison?.magnitude ?? 0;
+      this.playerHasteUntil = haste ? this.time + haste.remaining : 0;
+      this.playerHasteMult = haste?.magnitude ?? 1;
+      this.playerWeakenUntil = weakening ? this.time + weakening.remaining : 0;
+      this.playerCursedWeakenUntil = weaken ? this.time + weaken.remaining : 0;
+      return;
+    }
+
+    const entity = this.getEntityById(entityId);
+    if (!entity) return;
+    const burn = this.statusManager.getStatus(entityId, 'burn');
+    const slow = this.statusManager.getStatus(entityId, 'slow');
+    const stun = this.statusManager.getStatus(entityId, 'stun');
+    const poison = this.statusManager.getStatus(entityId, 'poison');
+    const voidDefense = this.statusManager.getStatus(entityId, 'void');
+    entity.burnUntil = burn ? this.time + burn.remaining : null;
+    entity.burnDps = burn?.magnitude ?? 0;
+    entity.burnStacks = burn?.stacks ?? 0;
+    entity.slowUntil = slow ? this.time + slow.remaining : null;
+    entity.slowMult = slow?.magnitude ?? 1;
+    entity.stunUntil = stun ? this.time + stun.remaining : null;
+    entity.toxicStacks = poison?.stacks ?? 0;
+    entity.toxicUntil = poison ? this.time + poison.remaining : null;
+    entity.voidDefenseUntil = voidDefense ? this.time + voidDefense.remaining : null;
+    entity.voidDefenseMult = voidDefense?.magnitude ?? 1;
+  }
+
+  syncAllStatusCompatibility() {
+    if (!this.statusManager) return;
+    this.syncEntityStatusCompatibility('player');
+    for (const enemy of this.enemySystem?.enemies || []) {
+      this.syncEntityStatusCompatibility(enemy.id);
+    }
+    if (this.enemySystem?.boss?.id) {
+      this.syncEntityStatusCompatibility(this.enemySystem.boss.id);
+    }
+  }
+
+  captureLegacyStatusCompatibility() {
+    if (!this.statusManager) return;
+    const compareAndApply = (entityId, statusId, nextStatus) => {
+      if (!nextStatus || !(nextStatus.duration > 0)) return;
+      const current = this.statusManager.getStatus(entityId, statusId);
+      const durationDiff = Math.abs((current?.remaining ?? 0) - nextStatus.duration);
+      const magnitudeDiff = Math.abs((current?.magnitude ?? 0) - (nextStatus.magnitude ?? 0));
+      const stacksDiff = Math.abs((current?.stacks ?? 0) - (nextStatus.stacks ?? 0));
+      const compareMode = STATUS_DEFS[statusId]?.compareMagnitude || 'higher';
+      const stronger = statusId === 'slow'
+        ? (nextStatus.magnitude ?? 1) < (current?.magnitude ?? 1)
+        : (compareMode === 'lower'
+          ? (nextStatus.magnitude ?? 0) < (current?.magnitude ?? 0)
+          : (nextStatus.magnitude ?? 0) > (current?.magnitude ?? 0));
+      if (!current || nextStatus.duration > (current.remaining + 0.05) || stronger || stacksDiff > 0 || magnitudeDiff > 0.001) {
+        this.statusManager.applyStatus(entityId, nextStatus, this);
+      } else if (durationDiff > 0.05 && nextStatus.duration > current.remaining) {
+        this.statusManager.applyStatus(entityId, nextStatus, this);
+      }
+    };
+
+    compareAndApply('player', 'slow', this.playerSlowUntil > this.time ? {
+      statusId: 'slow',
+      duration: this.playerSlowUntil - this.time,
+      magnitude: this.playerSlowMult ?? 1,
+      sourceType: 'legacy_sync'
+    } : null);
+    compareAndApply('player', 'stun', (this.stunTimer || 0) > 0 ? {
+      statusId: 'stun',
+      duration: this.stunTimer,
+      sourceType: 'legacy_sync'
+    } : null);
+    compareAndApply('player', 'poison', this.playerPoisonUntil > this.time ? {
+      statusId: 'poison',
+      duration: this.playerPoisonUntil - this.time,
+      magnitude: this.playerPoisonDmgPerSec || 0,
+      maxStacks: 1,
+      stacks: 1,
+      sourceType: 'legacy_sync'
+    } : null);
+    compareAndApply('player', 'haste', this.playerHasteUntil > this.time ? {
+      statusId: 'haste',
+      duration: this.playerHasteUntil - this.time,
+      magnitude: this.playerHasteMult ?? 1,
+      sourceType: 'legacy_sync'
+    } : null);
+    compareAndApply('player', 'burn', this.playerBurnUntil > this.time ? {
+      statusId: 'burn',
+      duration: this.playerBurnUntil - this.time,
+      magnitude: this.playerBurnDmg || 0,
+      stacks: 1,
+      sourceType: 'legacy_sync',
+      data: {
+        damageModel: 'per_tick',
+        reason: 'player_burn_tick'
+      }
+    } : null);
+    compareAndApply('player', 'weakening', this.playerWeakenUntil > this.time ? {
+      statusId: 'weakening',
+      duration: this.playerWeakenUntil - this.time,
+      magnitude: 0.9,
+      sourceType: 'legacy_sync'
+    } : null);
+    compareAndApply('player', 'weaken', this.playerCursedWeakenUntil > this.time ? {
+      statusId: 'weaken',
+      duration: this.playerCursedWeakenUntil - this.time,
+      magnitude: 0.8,
+      sourceType: 'legacy_sync'
+    } : null);
+
+    const allEnemies = [
+      ...(this.enemySystem?.enemies || []),
+      ...(this.enemySystem?.boss ? [this.enemySystem.boss] : [])
+    ];
+    for (const entity of allEnemies) {
+      compareAndApply(entity.id, 'slow', entity.slowUntil != null && entity.slowUntil > this.time ? {
+        statusId: 'slow',
+        duration: entity.slowUntil - this.time,
+        magnitude: entity.slowMult ?? 1,
+        sourceType: 'legacy_sync'
+      } : null);
+      compareAndApply(entity.id, 'stun', entity.stunUntil != null && entity.stunUntil > this.time ? {
+        statusId: 'stun',
+        duration: entity.stunUntil - this.time,
+        sourceType: 'legacy_sync'
+      } : null);
+      compareAndApply(entity.id, 'poison', entity.toxicUntil != null && entity.toxicUntil > this.time && (entity.toxicStacks || 0) > 0 ? {
+        statusId: 'poison',
+        duration: entity.toxicUntil - this.time,
+        magnitude: entity.maxHealth * 0.05,
+        maxStacks: 3,
+        stacks: entity.toxicStacks,
+        sourceType: 'legacy_sync'
+      } : null);
+      compareAndApply(entity.id, 'burn', entity.burnUntil != null && entity.burnUntil > this.time ? {
+        statusId: 'burn',
+        duration: entity.burnUntil - this.time,
+        magnitude: entity.burnDps || 0,
+        stacks: entity.burnStacks || 1,
+        sourceType: 'legacy_sync',
+        data: {
+          damageModel: 'dps',
+          reason: 'enemy_burn_tick'
+        }
+      } : null);
+      compareAndApply(entity.id, 'void', entity.voidDefenseUntil != null && entity.voidDefenseUntil > this.time ? {
+        statusId: 'void',
+        duration: entity.voidDefenseUntil - this.time,
+        magnitude: entity.voidDefenseMult ?? 1,
+        sourceType: 'legacy_sync'
+      } : null);
+    }
+    this.syncAllStatusCompatibility();
+  }
+
   damageEntity(targetId, amount, source, opts = {}) {
     const hitbox = opts?.hitbox;
     if (targetId === 'player') {
@@ -2478,8 +2802,12 @@ export class Game {
       }
       this.onPlayerDamaged(amount, !!source, playerOpts);
       if (hitbox?.defId === 'banshee_scream') {
-        this.playerSlowUntil = this.time + 1.5;
-        this.playerSlowMult = 1 - 0.3;
+        this.applyStatusToEntity('player', 'slow', {
+          duration: 1.5,
+          magnitude: 1 - 0.3,
+          sourceId: source?.id ?? null,
+          sourceType: 'enemy_attack'
+        });
       }
       return;
     }
@@ -2575,14 +2903,22 @@ export class Game {
 
       if ((this.getSoulSiphonProfile().links || {}).beamMarksForSpiritDouble) {
         enemy.soulSiphonMarkedUntil = this.time + 1;
-        enemy.slowUntil = Math.max(enemy.slowUntil || 0, this.time + 1);
-        enemy.slowMult = 0.8;
+        this.applyStatusToEntity(enemy.id, 'slow', {
+          duration: 1,
+          magnitude: 0.8,
+          sourceId: 'player',
+          sourceType: 'player_skill'
+        });
       }
       if ((this.getSoulSiphonProfile().beamMods || {}).freezeBuildUp) {
         enemy.soulSiphonFreezeBuildup = (enemy.soulSiphonFreezeBuildup || 0) + 1;
         if (enemy.soulSiphonFreezeBuildup >= 4) {
-          enemy.slowUntil = Math.max(enemy.slowUntil || 0, this.time + 1.2);
-          enemy.slowMult = 0.5;
+          this.applyStatusToEntity(enemy.id, 'slow', {
+            duration: 1.2,
+            magnitude: 0.5,
+            sourceId: 'player',
+            sourceType: 'player_skill'
+          });
           enemy.soulSiphonFreezeBuildup = 0;
         }
       }
@@ -2640,9 +2976,20 @@ export class Game {
         const burnMult = 1 + (this.getAttackUpgradeValue?.("burning_power") || 0);
         const burnDamageMult = evoFire?.elementalInteractions?.burnDamageMult ?? 1;
         const burnStackLimit = Math.max(1, evoFire?.elementalInteractions?.burnStackLimit ?? 1);
-        enemy.burnUntil = this.time + 2;
-        enemy.burnStacks = Math.min(burnStackLimit, (enemy.burnStacks || 0) + 1);
-        enemy.burnDps = baseDmg * 0.2 * burnMult * burnDamageMult * (enemy.burnStacks || 1);
+        const burnBaseAttack = Math.max(0, this.currentStats?.attack || 0);
+        const nextBurnStacks = Math.min(burnStackLimit, (this.statusManager?.getStatus(enemy.id, 'burn')?.stacks || enemy.burnStacks || 0) + 1);
+        this.applyBurnToEntity(enemy, {
+          duration: 2,
+          magnitude: burnBaseAttack * 0.2 * burnMult * burnDamageMult * nextBurnStacks,
+          stacks: nextBurnStacks,
+          maxStacks: burnStackLimit,
+          sourceId: 'player',
+          sourceType: 'player_attack',
+          data: {
+            damageModel: 'dps',
+            reason: 'enemy_burn_tick'
+          }
+        });
         enemy.burnAccum = 0;
         enemy._burnDoubledByWind = false;
         if (this.hasAttackUpgrade?.("inferno")) {
@@ -2651,9 +2998,19 @@ export class Game {
           const nearby = this.enemiesInRadius?.(ex, ey, 80) || [];
           for (const e of nearby) {
             if (e !== enemy && !e.isDead) {
-              e.burnUntil = this.time + 2;
-              e.burnStacks = Math.min(burnStackLimit, (e.burnStacks || 0) + 1);
-              e.burnDps = baseDmg * 0.2 * burnMult * burnDamageMult * (e.burnStacks || 1);
+              const nearbyBurnStacks = Math.min(burnStackLimit, (this.statusManager?.getStatus(e.id, 'burn')?.stacks || e.burnStacks || 0) + 1);
+              this.applyBurnToEntity(e, {
+                duration: 2,
+                magnitude: burnBaseAttack * 0.2 * burnMult * burnDamageMult * nearbyBurnStacks,
+                stacks: nearbyBurnStacks,
+                maxStacks: burnStackLimit,
+                sourceId: 'player',
+                sourceType: 'player_attack',
+                data: {
+                  damageModel: 'dps',
+                  reason: 'enemy_burn_tick'
+                }
+              });
               e.burnAccum = 0;
               e._burnDoubledByWind = false;
             }
@@ -2679,11 +3036,14 @@ export class Game {
         }
       } else if (element === 'wind') {
         if (enemy.burnUntil != null && this.time < enemy.burnUntil) {
-          if (!enemy._burnDoubledByWind) {
-            enemy.burnDps = (enemy.burnDps || 0) * 2;
-            enemy._burnDoubledByWind = true;
-          }
-          enemy.burnUntil = enemy.burnUntil + 1;
+          this.updateStatusForEntity(enemy.id, 'burn', (entry) => {
+            if (!enemy._burnDoubledByWind) {
+              entry.magnitude = (entry.magnitude || 0) * 2;
+              enemy._burnDoubledByWind = true;
+            }
+            entry.remaining = Math.max(0, (entry.remaining || 0) + 0.2);
+            return entry;
+          });
         }
         const evoWind = this.getProjectileShotEvolutionOverrides?.();
         if (evoWind?.links?.fireExplosionOnWindHit) {
@@ -2736,13 +3096,21 @@ export class Game {
         }
         const windStunProfile = this.getProjectileShotEvolutionOverrides?.()?.elementalInteractions?.stunChance;
         if (windStunProfile === 1) {
-          enemy.stunUntil = this.time + 0.5;
+          this.applyStatusToEntity(enemy.id, 'stun', {
+            duration: 0.5,
+            sourceId: 'player',
+            sourceType: 'player_attack'
+          });
         }
         this.trySpawnElementalSwirl?.(enemy.position.x + (enemy.size || 0) / 2, enemy.position.y + (enemy.size || 0) / 2);
       } else if (element === 'lightning') {
         const stunChance = this.getAttackUpgradeValue?.("lightning_conduction") || 0;
         if (stunChance > 0 && Math.random() < stunChance) {
-          enemy.stunUntil = this.time + 0.5;
+          this.applyStatusToEntity(enemy.id, 'stun', {
+            duration: 0.5,
+            sourceId: 'player',
+            sourceType: 'player_attack'
+          });
         }
         const cx = enemy.position.x + enemy.size / 2;
         const cy = enemy.position.y + enemy.size / 2;
@@ -2776,10 +3144,18 @@ export class Game {
           });
           const evoDet = this.getProjectileShotEvolutionOverrides?.()?.elementalInteractions;
           if (evoDet?.burnConsumedOnDetonate === true) {
-            enemy.burnUntil = null;
-            enemy.burnDps = 0;
+            this.updateStatusForEntity(enemy.id, 'burn', (entry) => {
+              const currentStacks = Math.max(1, Number(entry?.stacks) || 1);
+              const nextStacks = currentStacks - 1;
+              if (nextStacks <= 0) return null;
+              return {
+                ...entry,
+                stacks: nextStacks,
+                magnitude: Math.max(0, (Number(entry?.magnitude) || 0) * (nextStacks / currentStacks))
+              };
+            });
             enemy.burnAccum = 0;
-            enemy.burnStacks = 0;
+            enemy._burnDoubledByWind = false;
           }
         }
         this.trySpawnElementalStorm?.(cx, cy, baseDmg);
@@ -2822,14 +3198,10 @@ export class Game {
   }
 
   applyStun(targetId, ms) {
-    if (targetId === 'player') {
-      this.stunTimer = Math.max(this.stunTimer || 0, ms / 1000);
-      return;
-    }
-    const entity = this.getEntityById(targetId);
-    if (entity && entity.stunUntil != null) {
-      entity.stunUntil = Math.max(entity.stunUntil || 0, this.time + ms / 1000);
-    }
+    this.applyStatusToEntity(targetId, 'stun', {
+      duration: ms / 1000,
+      sourceType: 'hitbox'
+    });
   }
 
   applyKnockback(targetId, fromX, fromY, force, opts = {}) {
@@ -2846,8 +3218,14 @@ export class Game {
       dy = cy - fromY;
     }
     const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-    entity.position.x += (dx / dist) * force;
-    entity.position.y += (dy / dist) * force;
+    const knockbackX = (dx / dist) * force;
+    const knockbackY = (dy / dist) * force;
+    if (targetId === 'player') {
+      this.movePlayerByWithCollision?.(knockbackX, knockbackY);
+      return;
+    }
+    entity.position.x += knockbackX;
+    entity.position.y += knockbackY;
   }
 
   getOwnerPosition(ownerId) {
@@ -3200,6 +3578,11 @@ export class Game {
     }
     this.time += dt;
     tickAncestorSystem(this, dt);
+    this.captureLegacyStatusCompatibility();
+    if (this.statusManager) {
+      this.statusManager.updateStatuses(dt, this);
+      this.syncAllStatusCompatibility();
+    }
     
     // Update tutorial system
     if (this.tutorialSystem) {
@@ -3244,7 +3627,10 @@ export class Game {
         effectiveSpeed *= inHazard.slowMult ?? 0.6;
       }
       if (inHazard.type === "shockingGround" && Math.random() < dt * 0.2) {
-        this.stunTimer = 0.5;
+        this.applyStatusToEntity('player', 'stun', {
+          duration: 0.5,
+          sourceType: 'hazard'
+        });
       }
       if (inHazard.type === "toxicGround") {
         this.toxicGroundTimer += dt;
@@ -3306,8 +3692,12 @@ export class Game {
     if (this.hasRunTalent("momentum") && this.momentumUntil > this.time) effectiveSpeed *= 1.2;
     if (this.hasRunTalent("fleetFooted") && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth <= 0.5) effectiveSpeed *= 1.15;
     if (this.hasRunTalent("berserkerRage") && this.currentStats?.maxHealth > 0 && this.currentHealth / this.currentStats.maxHealth <= 0.4) effectiveSpeed *= 1.15;
-    if (this.playerSlowUntil > this.time) effectiveSpeed *= (this.playerSlowMult ?? 0.7);
-    if (this.playerHasteUntil > this.time) effectiveSpeed *= (this.playerHasteMult ?? 1);
+    if (this.statusManager) {
+      effectiveSpeed *= this.statusManager.getMoveSpeedMultiplier('player');
+    } else {
+      if (this.playerSlowUntil > this.time) effectiveSpeed *= (this.playerSlowMult ?? 0.7);
+      if (this.playerHasteUntil > this.time) effectiveSpeed *= (this.playerHasteMult ?? 1);
+    }
     if ((this.snackEspressoUntil || 0) > this.time) effectiveSpeed *= 1.2;
     // Frenzy buff: 40% movement speed
     if (this.frenzyBuffUntil > this.time) {
@@ -3320,6 +3710,12 @@ export class Game {
       this.cuteSpiritSpeedBuffStacks = 0;
     }
     if ((this.soulSiphonFieldHasteUntil || 0) > this.time) effectiveSpeed *= 1.4;
+    if (this.playableCharacterDef?.passive?.id === 'strider_wind_dancer' && (this.striderPostDashSpeedUntil || 0) > this.time) {
+      effectiveSpeed *= 1.15;
+    }
+    if ((this.scavengerRushUntil || 0) > this.time) {
+      effectiveSpeed *= 1.2;
+    }
     if (primaryAttackType === "projectile") {
       const evo = this.getProjectileShotEvolutionOverrides?.();
       if (evo?.links?.windBuffsMoveSpeed && this.elementalState === "wind" && this.time < (this.elementalSurgeEndTime || 0)) {
@@ -3353,41 +3749,61 @@ export class Game {
 
     this.player.speed = effectiveSpeed;
 
-    if (this.playerBurnUntil > this.time) {
-      this.playerBurnAccum = (this.playerBurnAccum ?? 0) + dt;
-      if (this.playerBurnAccum >= 0.5) {
-        this.playerBurnAccum = 0;
-        this.applyDamage({
-          targetType: "player",
-          sourceType: "environment",
-          amount: this.playerBurnDmg || 4,
-          reason: "player_burn_tick",
-          damageClass: "dot",
-          bypassMitigation: false,
-          canKill: true
-        });
+    if (this.playableCharacterDef?.id === 'reaper' && this.player) {
+      if (this.reaperHostileUntil != null && this.time >= this.reaperHostileUntil) {
+        this.reaperHolsterAnimationStart = this.time;
+        this.reaperHolsterAnimationUntil = this.time + 0.5;
+        this.reaperHostileUntil = null;
       }
-    } else this.playerBurnAccum = 0;
+      this.player.reaperHostileMode = (this.reaperHostileUntil != null && this.reaperHostileUntil > this.time) && (this.reaperRevealAnimationUntil == null || this.time >= this.reaperRevealAnimationUntil);
+      this.player.reaperRevealAnimationStart = this.reaperRevealAnimationStart ?? 0;
+      this.player.reaperRevealAnimationUntil = this.reaperRevealAnimationUntil ?? 0;
+      this.player.reaperHolsterAnimationStart = this.reaperHolsterAnimationStart ?? 0;
+      this.player.reaperHolsterAnimationUntil = this.reaperHolsterAnimationUntil ?? 0;
+      this.player._reaperGameTime = this.time;
+    }
 
-    if (this.playerPoisonUntil > this.time) {
-      this.playerPoisonAccum = (this.playerPoisonAccum ?? 0) + dt;
-      if (this.playerPoisonAccum >= 0.5) {
-        this.playerPoisonAccum = 0;
-        this.applyDamage({
-          targetType: "player",
-          sourceType: "environment",
-          amount: (this.playerPoisonDmgPerSec || 2) * 0.5,
-          reason: "player_poison_tick",
-          damageClass: "dot",
-          bypassMitigation: false,
-          canKill: true
-        });
+    if (this.playableCharacterDef?.passive?.id === 'knight_dedication' && this.time - (this.lastBasicAttackHitTime || -1e9) > 1.2) {
+      this.knightConsecutiveBasicAttacks = 0;
+      this.knightDedicationActive = false;
+    }
+
+    if (!this.statusManager) {
+      if (this.playerBurnUntil > this.time) {
+        this.playerBurnAccum = (this.playerBurnAccum ?? 0) + dt;
+        if (this.playerBurnAccum >= 0.5) {
+          this.playerBurnAccum = 0;
+          this.applyDamage({
+            targetType: "player",
+            sourceType: "environment",
+            amount: this.playerBurnDmg || 4,
+            reason: "player_burn_tick",
+            damageClass: "dot",
+            bypassMitigation: false,
+            canKill: true
+          });
+        }
+      } else this.playerBurnAccum = 0;
+      if (this.playerPoisonUntil > this.time) {
+        this.playerPoisonAccum = (this.playerPoisonAccum ?? 0) + dt;
+        if (this.playerPoisonAccum >= 0.5) {
+          this.playerPoisonAccum = 0;
+          this.applyDamage({
+            targetType: "player",
+            sourceType: "environment",
+            amount: (this.playerPoisonDmgPerSec || 2) * 0.5,
+            reason: "player_poison_tick",
+            damageClass: "dot",
+            bypassMitigation: false,
+            canKill: true
+          });
+        }
+      } else this.playerPoisonAccum = 0;
+
+      if (this.stunTimer > 0) {
+        this.stunTimer -= dt;
+        if (this.stunTimer < 0) this.stunTimer = 0;
       }
-    } else this.playerPoisonAccum = 0;
-
-    if (this.stunTimer > 0) {
-      this.stunTimer -= dt;
-      if (this.stunTimer < 0) this.stunTimer = 0;
     }
 
     if (this.dashMaxCharges == null) this.dashMaxCharges = 2;
@@ -3424,9 +3840,11 @@ export class Game {
       if (this.player && typeof this.player.tickDashAnimation === "function") {
         this.player.tickDashAnimation(dt);
       }
-      // Calculate dash speed to achieve distance = 150 + player.speed * 0.2
-      const dashSpeed = 750 + this.player.speed;
-      const moveDist = dashSpeed * (this.dashDistanceMult ?? 1) * dt;
+      const dashTotal = this.dashDuration || 0.2;
+      const t = 1 - (this.dashTimer / dashTotal);
+      const curveMult = typeof this.dashSpeedCurve === 'function' ? this.dashSpeedCurve(t) : 1;
+      const dashSpeed = (this.dashSpeedBase ?? 750) + this.player.speed;
+      const moveDist = dashSpeed * curveMult * (this.dashDistanceMult ?? 0.5) * dt;
       const margin = this.world.wallCollisionThickness ?? this.world.wallThickness;
       let nx = this.player.position.x + this.dashDirection.x * moveDist;
       let ny = this.player.position.y + this.dashDirection.y * moveDist;
@@ -3521,6 +3939,9 @@ export class Game {
         if (this.hasRunTalent("rapid")) {
           this.logTalentTrigger("rapid", "Dash end: +10% attack speed 3s");
           this.rapidTalentUntil = this.time + 3;
+        }
+        if (this.playableCharacterDef?.passive?.id === 'strider_wind_dancer') {
+          this.striderPostDashSpeedUntil = this.time + 1.5;
         }
         if (typeof this.runPillarEvent === "function") {
           this.runPillarEvent("onDashEnded", { reason: "duration_complete", time: this.time });
@@ -3618,6 +4039,70 @@ export class Game {
         if (typeof this.runPillarEvent === "function") {
           this.runPillarEvent("onDashEnded", { reason: "blade_dash_complete", time: this.time });
         }
+      }
+    } else if (this.knightSlideActive) {
+      this.knightSlideTimer -= dt;
+      const margin = this.world.wallCollisionThickness ?? this.world.wallThickness;
+      const moveDist = this.knightSlideSpeed * dt;
+      let nx = this.player.position.x + this.knightSlideDirection.x * moveDist;
+      let ny = this.player.position.y + this.knightSlideDirection.y * moveDist;
+      nx = Math.max(margin, Math.min(nx, this.world.width - margin - this.player.size));
+      ny = Math.max(margin, Math.min(ny, this.world.height - margin - this.player.size));
+      const pi = PLAYER_WALL_COLLISION_INSET;
+      const pBase = Math.max(1, this.player.size - 2 * pi);
+      const pw = Math.max(1, pBase * 0.25 * PLAYER_HITBOX_SCALE);
+      const ph = Math.max(1, pBase * 0.5 * PLAYER_HITBOX_SCALE);
+      const pxo = pi + (pBase - pw) / 2;
+      const pyo = pi + (pBase - ph) / 2;
+      const testX = { x: nx + pxo, y: this.player.position.y + pyo, w: pw, h: ph };
+      const testY = { x: this.player.position.x + pxo, y: ny + pyo, w: pw, h: ph };
+      let canMoveX = true;
+      let canMoveY = true;
+      for (const obstacle of this.obstacles || []) {
+        if (obstacle.destroyed || !obstacle.blocksMovement || obstacle.type === "ancientTree") continue;
+        if (obstacleIntersectsRect(obstacle, testX)) canMoveX = false;
+        if (obstacleIntersectsRect(obstacle, testY)) canMoveY = false;
+      }
+      const walls = this.world.tileWallRects || [];
+      for (const wall of walls) {
+        const wallRect = getWallCollisionRect(wall);
+        if (testX.x < wallRect.x + wallRect.w && testX.x + testX.w > wallRect.x &&
+            testX.y < wallRect.y + wallRect.h && testX.y + testX.h > wallRect.y) canMoveX = false;
+        if (testY.x < wallRect.x + wallRect.w && testY.x + testY.w > wallRect.x &&
+            testY.y < wallRect.y + wallRect.h && testY.y + testY.h > wallRect.y) canMoveY = false;
+      }
+      if (!canMoveX) nx = this.player.position.x;
+      if (!canMoveY) ny = this.player.position.y;
+      if (!canMoveX && !canMoveY) {
+        this.knightSlideActive = false;
+        this.knightSlideHitIds.clear();
+      } else {
+        if (this.player && typeof this.player.tickDashAnimation === "function") this.player.tickDashAnimation(dt);
+        this.player.position.set(nx, ny);
+        const cx = this.player.position.x + this.player.size / 2;
+        const cy = this.player.position.y + this.player.size / 2;
+        const hit = this.enemiesInRadius(cx, cy, 45);
+        const slot = this.knightSlideSlot;
+        const mods = slot != null ? getModsForSkillSlot(this, slot) : [];
+        for (const e of hit) {
+          if (!this.knightSlideHitIds.has(e.id)) {
+            this.knightSlideHitIds.add(e.id);
+            this.dealDamageToEnemy(e, this.computeSkillDamage(e, 0.6, slot, { skillId: "knight_slide" }), {
+              isSkill: true,
+              skillSlot: slot,
+              modList: mods
+            });
+            this.applyStatusToEntity(e.id, 'stun', {
+              duration: 0.9,
+              sourceId: 'player',
+              sourceType: 'player_skill'
+            });
+          }
+        }
+      }
+      if (this.knightSlideActive && this.knightSlideTimer <= 0) {
+        this.knightSlideActive = false;
+        this.knightSlideHitIds.clear();
       }
     } else if (this.dashStrikeState) {
       // Player position is driven by updateDashStrike
@@ -3804,6 +4289,12 @@ export class Game {
         let searchMult = getAncestorSearchSpeedMult(this, this.searchingProp);
         if (typeof this.getPillarChestOpenSpeedMultiplier === "function") {
           searchMult *= this.getPillarChestOpenSpeedMultiplier(this.searchingProp);
+        }
+        if (this.playableCharacterDef?.passive?.id === 'scavenger_vulture_stare') {
+          searchMult *= 1.2;
+        }
+        if ((this.scavengerRushUntil || 0) > this.time) {
+          searchMult *= 1.2;
         }
         if (hasRing(this, "ring_locksmith") && this.searchingProp?.typeId === "chest") {
           searchMult *= Math.pow(1.2, getRingCount(this, "ring_locksmith"));
@@ -5249,6 +5740,12 @@ export class Game {
     const retaliationMult = retaliationStacks > 0 ? (1 + retaliationStacks * 0.05) : 1;
     let atkSpdMult = (this.equipmentAttackSpeedMult || 1) * rapidMult * bloodRushMult * berserkerRageMult * retaliationMult;
     atkSpdMult *= getRingAttackSpeedMultiplier(this);
+    if (this.playableCharacterDef?.id === 'scavenger') {
+      atkSpdMult *= 1.25;
+    }
+    if (this.playableCharacterDef?.id === 'reaper' && (this.reaperHostileUntil || 0) > this.time) {
+      atkSpdMult *= 1.15;
+    }
     if (typeof this.getPillarAttackSpeedMultiplier === "function") {
       atkSpdMult *= this.getPillarAttackSpeedMultiplier({ attackType: primaryAttackType });
     }
@@ -5271,7 +5768,11 @@ export class Game {
         atkSpdMult *= 1.15;
       }
     }
-    if (this.playerWeakenUntil > this.time) atkSpdMult *= 0.9;
+    if (this.statusManager) {
+      atkSpdMult *= this.statusManager.getAttackSpeedMultiplier('player');
+    } else if (this.playerWeakenUntil > this.time) {
+      atkSpdMult *= 0.9;
+    }
     const projectileEvolution = primaryAttackType === "projectile" ? this.getProjectileShotEvolutionOverrides() : null;
     if (primaryAttackType === "projectile" && projectileEvolution?.attackSpeedMult != null) {
       atkSpdMult *= projectileEvolution.attackSpeedMult;
@@ -5756,8 +6257,12 @@ export class Game {
             reason: "elemental_storm_tick"
           });
           if (storm.stormSlow) {
-            e.slowUntil = Math.max(e.slowUntil || 0, now + 2);
-            e.slowMult = Math.min(e.slowMult ?? 1, 0.7);
+            this.applyStatusToEntity(e.id, 'slow', {
+              duration: 2,
+              magnitude: 0.7,
+              sourceId: 'player',
+              sourceType: 'player_skill'
+            });
           }
         }
       }
@@ -5785,8 +6290,19 @@ export class Game {
         sourceType: "player_basic_attack",
         reason: "elemental_swirl_firestorm"
       });
-      e.burnUntil = this.time + 2;
-      e.burnDps = Math.max(e.burnDps || 0, dmg * 0.2 * burnMult);
+      const existingStacks = this.statusManager?.getStatus(e.id, 'burn')?.stacks || e.burnStacks || 1;
+      this.applyBurnToEntity(e.id, {
+        duration: 2,
+        magnitude: Math.max(e.burnDps || 0, dmg * 0.2 * burnMult),
+        stacks: Math.max(1, existingStacks),
+        maxStacks: Math.max(1, existingStacks),
+        sourceId: 'player',
+        sourceType: 'player_attack',
+        data: {
+          damageModel: 'dps',
+          reason: 'enemy_burn_tick'
+        }
+      });
       e.burnAccum = 0;
       e._burnDoubledByWind = false;
     }
@@ -6191,11 +6707,7 @@ export class Game {
       }
       if (this.hasAttackPenalty("selfKnockback")) {
         const kick = 8;
-        this.player.position.x -= dirX * kick;
-        this.player.position.y -= dirY * kick;
-        const margin = this.world.wallCollisionThickness ?? this.world.wallThickness;
-        this.player.position.x = Math.max(margin, Math.min(this.player.position.x, this.world.width - margin - this.player.size));
-        this.player.position.y = Math.max(margin, Math.min(this.player.position.y, this.world.height - margin - this.player.size));
+        this.movePlayerByWithCollision?.(-dirX * kick, -dirY * kick);
       }
       return;
     }
@@ -6252,11 +6764,7 @@ export class Game {
 
     if (this.hasAttackPenalty("selfKnockback")) {
       const kick = 8;
-      this.player.position.x -= dirX * kick;
-      this.player.position.y -= dirY * kick;
-      const margin = this.world.wallCollisionThickness ?? this.world.wallThickness;
-      this.player.position.x = Math.max(margin, Math.min(this.player.position.x, this.world.width - margin - this.player.size));
-      this.player.position.y = Math.max(margin, Math.min(this.player.position.y, this.world.height - margin - this.player.size));
+      this.movePlayerByWithCollision?.(-dirX * kick, -dirY * kick);
     }
   }
 
@@ -6339,8 +6847,12 @@ export class Game {
           if (el === "wind") this.trySpawnElementalSwirl?.(enemy.position.x + (enemy.size || 0) / 2, enemy.position.y + (enemy.size || 0) / 2);
           const evoEnv = this.getProjectileShotEvolutionOverrides?.()?.environment;
           if (evoEnv?.stormSlow) {
-            enemy.slowUntil = Math.max(enemy.slowUntil || 0, this.time + 2);
-            enemy.slowMult = Math.min(enemy.slowMult ?? 1, 0.7);
+            this.applyStatusToEntity(enemy.id, 'slow', {
+              duration: 2,
+              magnitude: 0.7,
+              sourceId: 'player',
+              sourceType: 'player_attack'
+            });
           }
           const evoChargeProj = this.getProjectileShotEvolutionOverrides?.();
           const maxCharge = this.getEffectiveMaxElementalCharge?.() ?? this.maxElementalCharge ?? 12;
@@ -6357,9 +6869,20 @@ export class Game {
             const burnMult = 1 + (this.getAttackUpgradeValue?.("burning_power") || 0);
             const burnDamageMult = evoFire?.elementalInteractions?.burnDamageMult ?? 1;
             const burnStackLimit = Math.max(1, evoFire?.elementalInteractions?.burnStackLimit ?? 1);
-            enemy.burnUntil = this.time + 2;
-            enemy.burnStacks = Math.min(burnStackLimit, (enemy.burnStacks || 0) + 1);
-            enemy.burnDps = baseDmg * 0.2 * burnMult * burnDamageMult * (enemy.burnStacks || 1);
+            const burnBaseAttack = Math.max(0, this.currentStats?.attack || 0);
+            const nextBurnStacks = Math.min(burnStackLimit, (this.statusManager?.getStatus(enemy.id, 'burn')?.stacks || enemy.burnStacks || 0) + 1);
+            this.applyBurnToEntity(enemy, {
+              duration: 2,
+              magnitude: burnBaseAttack * 0.2 * burnMult * burnDamageMult * nextBurnStacks,
+              stacks: nextBurnStacks,
+              maxStacks: burnStackLimit,
+              sourceId: 'player',
+              sourceType: 'player_attack',
+              data: {
+                damageModel: 'dps',
+                reason: 'enemy_burn_tick'
+              }
+            });
             enemy.burnAccum = 0;
             enemy._burnDoubledByWind = false;
             if (this.hasAttackUpgrade?.("inferno")) {
@@ -6368,9 +6891,19 @@ export class Game {
               const nearby = this.enemiesInRadius?.(ex, ey, 80) || [];
               for (const e of nearby) {
                 if (e !== enemy && !e.isDead) {
-                  e.burnUntil = this.time + 2;
-                  e.burnStacks = Math.min(burnStackLimit, (e.burnStacks || 0) + 1);
-                  e.burnDps = baseDmg * 0.2 * burnMult * burnDamageMult * (e.burnStacks || 1);
+                  const nearbyBurnStacks = Math.min(burnStackLimit, (this.statusManager?.getStatus(e.id, 'burn')?.stacks || e.burnStacks || 0) + 1);
+                  this.applyBurnToEntity(e, {
+                    duration: 2,
+                    magnitude: burnBaseAttack * 0.2 * burnMult * burnDamageMult * nearbyBurnStacks,
+                    stacks: nearbyBurnStacks,
+                    maxStacks: burnStackLimit,
+                    sourceId: 'player',
+                    sourceType: 'player_attack',
+                    data: {
+                      damageModel: 'dps',
+                      reason: 'enemy_burn_tick'
+                    }
+                  });
                   e.burnAccum = 0;
                   e._burnDoubledByWind = false;
                 }
@@ -6395,11 +6928,14 @@ export class Game {
             }
           } else if (el === "wind") {
             if (enemy.burnUntil != null && this.time < enemy.burnUntil) {
-              if (!enemy._burnDoubledByWind) {
-                enemy.burnDps = (enemy.burnDps || 0) * 2;
-                enemy._burnDoubledByWind = true;
-              }
-              enemy.burnUntil = enemy.burnUntil + 1;
+              this.updateStatusForEntity(enemy.id, 'burn', (entry) => {
+                if (!enemy._burnDoubledByWind) {
+                  entry.magnitude = (entry.magnitude || 0) * 2;
+                  enemy._burnDoubledByWind = true;
+                }
+                entry.remaining = Math.max(0, (entry.remaining || 0) + 0.2);
+                return entry;
+              });
             }
             const evo = this.getProjectileShotEvolutionOverrides?.();
             if (evo?.links?.fireExplosionOnWindHit) {
@@ -6450,12 +6986,20 @@ export class Game {
         }
         const windStun = this.getProjectileShotEvolutionOverrides?.()?.elementalInteractions?.stunChance;
         if (windStun === 1) {
-          enemy.stunUntil = this.time + 0.5;
+          this.applyStatusToEntity(enemy.id, 'stun', {
+            duration: 0.5,
+            sourceId: 'player',
+            sourceType: 'player_attack'
+          });
         }
       } else if (el === "lightning") {
             const stunChance = this.getAttackUpgradeValue?.("lightning_conduction") || 0;
             if (stunChance > 0 && Math.random() < stunChance) {
-              enemy.stunUntil = this.time + 0.5;
+              this.applyStatusToEntity(enemy.id, 'stun', {
+                duration: 0.5,
+                sourceId: 'player',
+                sourceType: 'player_attack'
+              });
             }
             const cx = enemy.position.x + enemy.size / 2;
             const cy = enemy.position.y + enemy.size / 2;
@@ -6487,10 +7031,18 @@ export class Game {
                 reason: "elemental_shot_lightning_detonate"
               });
               if (evoDetonate.burnConsumedOnDetonate) {
-                enemy.burnUntil = null;
-                enemy.burnDps = 0;
+                this.updateStatusForEntity(enemy.id, 'burn', (entry) => {
+                  const currentStacks = Math.max(1, Number(entry?.stacks) || 1);
+                  const nextStacks = currentStacks - 1;
+                  if (nextStacks <= 0) return null;
+                  return {
+                    ...entry,
+                    stacks: nextStacks,
+                    magnitude: Math.max(0, (Number(entry?.magnitude) || 0) * (nextStacks / currentStacks))
+                  };
+                });
                 enemy.burnAccum = 0;
-                enemy.burnStacks = 0;
+                enemy._burnDoubledByWind = false;
               }
             }
           }
@@ -7679,8 +8231,12 @@ export class Game {
     if (this.activeAuras.has("frostAura")) {
       const hit = this.enemiesInRadius(px, py, auraRadius);
       for (const e of hit) {
-        e.slowUntil = this.time + 0.5;
-        e.slowMult = 0.75;
+        this.applyStatusToEntity(e.id, 'slow', {
+          duration: 0.5,
+          magnitude: 0.75,
+          sourceId: 'player',
+          sourceType: 'player_aura'
+        });
         mirrorAncestorDebuffToPlayer(this, "slow");
       }
     }
@@ -7695,8 +8251,19 @@ export class Game {
         const dmg = Math.max(1, Math.round(this.currentStats.attack * 0.2 * (flameMults.damageMult || 1)));
         for (const e of hit) {
           this.dealDamageToEnemy(e, dmg, { isSkill: true });
-          e.burnUntil = this.time + 3;
-          e.burnDps = Math.max(e.burnDps || 0, dmg * 0.15);
+          const existingStacks = this.statusManager?.getStatus(e.id, 'burn')?.stacks || e.burnStacks || 1;
+          this.applyBurnToEntity(e.id, {
+            duration: 3,
+            magnitude: Math.max(e.burnDps || 0, dmg * 0.15),
+            stacks: Math.max(1, existingStacks),
+            maxStacks: Math.max(1, existingStacks),
+            sourceId: 'player',
+            sourceType: 'player_skill',
+            data: {
+              damageModel: 'dps',
+              reason: 'enemy_burn_tick'
+            }
+          });
           e.burnAccum = 0;
           e._burnDoubledByWind = false;
           mirrorAncestorDebuffToPlayer(this, "burn");
@@ -7828,6 +8395,14 @@ export class Game {
       });
     }
     let dmg = Math.round(amount);
+    if (this.playableCharacterDef?.passive?.id === 'knight_dedication' && !opts.isSkill && (this.knightDedicationActive)) {
+      dmg = Math.max(1, Math.round(dmg * 1.25));
+    }
+    if (this.playableCharacterDef?.passive?.id === 'knight_dedication' && !opts.isSkill && dmg > 0) {
+      this.lastBasicAttackHitTime = this.time;
+      this.knightConsecutiveBasicAttacks = (this.knightConsecutiveBasicAttacks || 0) + 1;
+      if (this.knightConsecutiveBasicAttacks >= 3) this.knightDedicationActive = true;
+    }
     if (enemy.soulSiphonFieldDebuffUntil != null && this.time < enemy.soulSiphonFieldDebuffUntil) dmg = Math.max(1, Math.round(dmg * 1.1));
     const skillSlot = opts.skillSlot;
     const resolvedSkillId = opts.skillId || (skillSlot != null ? this.skills?.[skillSlot] : null);
@@ -7882,7 +8457,10 @@ export class Game {
     }
     if (this.playerInWeakeningPatch) dmg = Math.max(1, Math.round(dmg * 0.7));
     if (this.hasCondition("enemyResist")) dmg = Math.max(1, Math.round(dmg * 0.8));
-    const effectiveDefense = (enemy.defense || 0) * (enemy.voidDefenseMult ?? 1);
+    const defenseMultiplier = this.statusManager
+      ? this.statusManager.getDefenseMultiplier(enemy.id)
+      : (enemy.voidDefenseMult ?? 1);
+    const effectiveDefense = (enemy.defense || 0) * defenseMultiplier;
     dmg = Math.max(1, Math.round(dmg - effectiveDefense));
     if (enemy._armorUntil != null && this.time < enemy._armorUntil) {
       dmg = Math.max(1, Math.round(dmg * (enemy._armorMult ?? 0.5)));
@@ -7896,6 +8474,12 @@ export class Game {
     if (this.hasRunTalent("predator") && enemy.maxHealth > 0 && enemy.health / enemy.maxHealth <= 0.25) {
       this.logTalentTrigger("predator", "Hit enemy below 25% HP: +50% damage");
       dmg = Math.max(1, Math.round(dmg * 1.5));
+    }
+    if (this.playableCharacterDef?.passive?.id === 'scavenger_vulture_stare' && enemy.maxHealth > 0 && enemy.health / enemy.maxHealth <= 0.4) {
+      dmg = Math.max(1, Math.round(dmg * 1.2));
+    }
+    if (this.playableCharacterDef?.id === 'reaper' && (this.reaperHostileUntil || 0) > this.time) {
+      dmg = Math.max(1, Math.round(dmg * 1.15));
     }
     if (this.hasRunTalent("luckyShot")) {
       const luckAttr = Math.max(0, Number(this.runCharacterAttributes?.luck) || 0);
@@ -7926,8 +8510,11 @@ export class Game {
       meleeVulnStacks: enemy.meleeVulnStacks || 0
     };
     if (dmg > 0 && !opts.isDot && opts.meleeFreeze != null && opts.meleeFreeze > 0) {
-      const until = this.time + opts.meleeFreeze;
-      enemy.stunUntil = enemy.stunUntil != null ? Math.max(enemy.stunUntil, until) : until;
+      this.applyStatusToEntity(enemy.id, 'stun', {
+        duration: opts.meleeFreeze,
+        sourceId: opts.sourceEntity?.id ?? 'player',
+        sourceType: opts.sourceType || 'player_attack'
+      });
     }
     const mods = opts.modList != null ? opts.modList : (skillSlot != null ? getModsForSkillSlot(this, skillSlot) : []);
     const mult = getModEffectMult(this);
@@ -7993,7 +8580,12 @@ export class Game {
     }
 
     if (has("weakening")) {
-      this.playerWeakenUntil = this.time + 2;
+      this.applyStatusToEntity('player', 'weakening', {
+        duration: 2,
+        magnitude: 0.9,
+        sourceId: enemy?.id ?? null,
+        sourceType: 'enemy_affix'
+      });
       
       // Trigger weakening VFX: shards from enemy to player
       const px = this.player.position.x + this.player.size / 2;
@@ -8017,7 +8609,7 @@ export class Game {
       // Set arrival time for ring effect
       this._weakeningRingTime = this.time + 0.15;
       this.playerDebuffVFX.weakening.active = true;
-      this.playerDebuffVFX.weakening.until = this.playerWeakenUntil;
+      this.playerDebuffVFX.weakening.until = Math.max(this.playerDebuffVFX.weakening.until || 0, this.time + 2);
     }
 
     if (has("hive") && !opts.isDot) {
@@ -8191,6 +8783,39 @@ export class Game {
       this.healPlayer(heal);
     }
     if (enemy.isDead) {
+      if (this.playableCharacterDef?.id === 'reaper') {
+        if ((this.reaperHostileUntil || 0) > this.time) {
+          this.healPlayer(1);
+          const px = this.player.position.x + this.player.size / 2;
+          const py = this.player.position.y + this.player.size / 2;
+          this.addFloatingText(px, py, "+1", "heal");
+          const prolongCap = 10;
+          if ((this.reaperHostileProlongCount ?? 0) < prolongCap) {
+            this.reaperHostileUntil = (this.reaperHostileUntil ?? this.time) + 1;
+            this.reaperHostileProlongCount = (this.reaperHostileProlongCount ?? 0) + 1;
+          }
+        } else {
+          this.reaperPassiveKillCount = (this.reaperPassiveKillCount ?? 0) + 1;
+          if (this.reaperPassiveKillCount >= 10) {
+            this.reaperHostileUntil = this.time + 5;
+            this.reaperPassiveKillCount = 0;
+            this.reaperHostileProlongCount = 0;
+          }
+        }
+      }
+      // Playable character passive: Reaper Soul Harvest (heal on kill, once per second)
+      const passiveId = this.playableCharacterDef?.passive?.id;
+      if (passiveId === 'reaper_soul_harvest') {
+        const throttle = 1;
+        if ((this.reaperSoulHarvestLastHealTime == null || this.time - this.reaperSoulHarvestLastHealTime >= throttle) && this.currentStats?.maxHealth > 0) {
+          const heal = Math.max(1, Math.round(this.currentStats.maxHealth * 0.02));
+          this.healPlayer(heal);
+          this.reaperSoulHarvestLastHealTime = this.time;
+          const px = this.player.position.x + this.player.size / 2;
+          const py = this.player.position.y + this.player.size / 2;
+          this.addFloatingText(px, py, `+${heal}`, "heal");
+        }
+      }
       // Explosive Burn (Elemental Shot): burning enemies explode when killed
       if (this.attackType === "projectile" && this.hasAttackUpgrade?.("explosive_burn") && enemy.burnUntil != null) {
         const exDmg = Math.max(1, Math.round((this.currentStats?.attack || 10) * 0.3));
@@ -8473,37 +9098,41 @@ export class Game {
   processEnemyDebuffs(dt, enemy) {
     if (enemy.isDead) return;
     const t = this.time;
-    if (enemy.burnUntil != null && t < enemy.burnUntil) {
-      enemy.burnAccum = (enemy.burnAccum || 0) + dt;
-      if (enemy.burnAccum >= 0.5) {
-        enemy.burnAccum = 0;
-        const burnDmg = Math.max(1, Math.round((enemy.burnDps || 0) * 0.5));
-        this.dealDamageToEnemy(enemy, burnDmg, { isDot: true });
+    if (!this.statusManager) {
+      if (enemy.burnUntil != null && t < enemy.burnUntil) {
+        enemy.burnAccum = (enemy.burnAccum || 0) + dt;
+        if (enemy.burnAccum >= 0.5) {
+          enemy.burnAccum = 0;
+          const burnDmg = Math.max(1, Math.round((enemy.burnDps || 0) * 0.5));
+          this.dealDamageToEnemy(enemy, burnDmg, { isDot: true });
+        }
+      } else {
+        enemy.burnUntil = null;
+        enemy.burnDps = 0;
+        enemy.burnStacks = 0;
       }
-    } else {
-      enemy.burnUntil = null;
-      enemy.burnDps = 0;
-      enemy.burnStacks = 0;
     }
-    if (enemy.toxicStacks > 0 && enemy.toxicUntil != null && t < enemy.toxicUntil) {
-      enemy.toxicAccum = (enemy.toxicAccum || 0) + dt;
-      const dpsPerStack = enemy.maxHealth * 0.05;
-      if (enemy.toxicAccum >= 0.5) {
-        enemy.toxicAccum = 0;
-        const toxicDmg = Math.max(1, Math.round(dpsPerStack * enemy.toxicStacks * 0.5));
-        this.dealDamageToEnemy(enemy, toxicDmg, { isDot: true });
+    if (!this.statusManager) {
+      if (enemy.toxicStacks > 0 && enemy.toxicUntil != null && t < enemy.toxicUntil) {
+        enemy.toxicAccum = (enemy.toxicAccum || 0) + dt;
+        const dpsPerStack = enemy.maxHealth * 0.05;
+        if (enemy.toxicAccum >= 0.5) {
+          enemy.toxicAccum = 0;
+          const toxicDmg = Math.max(1, Math.round(dpsPerStack * enemy.toxicStacks * 0.5));
+          this.dealDamageToEnemy(enemy, toxicDmg, { isDot: true });
+        }
+      } else if (enemy.toxicUntil != null && t >= enemy.toxicUntil) {
+        this.applyStackDelta(enemy, "enemy.toxic", 0, {
+          stackKey: "toxicStacks",
+          targetType: "enemy",
+          source: "toxic_expire",
+          reason: "toxic_timeout",
+          mode: "set",
+          min: 0,
+          max: 3
+        });
+        enemy.toxicUntil = null;
       }
-    } else if (enemy.toxicUntil != null && t >= enemy.toxicUntil) {
-      this.applyStackDelta(enemy, "enemy.toxic", 0, {
-        stackKey: "toxicStacks",
-        targetType: "enemy",
-        source: "toxic_expire",
-        reason: "toxic_timeout",
-        mode: "set",
-        min: 0,
-        max: 3
-      });
-      enemy.toxicUntil = null;
     }
     if ((enemy.meleeVulnUntil || 0) <= t) {
       this.applyStackDelta(enemy, "enemy.melee_vulnerability", 0, {
@@ -8567,6 +9196,7 @@ export class Game {
       this.logTalentTrigger("executioner", "Skill vs low-HP enemy: +25% damage");
       dmg = Math.round(dmg * 1.25);
     }
+    if ((this.pandaFocusUntil || 0) > this.time) dmg = Math.round(dmg * 1.2);
     return dmg;
   }
 
@@ -9055,6 +9685,9 @@ export class Game {
         record.finalAmount = Math.max(1, Math.round(record.finalAmount * 0.7));
       }
       if ((this.snackHerbalTeaUntil || 0) > this.time) {
+        record.finalAmount = Math.max(1, Math.round(record.finalAmount * 0.85));
+      }
+      if ((this.pandaFocusUntil || 0) > this.time) {
         record.finalAmount = Math.max(1, Math.round(record.finalAmount * 0.85));
       }
       if (this.hasRunTalent("stoneSkin") && record.finalAmount > (this.currentStats?.maxHealth || 1) * 0.2) {
@@ -10214,8 +10847,12 @@ export class Game {
       }
     }
     if (mods.includes("adrenaline")) {
-      this.playerHasteUntil = this.time + 2;
-      this.playerHasteMult = 1 + 0.2 * getModEffectMult(this);
+      this.applyStatusToEntity('player', 'haste', {
+        duration: 2,
+        magnitude: 1 + 0.2 * getModEffectMult(this),
+        sourceId: 'player',
+        sourceType: 'skill_mod'
+      });
     }
     if (mods.includes("empower")) {
       this.applyStackDelta(this.empowerStacks, `player.empower.slot_${slot}`, 1, {
@@ -10484,6 +11121,39 @@ export class Game {
         slowMult: slowDuration > 0 ? slowMult : undefined,
         slot, modList: mods, sacrificeMult, skillId, skillMults
       });
+    } else if (skillId === "reaper_scythe") {
+      this.reaperHostileUntil = this.time + 10;
+      this.reaperHostileProlongCount = 0;
+      this.reaperRevealAnimationStart = this.time;
+      this.reaperRevealAnimationUntil = this.time + 0.6;
+    } else if (skillId === "strider_gust") {
+      this.damageSkillsUsedThisRun.add("strider_gust");
+      this.skillEffects.push({
+        type: "striderGust",
+        x: tx, y: ty, t: 0, duration: 0.15, mult: 0.7, radius: 70, knockback: 100,
+        slot, modList: mods, sacrificeMult, skillId, skillMults
+      });
+    } else if (skillId === "panda_focus") {
+      this.pandaFocusUntil = this.time + 4;
+      this.skillEffects.push({ type: "pandaFocus", x: px, y: py, t: 0, duration: 0.3 });
+    } else if (skillId === "scavenger_rush") {
+      this.scavengerRushUntil = this.time + 10;
+      this.skillEffects.push({ type: "scavengerRush", x: px, y: py, t: 0, duration: 0.3 });
+    } else if (skillId === "knight_slide") {
+      this.damageSkillsUsedThisRun.add("knight_slide");
+      const dx = tx - px; const dy = ty - py;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      this.knightSlideActive = true;
+      this.knightSlideTimer = 0.35;
+      this.knightSlideHitIds.clear();
+      this.knightSlideDirection.set(dx / dist, dy / dist);
+      this.knightSlideSpeed = 480;
+      this.knightSlideSlot = slot;
+      this.skillEffects.push({
+        type: "knightSlide",
+        x: px, y: py, dirX: dx / dist, dirY: dy / dist, t: 0, duration: 0.35,
+        slot, modList: mods, sacrificeMult, skillId, skillMults
+      });
     } else if (skillId === "bladeStorm") {
       this.damageSkillsUsedThisRun.add("bladeStorm");
       this.skillEffects.push({ type: "bladeStorm", x: px, y: py, t: 0, duration: 3, mult: 0.5, bladeCount: 8, slot, modList: mods, sacrificeMult, skillId, skillMults });
@@ -10524,8 +11194,7 @@ export class Game {
       const dy = ty - py;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
       const push = 80;
-      this.player.position.x -= (dx / dist) * push;
-      this.player.position.y -= (dy / dist) * push;
+      this.movePlayerByWithCollision?.(-(dx / dist) * push, -(dy / dist) * push);
     }
     if (canTriggerOtherSkills && mods.includes("chainCast") && !options.chainCast) {
       this.chainCastQueue.push({ t: this.time + 0.2, skillId, slot, allowTriggeredProcs });
@@ -10690,7 +11359,7 @@ export class Game {
    * Evolution profile can change beam mode (original, fast_channel, delayed_shot, cursor_area).
    */
   updateSoulSiphonChannel(dt) {
-    if (this.dashActive || this.bladeDashActive || this.dashStrikeState || this.backfireDashState) return;
+    if (this.dashActive || this.bladeDashActive || this.knightSlideActive || this.dashStrikeState || this.backfireDashState) return;
     const profile = this.getSoulSiphonProfile();
     const beamMode = profile.beamMode || "channel";
     const mods = profile.beamMods || {};
@@ -10787,12 +11456,16 @@ export class Game {
       const distSq = (cursor.x - px) ** 2 + (cursor.y - py) ** 2;
       if (distSq <= radius * radius) this.soulSiphonFieldHasteUntil = this.time + 0.25;
     }
-    const hit = this.enemiesInRadius(cursor.x, cursor.y, radius);
+      const hit = this.enemiesInRadius(cursor.x, cursor.y, radius);
     if (links.fieldDebuff) {
       for (const e of hit) {
         e.soulSiphonFieldDebuffUntil = this.time + 0.2;
-        e.slowUntil = Math.max(e.slowUntil || 0, this.time + 0.2);
-        e.slowMult = 0.8;
+        this.applyStatusToEntity(e.id, 'slow', {
+          duration: 0.2,
+          magnitude: 0.8,
+          sourceId: 'player',
+          sourceType: 'player_skill'
+        });
       }
     }
     const attackFlatBonus = getSkillFlatDamageBonus(this, "soulSiphon");
@@ -11681,8 +12354,12 @@ export class Game {
           if (!eff.hitIds.has(e.id)) {
             eff.hitIds.add(e.id);
             this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult, skillId: eff.skillId, skillMults: eff.skillMults, ringProcDamageMult: eff.ringProcDamageMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList, triggeredCast: !!eff.triggeredCast, allowTriggeredProcs: eff.allowTriggeredProcs === true });
-            e.slowUntil = this.time + 2;
-            e.slowMult = 0.7;
+            this.applyStatusToEntity(e.id, 'slow', {
+              duration: 2,
+              magnitude: 0.7,
+              sourceId: 'player',
+              sourceType: 'player_skill'
+            });
             mirrorAncestorDebuffToPlayer(this, "slow");
             this.iceShardHitsThisRun++;
             if (this.iceShardHitsThisRun >= 5) setSkillUnlock("iceShard5", true);
@@ -11701,7 +12378,11 @@ export class Game {
           const hit = this.enemiesInCone(eff.x, eff.y, eff.dirX, eff.dirY, 120, 80);
           for (const e of hit) {
             this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult, skillId: eff.skillId, skillMults: eff.skillMults, ringProcDamageMult: eff.ringProcDamageMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList, triggeredCast: !!eff.triggeredCast, allowTriggeredProcs: eff.allowTriggeredProcs === true });
-            e.stunUntil = this.time + eff.stun;
+            this.applyStatusToEntity(e.id, 'stun', {
+              duration: eff.stun,
+              sourceId: 'player',
+              sourceType: 'player_skill'
+            });
             mirrorAncestorDebuffToPlayer(this, "stun");
             const dx = e.position.x + e.size / 2 - eff.x; const dy = e.position.y + e.size / 2 - eff.y;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -11739,7 +12420,12 @@ export class Game {
           const hit = this.enemiesInRadius(eff.x, eff.y, eff.radius);
           for (const e of hit) {
             this.dealDamageToEnemy(e, this.computeSkillDamage(e, 0.4, eff.slot, { sacrificeMult: eff.sacrificeMult, skillId: eff.skillId, skillMults: eff.skillMults, ringProcDamageMult: eff.ringProcDamageMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList, triggeredCast: !!eff.triggeredCast, allowTriggeredProcs: eff.allowTriggeredProcs === true });
-            e.slowUntil = this.time + 0.5; e.slowMult = 0.5;
+            this.applyStatusToEntity(e.id, 'slow', {
+              duration: 0.5,
+              magnitude: 0.5,
+              sourceId: 'player',
+              sourceType: 'player_skill'
+            });
             mirrorAncestorDebuffToPlayer(this, "slow");
           }
         }
@@ -11752,7 +12438,11 @@ export class Game {
           if (!(eff.hitIds || (eff.hitIds = new Set())).has(e.id)) {
             eff.hitIds.add(e.id);
             this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult, skillId: eff.skillId, skillMults: eff.skillMults, ringProcDamageMult: eff.ringProcDamageMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList, triggeredCast: !!eff.triggeredCast, allowTriggeredProcs: eff.allowTriggeredProcs === true });
-            e.stunUntil = this.time + eff.stun;
+            this.applyStatusToEntity(e.id, 'stun', {
+              duration: eff.stun,
+              sourceId: 'player',
+              sourceType: 'player_skill'
+            });
             mirrorAncestorDebuffToPlayer(this, "stun");
           }
         }
@@ -11799,7 +12489,11 @@ export class Game {
           const es = this.enemySystem;
           for (const e of [...es.enemies, ...(es.boss ? [es.boss] : [])]) {
             if (!e.isDead) {
-              e.stunUntil = this.time + eff.freezeDuration;
+              this.applyStatusToEntity(e.id, 'stun', {
+                duration: eff.freezeDuration,
+                sourceId: 'player',
+                sourceType: 'player_skill'
+              });
               mirrorAncestorDebuffToPlayer(this, "freeze");
             }
           }
@@ -11836,6 +12530,36 @@ export class Game {
           for (const e of hit) this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult, skillId: eff.skillId, skillMults: eff.skillMults, ringProcDamageMult: eff.ringProcDamageMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList, triggeredCast: !!eff.triggeredCast, allowTriggeredProcs: eff.allowTriggeredProcs === true });
         }
         surviving.push(eff);
+      } else if (eff.type === "reaperScythe") {
+        if (eff.t >= eff.duration) {
+          const coneAngle = eff.coneAngle ?? 100;
+          const hit = this.enemiesInCone(eff.x, eff.y, eff.dirX, eff.dirY, eff.coneDist ?? 140, coneAngle);
+          for (const e of hit) {
+            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult, skillId: eff.skillId, skillMults: eff.skillMults, ringProcDamageMult: eff.ringProcDamageMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList, triggeredCast: !!eff.triggeredCast, allowTriggeredProcs: eff.allowTriggeredProcs === true });
+          }
+          continue;
+        }
+        surviving.push(eff);
+      } else if (eff.type === "striderGust") {
+        if (eff.t >= eff.duration) {
+          const hit = this.enemiesInRadius(eff.x, eff.y, eff.radius ?? 70);
+          for (const e of hit) {
+            this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult, skillId: eff.skillId, skillMults: eff.skillMults, ringProcDamageMult: eff.ringProcDamageMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList, triggeredCast: !!eff.triggeredCast, allowTriggeredProcs: eff.allowTriggeredProcs === true });
+            const dx = e.position.x + e.size / 2 - eff.x;
+            const dy = e.position.y + e.size / 2 - eff.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            e.position.x += (dx / dist) * (eff.knockback ?? 100);
+            e.position.y += (dy / dist) * (eff.knockback ?? 100);
+          }
+          continue;
+        }
+        surviving.push(eff);
+      } else if (eff.type === "pandaFocus") {
+        if (eff.t >= eff.duration) continue;
+        surviving.push(eff);
+      } else if (eff.type === "scavengerRush") {
+        if (eff.t >= eff.duration) continue;
+        surviving.push(eff);
       } else if (eff.type === "groundSlam") {
         if (eff.t >= eff.duration) {
           const hit = this.enemiesInRadius(eff.x, eff.y, eff.radius);
@@ -11847,8 +12571,12 @@ export class Game {
             e.position.x += (dx / dist) * eff.knockback;
             e.position.y += (dy / dist) * eff.knockback;
             if (eff.slowDuration > 0 && eff.slowMult != null) {
-              e.slowUntil = this.time + eff.slowDuration;
-              e.slowMult = eff.slowMult;
+              this.applyStatusToEntity(e.id, 'slow', {
+                duration: eff.slowDuration,
+                magnitude: eff.slowMult,
+                sourceId: 'player',
+                sourceType: 'player_skill'
+              });
             }
           }
           continue;
@@ -11894,8 +12622,12 @@ export class Game {
           const all = [...es.enemies, ...(es.boss ? [es.boss] : [])].filter((e) => !e.isDead);
           for (const e of all) {
             this.dealDamageToEnemy(e, this.computeSkillDamage(e, eff.mult, eff.slot, { sacrificeMult: eff.sacrificeMult, skillId: eff.skillId, skillMults: eff.skillMults, ringProcDamageMult: eff.ringProcDamageMult }), { isSkill: true, skillSlot: eff.slot, modList: eff.modList, triggeredCast: !!eff.triggeredCast, allowTriggeredProcs: eff.allowTriggeredProcs === true });
-            e.slowUntil = this.time + eff.slowDuration;
-            e.slowMult = eff.slowMult;
+            this.applyStatusToEntity(e.id, 'slow', {
+              duration: eff.slowDuration,
+              magnitude: eff.slowMult,
+              sourceId: 'player',
+              sourceType: 'player_skill'
+            });
             mirrorAncestorDebuffToPlayer(this, "slow");
           }
         }
@@ -11927,8 +12659,12 @@ export class Game {
           if (eff.slowDuration > 0 && eff.slowMult != null) {
             const hit = this.enemiesInRadius(eff.x, eff.y, eff.radius);
             for (const enemy of hit) {
-              enemy.slowUntil = this.time + eff.slowDuration;
-              enemy.slowMult = eff.slowMult;
+              this.applyStatusToEntity(enemy.id, 'slow', {
+                duration: eff.slowDuration,
+                magnitude: eff.slowMult,
+                sourceId: 'player',
+                sourceType: 'player_skill'
+              });
             }
           }
           this.skillEffects.push({ type: "pulseDetonation", x: eff.x, y: eff.y, radius: eff.radius, t: 0, duration: 0.25 });
@@ -12334,6 +13070,26 @@ export class Game {
         ctx.beginPath();
         ctx.arc(sx, sy, eff.radius || 80, 0, Math.PI * 2);
         ctx.stroke();
+      } else if (eff.type === "reaperScythe" && eff.t < eff.duration) {
+        const sx = eff.x + ox; const sy = eff.y + oy;
+        const angle = Math.atan2(eff.dirY, eff.dirX);
+        const coneAngle = ((eff.coneAngle ?? 100) * Math.PI) / 180;
+        const expand = (eff.coneDist ?? 140) * Math.min(1, eff.t / eff.duration);
+        ctx.strokeStyle = `rgba(100, 50, 150, ${0.7 - eff.t / eff.duration * 0.4})`;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(sx, sy, expand, angle - coneAngle / 2, angle + coneAngle / 2);
+        ctx.lineTo(sx, sy);
+        ctx.closePath();
+        ctx.stroke();
+      } else if (eff.type === "striderGust" && eff.t < eff.duration) {
+        const sx = eff.x + ox; const sy = eff.y + oy;
+        const expand = (eff.radius ?? 70) * Math.min(1, eff.t / eff.duration);
+        ctx.strokeStyle = `rgba(147, 197, 253, ${0.6 - eff.t / eff.duration * 0.4})`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(sx, sy, expand, 0, Math.PI * 2);
+        ctx.stroke();
       } else if (eff.type === "groundSlam") {
         const sx = eff.x + ox; const sy = eff.y + oy;
         const expand = Math.min(1, eff.t / eff.duration) * (eff.radius || 120);
@@ -12596,7 +13352,11 @@ export class Game {
       dmg *= 1 + this.getAttackUpgradeValue("damageBoost");
     }
     dmg *= 1 - this.getAttackPenaltyValue("damageReduction");
-    if (this.playerCursedWeakenUntil > this.time) dmg = Math.round(dmg * 0.8);
+    if (this.statusManager) {
+      dmg = Math.round(dmg * this.statusManager.getOutgoingDamageMultiplier('player'));
+    } else if (this.playerCursedWeakenUntil > this.time) {
+      dmg = Math.round(dmg * 0.8);
+    }
     if (this.hasBlessing("berserking")) dmg = Math.round(dmg * 1.5);
     if (this.hasUpgradeCard("glassCannon")) dmg = Math.round(dmg * 1.5);
     if (this.hasUpgradeCard("doubleStrike")) {
@@ -12617,6 +13377,7 @@ export class Game {
       this.logTalentTrigger("executioner", "Skill vs low-HP enemy: +25% damage");
       dmg = Math.round(dmg * 1.25);
     }
+    if ((this.pandaFocusUntil || 0) > this.time) dmg = Math.round(dmg * 1.2);
     return dmg;
   }
 
@@ -13493,26 +14254,47 @@ export class Game {
       
       const roll = Math.random();
       if (roll < 0.25) {
-        this.playerSlowUntil = this.time + 2;
-        this.playerSlowMult = 0.7;
+        this.applyStatusToEntity('player', 'slow', {
+          duration: 2,
+          magnitude: 0.7,
+          sourceId: sourceEntity?.id ?? this.lastDamagingEnemy?.id ?? null,
+          sourceType: 'enemy_affix'
+        });
         this.playerDebuffVFX.slow.active = true;
         this.playerDebuffVFX.slow.until = this.time + 2;
         notifyAncestorDebuffApplied(this);
       } else if (roll < 0.5) {
-        this.playerBurnUntil = this.time + 3;
-        this.playerBurnDmg = 4;
+        this.applyStatusToEntity('player', 'burn', {
+          duration: 3,
+          magnitude: 4,
+          sourceId: sourceEntity?.id ?? this.lastDamagingEnemy?.id ?? null,
+          sourceType: 'enemy_affix',
+          data: {
+            damageModel: 'per_tick',
+            reason: 'player_burn_tick'
+          }
+        });
         this.playerDebuffVFX.burn.active = true;
         this.playerDebuffVFX.burn.until = this.time + 3;
         this.playerDebuffVFX.burn.emberTimer = 0;
         notifyAncestorDebuffApplied(this);
       } else if (roll < 0.75) {
-        this.playerCursedWeakenUntil = this.time + 2;
+        this.applyStatusToEntity('player', 'weaken', {
+          duration: 2,
+          magnitude: 0.8,
+          sourceId: sourceEntity?.id ?? this.lastDamagingEnemy?.id ?? null,
+          sourceType: 'enemy_affix'
+        });
         this.playerDebuffVFX.weaken.active = true;
         this.playerDebuffVFX.weaken.until = this.time + 2;
         this.playerDebuffVFX.weaken.crackTimer = 0;
         notifyAncestorDebuffApplied(this);
       } else {
-        this.stunTimer = Math.max(this.stunTimer || 0, 0.5);
+        this.applyStatusToEntity('player', 'stun', {
+          duration: 0.5,
+          sourceId: sourceEntity?.id ?? this.lastDamagingEnemy?.id ?? null,
+          sourceType: 'enemy_affix'
+        });
         this.playerDebuffVFX.stun.active = true;
         this.playerDebuffVFX.stun.until = this.time + 0.5;
         notifyAncestorDebuffApplied(this);
@@ -14110,7 +14892,7 @@ export class Game {
     if (this.player) {
       actors.push({
         sortY: this.player.position.y + this.player.size,
-        draw: () => this.player.draw(ctx, this.camera, this.dashActive)
+        draw: () => this.player.draw(ctx, this.camera, this.dashActive, this.gameOver, this.knightSlideActive)
       });
     }
 
@@ -14353,7 +15135,7 @@ export class Game {
         const sy = Math.floor(t.y - this.camera.position.y);
         ctx.globalAlpha = alpha;
         
-        // Draw player sprite in trail (use walking sprite frame 0)
+        // Draw player sprite in trail (use walking sprite frame 0); no fallback when sprite not loaded
         const trailSprite = this.player.getTrailSpriteDrawData ? this.player.getTrailSpriteDrawData() : null;
         if (trailSprite && trailSprite.image) {
           ctx.drawImage(
@@ -14364,10 +15146,6 @@ export class Game {
             sx, sy,
             this.player.size, this.player.size
           );
-        } else {
-          // Fallback to colored rectangle if sprite not loaded
-          ctx.fillStyle = "#ffff4d";
-          ctx.fillRect(sx, sy, this.player.size, this.player.size);
         }
       }
       ctx.globalAlpha = 1;
@@ -14967,11 +15745,11 @@ export class Game {
     };
 
     if (isMiniBoss) {
-      if (Math.random() < 0.05 * dropMult) pickRandomCube(3);
+      if (Math.random() < 0.3 * dropMult) pickRandomCube(2);
     } else if (isElite) {
       if (Math.random() < 0.1 * dropMult) pickRandomCube(2);
     } else {
-      if (Math.random() < 0.5 * dropMult) pickRandomCube(1);
+      if (Math.random() < 0.1 * dropMult) pickRandomCube(1);
     }
   }
 

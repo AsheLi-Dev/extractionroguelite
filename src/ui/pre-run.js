@@ -26,9 +26,12 @@ import { FRIENDS_CATALOG, FRIEND_IDS } from '../data/friends-data.js';
 import { getFriendSpriteHtml } from './friends-ui.js';
 import { loadSavedCharacters } from './save-system.js';
 import { SNACK_TYPES, getSnackById } from '../data/snack.js';
+import { PLAYABLE_CHARACTERS, getPlayableCharacterOrDefault, DEFAULT_PLAYABLE_CHARACTER_ID, DEFAULT_STAT_BASELINE } from '../data/playable-characters.js';
+import { getSkillById } from '../data/skills.js';
 
 let preRunDifficulty = 1;
 let pendingCharacterIndex = null;
+let pendingPlayableCharacterId = DEFAULT_PLAYABLE_CHARACTER_ID;
 let preRunConditions = [];
 let preRunRerollUsed = 0;
 let preRunRerollMax = 1;
@@ -48,6 +51,25 @@ let _pendingDevMode = false;
 let _skillSelectBackTarget = "pre-run";
 const ATTACK_PREFS_KEY = "spaceShooter_selectedBasicAttacks";
 const BUILD_PREFS_KEY = "spaceShooter_selectedBuildUpgrades";
+const SELECTED_HERO_STORAGE_KEY = "selectedPlayableCharacterId";
+
+export function getSelectedPlayableCharacterIdFromStorage() {
+  try {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(SELECTED_HERO_STORAGE_KEY) : null;
+    if (!raw) return DEFAULT_PLAYABLE_CHARACTER_ID;
+    const id = String(raw).trim();
+    const valid = (PLAYABLE_CHARACTERS || []).some((c) => c.id === id);
+    return valid ? id : DEFAULT_PLAYABLE_CHARACTER_ID;
+  } catch {
+    return DEFAULT_PLAYABLE_CHARACTER_ID;
+  }
+}
+
+function saveSelectedPlayableCharacterIdToStorage(id) {
+  try {
+    if (typeof localStorage !== "undefined" && id) localStorage.setItem(SELECTED_HERO_STORAGE_KEY, id);
+  } catch (_) {}
+}
 
 function getAttackTypeIdSet() {
   return new Set((ATTACK_TYPES || []).map((entry) => String(entry?.id || "")));
@@ -191,6 +213,7 @@ export function showPreRunScreen(legacyItems = [], options = {}) {
   preRunDifficulty = 1;
   preRunRerollUsed = 0;
   pendingCharacterIndex = null;
+  pendingPlayableCharacterId = options?.playableCharacterId ?? getSelectedPlayableCharacterIdFromStorage();
   preRunRerollMax = 1;
   rollPreRunConditions();
   
@@ -245,6 +268,64 @@ export function renderPreRunScreen() {
         renderPreRunScreen();
       });
       charListEl.appendChild(btn);
+    }
+  }
+
+  const heroListEl = document.getElementById("pre-run-hero-list");
+  if (heroListEl) {
+    heroListEl.innerHTML = "";
+    for (const hero of PLAYABLE_CHARACTERS) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pre-run-hero-btn" + (pendingPlayableCharacterId === hero.id ? " selected" : "");
+      btn.title = hero.description;
+      btn.innerHTML = `<span class="pre-run-hero-name">${escapeHtml(hero.name)}</span><span class="pre-run-hero-desc">${escapeHtml(hero.passive?.name || "")} — ${escapeHtml((hero.passive?.description || "").slice(0, 50))}${(hero.passive?.description || "").length > 50 ? "…" : ""}</span>`;
+      btn.addEventListener("click", () => {
+        setPendingPlayableCharacterId(hero.id);
+        renderPreRunScreen();
+      });
+      heroListEl.appendChild(btn);
+    }
+  }
+
+  const selectedHero = getPlayableCharacterOrDefault(pendingPlayableCharacterId);
+  const detailsPanel = document.getElementById("pre-run-hero-details");
+  if (detailsPanel && selectedHero) {
+    const titleEl = detailsPanel.querySelector(".pre-run-hero-details-title");
+    if (titleEl) titleEl.textContent = selectedHero.name;
+    const baseline = DEFAULT_STAT_BASELINE;
+    const mods = selectedHero.statModifiers || {};
+    const statsEl = detailsPanel.querySelector(".pre-run-hero-details-stats");
+    if (statsEl) {
+      const hp = Math.round((baseline.maxHealth || 100) * (mods.maxHealth ?? 1));
+      const def = Math.round((baseline.defense || 0) * (mods.defense ?? 1));
+      const spd = Math.round((baseline.speed || 220) * (mods.speed ?? 1));
+      const atk = Math.round((baseline.attack || 20) * (mods.attack ?? 1));
+      const hazard = (mods.hazardDamageReduction ?? 1) * 100;
+      statsEl.innerHTML = `<h4>Stats</h4><ul class="pre-run-hero-stats-list"><li>HP: ${hp}</li><li>Defense: ${def}</li><li>Speed: ${spd}</li><li>Attack: ${atk}</li><li>Hazard reduction: ${hazard}%</li></ul>`;
+    }
+    const passiveEl = detailsPanel.querySelector(".pre-run-hero-details-passive");
+    if (passiveEl) {
+      const p = selectedHero.passive;
+      if (p) {
+        passiveEl.innerHTML = `<h4>Passive</h4><p class="pre-run-hero-passive-name">${escapeHtml(p.name)}</p><p class="pre-run-hero-passive-desc">${escapeHtml(p.description || "")}</p>`;
+      } else {
+        passiveEl.innerHTML = `<h4>Passive</h4><p class="pre-run-hero-passive-desc">None</p>`;
+      }
+    }
+    const skillsEl = detailsPanel.querySelector(".pre-run-hero-details-skills");
+    if (skillsEl) {
+      skillsEl.innerHTML = "<h4>Skill</h4>";
+      if (selectedHero.uniqueSkill) {
+        const skillDef = getSkillById(selectedHero.uniqueSkill.skillId);
+        if (skillDef) {
+          skillsEl.innerHTML += `<p class="pre-run-hero-skill-name">${escapeHtml(skillDef.name)}</p><p class="pre-run-hero-skill-desc">${escapeHtml(skillDef.desc || "")}</p>`;
+        } else {
+          skillsEl.innerHTML += `<p class="pre-run-hero-skill-desc">${escapeHtml(selectedHero.uniqueSkill.skillId)}</p>`;
+        }
+      } else {
+        skillsEl.innerHTML += `<p class="pre-run-hero-skill-desc">No unique skill</p>`;
+      }
     }
   }
 
@@ -664,7 +745,12 @@ export function confirmSkillSelectAndStart() {
   setSelectedCompanion(friendsState, pendingCompanionId);
   saveFriendsState(friendsState);
 
-  const skills = getSelectedRunSkills();
+  let skills = getSelectedRunSkills();
+  const hero = getPlayableCharacterOrDefault(pendingPlayableCharacterId);
+  if (hero?.uniqueSkill) {
+    skills = [...skills];
+    skills[hero.uniqueSkill.slot] = hero.uniqueSkill.skillId;
+  }
   saveAttackSelectionPrefs(
     pendingAttackType,
     dualTechniqueActiveForRun ? pendingSecondaryAttackType : pendingAttackType
@@ -688,7 +774,8 @@ export function confirmSkillSelectAndStart() {
       snackId: selectedSnack?.id || null,
       selectedLureIds: pendingSelectedLureIds.slice(),
       selectedCharacterIndex: pendingCharacterIndex,
-      selectedCharacter
+      selectedCharacter,
+      playableCharacterId: pendingPlayableCharacterId || DEFAULT_PLAYABLE_CHARACTER_ID
     };
     if (_pendingDevMode) {
       runConfig.devMode = true;
@@ -734,4 +821,16 @@ export function rerollPreRunConditions() {
   preRunRerollUsed++;
   rollPreRunConditions();
   renderPreRunScreen();
+}
+
+export function getPendingPlayableCharacterId() {
+  return pendingPlayableCharacterId ?? DEFAULT_PLAYABLE_CHARACTER_ID;
+}
+
+export function setPendingPlayableCharacterId(id) {
+  const valid = (PLAYABLE_CHARACTERS || []).some((c) => c.id === id);
+  if (valid) {
+    pendingPlayableCharacterId = id;
+    saveSelectedPlayableCharacterIdToStorage(id);
+  }
 }

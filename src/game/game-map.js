@@ -106,12 +106,10 @@ export function applyGameMapMixin(Game) {
           isUndeadHero: e.isUndeadHero,
           tierXpMult: e.tierXpMult,
           affixes: e.affixes ? e.affixes.filter((id) => validAffixIds.has(id)) : [],
+          statusSnapshot: this.statusManager?.serializeEntity(e.id) || [],
           burnUntil: e.burnUntil,
           burnDps: e.burnDps,
           burnAccum: e.burnAccum || 0,
-          toxicStacks: e.toxicStacks,
-          toxicUntil: e.toxicUntil,
-          toxicAccum: e.toxicAccum || 0,
           bleedStacks: e.bleedStacks || 0,
           bleedDps: e.bleedDps || 0,
           bleedTimer: e.bleedTimer || 0,
@@ -143,15 +141,10 @@ export function applyGameMapMixin(Game) {
           projectileTimer: es.boss.projectileTimer,
           minionCooldown: es.boss.minionCooldown,
           minionTimer: es.boss.minionTimer,
+          statusSnapshot: this.statusManager?.serializeEntity(es.boss.id) || [],
           burnUntil: es.boss.burnUntil,
           burnDps: es.boss.burnDps,
           burnAccum: es.boss.burnAccum || 0,
-          slowUntil: es.boss.slowUntil,
-          slowMult: es.boss.slowMult,
-          stunUntil: es.boss.stunUntil,
-          toxicStacks: es.boss.toxicStacks,
-          toxicUntil: es.boss.toxicUntil,
-          toxicAccum: es.boss.toxicAccum || 0,
           bleedStacks: es.boss.bleedStacks || 0,
           bleedDps: es.boss.bleedDps || 0,
           bleedTimer: es.boss.bleedTimer || 0,
@@ -230,9 +223,36 @@ export function applyGameMapMixin(Game) {
         enemy.burnUntil = eData.burnUntil;
         enemy.burnDps = eData.burnDps;
         enemy.burnAccum = eData.burnAccum || 0;
-        applyRestoredStack(enemy, "enemy.toxic", "toxicStacks", eData.toxicStacks, "enemy");
-        enemy.toxicUntil = eData.toxicUntil;
-        enemy.toxicAccum = eData.toxicAccum || 0;
+        this.statusManager?.restoreEntity(enemy.id, eData.statusSnapshot || [], this);
+        if ((!eData.statusSnapshot || eData.statusSnapshot.length === 0) && eData.burnUntil != null && eData.burnUntil > this.time) {
+          this.applyStatusToEntity?.(enemy.id, "burn", {
+            duration: Math.max(0, eData.burnUntil - this.time),
+            magnitude: eData.burnDps || 0,
+            stacks: eData.burnStacks || 1,
+            sourceType: "map_restore",
+            data: {
+              damageModel: "dps",
+              reason: "enemy_burn_tick"
+            }
+          });
+        }
+        if ((!eData.statusSnapshot || eData.statusSnapshot.length === 0) && eData.toxicUntil != null && (eData.toxicStacks || 0) > 0) {
+          this.applyStatusToEntity?.(enemy.id, "poison", {
+            duration: Math.max(0, eData.toxicUntil - this.time),
+            magnitude: enemy.maxHealth * 0.05,
+            maxStacks: 3,
+            stacks: eData.toxicStacks,
+            sourceType: "map_restore"
+          });
+        }
+        if ((!eData.statusSnapshot || eData.statusSnapshot.length === 0) && eData.voidDefenseUntil != null && eData.voidDefenseUntil > this.time) {
+          this.applyStatusToEntity?.(enemy.id, "void", {
+            duration: Math.max(0, eData.voidDefenseUntil - this.time),
+            magnitude: eData.voidDefenseMult ?? 1,
+            sourceType: "map_restore"
+          });
+        }
+        this.syncEntityStatusCompatibility?.(enemy.id);
         applyRestoredStack(enemy, "enemy.bleed", "bleedStacks", eData.bleedStacks || 0, "enemy");
         enemy.bleedDps = eData.bleedDps || 0;
         enemy.bleedTimer = eData.bleedTimer || 0;
@@ -264,12 +284,36 @@ export function applyGameMapMixin(Game) {
           boss.burnUntil = bossData.burnUntil;
           boss.burnDps = bossData.burnDps;
           boss.burnAccum = bossData.burnAccum || 0;
-          boss.slowUntil = bossData.slowUntil;
-          boss.slowMult = bossData.slowMult;
-          boss.stunUntil = bossData.stunUntil;
-          applyRestoredStack(boss, "enemy.toxic", "toxicStacks", bossData.toxicStacks, "boss");
-          boss.toxicUntil = bossData.toxicUntil;
-          boss.toxicAccum = bossData.toxicAccum || 0;
+          this.statusManager?.restoreEntity(boss.id, bossData.statusSnapshot || [], this);
+          if ((!bossData.statusSnapshot || bossData.statusSnapshot.length === 0) && bossData.burnUntil != null && bossData.burnUntil > this.time) {
+            this.applyStatusToEntity?.(boss.id, "burn", {
+              duration: Math.max(0, bossData.burnUntil - this.time),
+              magnitude: bossData.burnDps || 0,
+              stacks: bossData.burnStacks || 1,
+              sourceType: "map_restore",
+              data: {
+                damageModel: "dps",
+                reason: "enemy_burn_tick"
+              }
+            });
+          }
+          if ((!bossData.statusSnapshot || bossData.statusSnapshot.length === 0) && bossData.toxicUntil != null && (bossData.toxicStacks || 0) > 0) {
+            this.applyStatusToEntity?.(boss.id, "poison", {
+              duration: Math.max(0, bossData.toxicUntil - this.time),
+              magnitude: boss.maxHealth * 0.05,
+              maxStacks: 3,
+              stacks: bossData.toxicStacks,
+              sourceType: "map_restore"
+            });
+          }
+          if ((!bossData.statusSnapshot || bossData.statusSnapshot.length === 0) && bossData.voidDefenseUntil != null && bossData.voidDefenseUntil > this.time) {
+            this.applyStatusToEntity?.(boss.id, "void", {
+              duration: Math.max(0, bossData.voidDefenseUntil - this.time),
+              magnitude: bossData.voidDefenseMult ?? 1,
+              sourceType: "map_restore"
+            });
+          }
+          this.syncEntityStatusCompatibility?.(boss.id);
           applyRestoredStack(boss, "enemy.bleed", "bleedStacks", bossData.bleedStacks || 0, "boss");
           boss.bleedDps = bossData.bleedDps || 0;
           boss.bleedTimer = bossData.bleedTimer || 0;

@@ -192,6 +192,20 @@ export function createHomeBaseInteractables(world) {
       promptRadius: 118,
       color: "#f472b6"
     }),
+    // PEACH PILLAR: Select Hero — choose which hero to walk the hub and start runs with
+    new HomeBaseInteractable({
+      id: "peach-pillar",
+      displayName: "Peach Pillar",
+      interactionType: "select-hero",
+      targetUI: "select_hero_overlay",
+      panelTitle: "Select Hero",
+      x: cx - companionOffsetX - size.small.w * 0.5,
+      y: cy + companionOffsetY - size.small.h * 0.5,
+      w: size.small.w,
+      h: size.small.h,
+      promptRadius: 118,
+      color: "#f59e0b"
+    }),
     // Return to main menu (compact, out of main flow)
     new HomeBaseInteractable({
       id: "return-menu",

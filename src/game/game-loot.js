@@ -562,11 +562,11 @@ export function applyGameLootMixin(Game) {
       };
 
       if (isMiniBoss) {
-        if (Math.random() < 0.05 * dropMult * bandMult) pickRandomCube(3);
+        if (Math.random() < 0.3 * dropMult * bandMult) pickRandomCube(2);
       } else if (isElite) {
         if (Math.random() < 0.1 * dropMult * bandMult) pickRandomCube(2);
       } else {
-        if (Math.random() < 0.5 * dropMult * bandMult) pickRandomCube(1);
+        if (Math.random() < 0.1 * dropMult * bandMult) pickRandomCube(1);
       }
     }
   });
