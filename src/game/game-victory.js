@@ -313,6 +313,7 @@ export function applyGameVictoryMixin(Game) {
       document.querySelector(".game-root")?.classList.add("hidden");
       refreshMainMenuLP();
       document.getElementById("pause-toggle")?.classList.add("hidden");
+      document.getElementById("mod-screen-button")?.classList.add("hidden");
       document.getElementById("dev-toggle")?.classList.add("hidden");
       renderHallOfChampions();
     }

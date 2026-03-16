@@ -31,7 +31,7 @@ import {
   isSkillUnlocked, getUnlockedSkills
 } from '../data/skills.js';
 import { RUN_CONDITIONS, ATTACK_TYPES, pickRandomConditions, enforceConditionLimits } from '../data/conditions.js';
-import { MAP_WIDTH, MAP_HEIGHT, WALL_THICKNESS, MAP_DEFS, World, createProceduralWorld, PRESET_MEDIUM, PRESET_BIOME, BIOME_MAP_DEF, buildArchetypeGrid, buildAllSubareaGrids, buildSubareaZonesForWorld, BIOME_ARCHETYPE, getBiomeCellBounds, BIOME_GRID_COLS, BIOME_GRID_ROWS, applyCorridorCellLayouts, applyBiomeTopBottomWalls, buildCobblestonePath, applyLostCampCellLayouts, applyVaultCellLayouts, applyVaultTreasureDecorations, applyMinibossCellDecorations } from '../data/maps.js';
+import { MAP_WIDTH, MAP_HEIGHT, WALL_THICKNESS, MAP_DEFS, World, createProceduralWorld, PRESET_MEDIUM, PRESET_BIOME, PRESET_FOREST_BIOME_TEST, BIOME_MAP_DEF, FOREST_BIOME_TEST_MAP_DEF, buildArchetypeGrid, buildForestBiomeTestArchetypeGrid, buildAllSubareaGrids, buildSubareaZonesForWorld, BIOME_ARCHETYPE, getBiomeCellBounds, getBiomeGridDimensions, BIOME_GRID_COLS, BIOME_GRID_ROWS, applyCorridorCellLayouts, applyBiomeTopBottomWalls, buildCobblestonePath, applyLostCampCellLayouts, applyVaultCellLayouts, applyVaultTreasureDecorations, applyMinibossCellDecorations } from '../data/maps.js';
 import { mulberry32 } from '../map-gen-blockers.js';
 import { LOST_CAMP_TILESET } from '../data/lost-camp-data.js';
 import {
@@ -146,6 +146,7 @@ import { applyGameUIMixin } from './game-ui.js';
 import { applyGameLevelUpMixin } from './game-levelup.js';
 import { applyGameInputMixin } from './game-input.js';
 import { applyGameLootMixin } from './game-loot.js';
+import { applyGameModLootMixin } from './game-mod-loot.js';
 import { applyGameCollisionMixin } from './game-collision.js';
 import { getWallCollisionRect } from '../utils.js';
 import { applyGameMapMixin } from './game-map.js';
@@ -271,6 +272,20 @@ export class Game {
     this.statusManager = new StatusManager(STATUS_DEFS);
     this.skillCascadeFlashUntil = {};
     this.devModOverrides = { 0: [], 1: [], 2: [], 3: [] };
+    // In-run skill mod system: Mod Pack inventory, shards, and equipped mods per skill
+    this.runModInventory = Array.isArray(runConfig.runModInventory) ? runConfig.runModInventory.slice() : [];
+    this.runModShardCurrency = Math.max(0, Number(runConfig.runModShardCurrency) || 0);
+    this.runSkillMods = (runConfig.runSkillMods && typeof runConfig.runSkillMods === 'object')
+      ? JSON.parse(JSON.stringify(runConfig.runSkillMods))
+      : {};
+    if (Object.keys(this.runSkillMods).length === 0 && Array.isArray(this.skills)) {
+      this.skills.forEach((skillId) => {
+        if (skillId) this.runSkillMods[skillId] = [];
+      });
+    }
+    this.runModDropsThisRoom = 0;
+    this.runModDropsThisMinute = 0;
+    this.runModDropsMinuteResetAt = 0;
     this.activeAuras = new Set();
     this.whirlwindActive = false;
     this.bladeDashActive = false;
@@ -285,6 +300,7 @@ export class Game {
     this.knightSlideSpeed = 480;
     this.knightSlideHitIds = new Set();
     this.knightSlideSlot = null;
+    this.knightSlideCastId = 0;
     this.knightConsecutiveBasicAttacks = 0;
     this.knightDedicationActive = false;
     this.lastBasicAttackHitTime = -1e9;
@@ -602,32 +618,42 @@ export class Game {
 
     const useProceduralMap = runConfig.useProceduralMap !== false;
     this.useProceduralMap = useProceduralMap;
+    const tutorialMode = runConfig.tutorial === true;
 
-    const useBiome = !!this.devMode;
+    const isForestBiomeTestMap = runConfig.testMapId === 'forest_biome_0';
+    this.testMapId = isForestBiomeTestMap ? 'forest_biome_0' : null;
+    const initialMapDef = MAP_DEFS[0];
+    const useBiome = isForestBiomeTestMap || this.shouldUseBiomeMapGeneration?.(initialMapDef?.id, { tutorial: tutorialMode }) === true;
     if (useProceduralMap) {
-      const seed = (runConfig.seed ?? Date.now()) ^ 0;
-      const preset = useBiome ? PRESET_BIOME : PRESET_MEDIUM;
-      const mapDef = useBiome ? BIOME_MAP_DEF : MAP_DEFS[0];
-      const { world, startPixel } = createProceduralWorld(preset, seed, mapDef);
-      this.world = world;
+      const seed = (runConfig.seed ?? (isForestBiomeTestMap ? 1337 : Date.now())) ^ 0;
+      const mapDef = isForestBiomeTestMap ? FOREST_BIOME_TEST_MAP_DEF : initialMapDef;
+      if (isForestBiomeTestMap) {
+        const { world } = createProceduralWorld(PRESET_FOREST_BIOME_TEST, seed, mapDef);
+        this.world = world;
+      } else if (useBiome) {
+        this.world = this.buildBiomeWorldForMap(mapDef, seed);
+      } else {
+        const { world } = createProceduralWorld(PRESET_MEDIUM, seed, mapDef);
+        this.world = world;
+      }
       this.proceduralSeed = seed;
-      if (useBiome) {
-        world.archetypeGrid = buildArchetypeGrid(world);
-        buildAllSubareaGrids(world, world.archetypeGrid, mulberry32(seed ^ 0x7a3f));
-        buildSubareaZonesForWorld(world, world.archetypeGrid, mulberry32(seed ^ 0xc4d2), { chancePerCell: 0.5, totemWeight: 0.4, ambushWeight: 0.4 });
-        applyCorridorCellLayouts(world, world.archetypeGrid, mulberry32(seed));
-        applyBiomeTopBottomWalls(world, world.archetypeGrid, seed);
-        buildCobblestonePath(world, world.archetypeGrid, mulberry32(seed ^ 0x8f2a));
-        applyLostCampCellLayouts(world, world.archetypeGrid);
-        applyVaultCellLayouts(world, world.archetypeGrid, mulberry32(seed ^ 0x9b3c));
-        applyVaultTreasureDecorations(world, world.archetypeGrid, mulberry32(seed ^ 0x9b3c));
-        applyMinibossCellDecorations(world, world.archetypeGrid, mulberry32(seed ^ 0x5a17));
-        const ag = world.archetypeGrid;
+      if (isForestBiomeTestMap) {
+        this.world.archetypeGrid = buildForestBiomeTestArchetypeGrid(this.world);
+        buildAllSubareaGrids(this.world, this.world.archetypeGrid, mulberry32(seed ^ 0x7a3f));
+        buildSubareaZonesForWorld(this.world, this.world.archetypeGrid, mulberry32(seed ^ 0xc4d2), { chancePerCell: 0.5, totemWeight: 0.4, ambushWeight: 0.4 });
+        applyCorridorCellLayouts(this.world, this.world.archetypeGrid, mulberry32(seed));
+        applyBiomeTopBottomWalls(this.world, this.world.archetypeGrid, seed);
+        buildCobblestonePath(this.world, this.world.archetypeGrid, mulberry32(seed ^ 0x8f2a));
+        applyLostCampCellLayouts(this.world, this.world.archetypeGrid);
+        applyVaultCellLayouts(this.world, this.world.archetypeGrid, mulberry32(seed ^ 0x9b3c));
+        applyVaultTreasureDecorations(this.world, this.world.archetypeGrid, mulberry32(seed ^ 0x9b3c));
+        applyMinibossCellDecorations(this.world, this.world.archetypeGrid, mulberry32(seed ^ 0x5a17));
+        const ag = this.world.archetypeGrid;
         if (ag?.startCell != null) {
-          const bounds = getBiomeCellBounds(world, ag.startCell.col, ag.startCell.row);
-          const ts = world.tileSize || 32;
+          const bounds = getBiomeCellBounds(this.world, ag.startCell.col, ag.startCell.row);
+          const ts = this.world.tileSize || 32;
           const playerSize = 100;
-          world.startPixel = {
+          this.world.startPixel = {
             x: bounds.x + bounds.w / 2 - playerSize / 2 - ts,
             y: bounds.y + bounds.h / 2 - ts / 2
           };
@@ -637,15 +663,15 @@ export class Game {
           for (let row = 0; row < ag.grid.length; row++) {
             for (let col = 0; col < ag.grid[row].length; col++) {
               if (ag.grid[row][col] === BIOME_ARCHETYPE.MINIBOSS) {
-                world.minibossBounds = getBiomeCellBounds(world, col, row);
+                this.world.minibossBounds = getBiomeCellBounds(this.world, col, row);
                 row = ag.grid.length;
                 break;
               }
             }
           }
         }
-        world.lostCampAtlas = new Image();
-        world.lostCampAtlas.src = LOST_CAMP_TILESET.image;
+        this.world.lostCampAtlas = new Image();
+        this.world.lostCampAtlas.src = LOST_CAMP_TILESET.image;
       }
     } else {
       this.world = new World(MAP_WIDTH, MAP_HEIGHT);
@@ -658,12 +684,12 @@ export class Game {
     }
 
     // Check if tutorial mode
-    this.tutorialMode = runConfig.tutorial === true;
+    this.tutorialMode = tutorialMode;
     
-    this.currentMapId = useBiome ? 'biome' : 0;
-    this.currentMap = useBiome ? BIOME_MAP_DEF : MAP_DEFS[0];
+    this.currentMapId = isForestBiomeTestMap ? FOREST_BIOME_TEST_MAP_DEF.id : initialMapDef.id;
+    this.currentMap = isForestBiomeTestMap ? FOREST_BIOME_TEST_MAP_DEF : initialMapDef;
     this.world.setTheme(this.currentMap);
-    if (this.devMode && this.world.archetypeGrid) {
+    if ((this.devMode || isForestBiomeTestMap) && this.world.archetypeGrid) {
       this.logBiomeArchetypeGrid();
     }
     this.roguesAtlas = new Image();
@@ -769,6 +795,9 @@ export class Game {
       this.setupTutorialMap();
     } else {
       this.enemySystem.spawnInitial(this);
+      if (this.testMapId === 'forest_biome_0') {
+        this.spawnForestBiomeTestMapEnemyFixtures();
+      }
       this.trySpawnUndeadHeroForCurrentMap?.();
       if (this.world?.totemZones?.length) {
         spawnTotemsInZones(this, mulberry32((this.proceduralSeed ?? 0) ^ 0xe1f0));
@@ -962,6 +991,18 @@ export class Game {
       this.addManagedListener(this.pauseToggleEl, "click", () => this.togglePause());
     }
 
+    const modScreenBtn = document.getElementById("mod-screen-button");
+    if (modScreenBtn) {
+      this.addManagedListener(modScreenBtn, "click", () => {
+        if (this.modScreenOpen) this.hideModScreen();
+        else this.showModScreen();
+      });
+    }
+    const modScreenClose = document.getElementById("mod-screen-close");
+    if (modScreenClose) {
+      this.addManagedListener(modScreenClose, "click", () => this.hideModScreen());
+    }
+
     const inventoryBtn = document.getElementById("inventory-button");
     if (inventoryBtn) {
       this.addManagedListener(inventoryBtn, "click", () => {
@@ -1015,7 +1056,22 @@ export class Game {
         }
         return;
       }
-      if (e.key === "Escape" || e.key === "p" || e.key === "P") {
+      if (e.key === "Escape") {
+        if (this.modScreenOpen) {
+          this.hideModScreen();
+        } else {
+          this.togglePause();
+        }
+        return;
+      }
+      if (e.key === "m" || e.key === "M") {
+        if (!e.repeat && !this.gameOver && !this.levelUpChoices && !this.currentEvent) {
+          if (this.modScreenOpen) this.hideModScreen();
+          else this.showModScreen();
+        }
+        return;
+      }
+      if (e.key === "p" || e.key === "P") {
         this.togglePause();
         return;
       }
@@ -1222,6 +1278,13 @@ export class Game {
       pauseToggle.style.top = `${Math.round(canvasTop + 20 * scale)}px`;
       pauseToggle.style.transformOrigin = "top center";
       pauseToggle.style.transform = "translateX(-50%)";
+    }
+    const modScreenBtn = document.getElementById("mod-screen-button");
+    if (modScreenBtn) {
+      modScreenBtn.style.left = `${Math.round(canvasLeft + (DESIGN_WIDTH / 2) * scale) + 52}px`;
+      modScreenBtn.style.top = `${Math.round(canvasTop + 20 * scale)}px`;
+      modScreenBtn.style.transformOrigin = "top left";
+      modScreenBtn.style.transform = "translateX(-50%)";
     }
 
     const pauseEnemyPanel = document.getElementById("pause-enemy-panel");
@@ -1690,6 +1753,7 @@ export class Game {
     document.getElementById("main-menu").classList.remove("hidden");
     document.querySelector(".game-root").classList.add("hidden");
     document.getElementById("pause-toggle").classList.add("hidden");
+    document.getElementById("mod-screen-button")?.classList.add("hidden");
     document.getElementById("dev-toggle")?.classList.add("hidden");
     document.getElementById("inventory-button")?.classList.add("hidden");
     
@@ -1707,6 +1771,10 @@ export class Game {
 
   togglePause() {
     if (this.gameOver) return;
+    if (this.modScreenOpen) {
+      this.hideModScreen();
+      return;
+    }
     if (this.inventoryOverlayOpen) {
       this.closeInventoryOverlay();
       return;
@@ -2357,6 +2425,7 @@ export class Game {
     document.querySelector(".game-root").classList.add("hidden");
     refreshMainMenuLP();
     document.getElementById("pause-toggle").classList.add("hidden");
+    document.getElementById("mod-screen-button")?.classList.add("hidden");
     document.getElementById("dev-toggle").classList.add("hidden");
     renderHallOfChampions();
   }
@@ -2489,42 +2558,42 @@ export class Game {
   }
 
   applyStatusToEntity(targetOrId, statusId, statusData = {}) {
-    const entityId = typeof targetOrId === 'string' ? targetOrId : targetOrId?.id;
-    if (!entityId || !this.statusManager) return null;
+    const entityId = (targetOrId != null && typeof targetOrId === 'object') ? targetOrId.id : targetOrId;
+    if ((entityId === null || entityId === undefined || entityId === '') || !this.statusManager) return null;
     const status = this.statusManager.applyStatus(entityId, {
-      statusId,
-      ...statusData
+      ...statusData,
+      statusId
     }, this);
     this.syncEntityStatusCompatibility(entityId);
     return status;
   }
 
   removeStatusFromEntity(targetOrId, statusId) {
-    const entityId = typeof targetOrId === 'string' ? targetOrId : targetOrId?.id;
-    if (!entityId || !this.statusManager) return false;
+    const entityId = (targetOrId != null && typeof targetOrId === 'object') ? targetOrId.id : targetOrId;
+    if ((entityId === null || entityId === undefined || entityId === '') || !this.statusManager) return false;
     const removed = this.statusManager.removeStatus(entityId, statusId, this);
     this.syncEntityStatusCompatibility(entityId);
     return removed;
   }
 
   clearEntityStatuses(targetOrId) {
-    const entityId = typeof targetOrId === 'string' ? targetOrId : targetOrId?.id;
-    if (!entityId || !this.statusManager) return;
+    const entityId = (targetOrId != null && typeof targetOrId === 'object') ? targetOrId.id : targetOrId;
+    if ((entityId === null || entityId === undefined || entityId === '') || !this.statusManager) return;
     this.statusManager.clearStatuses(entityId, this);
     this.syncEntityStatusCompatibility(entityId);
   }
 
   updateStatusForEntity(targetOrId, statusId, updater) {
-    const entityId = typeof targetOrId === 'string' ? targetOrId : targetOrId?.id;
-    if (!entityId || !this.statusManager || typeof updater !== 'function') return null;
+    const entityId = (targetOrId != null && typeof targetOrId === 'object') ? targetOrId.id : targetOrId;
+    if ((entityId === null || entityId === undefined || entityId === '') || !this.statusManager || typeof updater !== 'function') return null;
     const status = this.statusManager.updateStatus(entityId, statusId, updater);
     this.syncEntityStatusCompatibility(entityId);
     return status;
   }
 
   adjustStatusDuration(targetOrId, statusId, deltaSeconds) {
-    const entityId = typeof targetOrId === 'string' ? targetOrId : targetOrId?.id;
-    if (!entityId || !this.statusManager || !Number.isFinite(deltaSeconds)) return null;
+    const entityId = (targetOrId != null && typeof targetOrId === 'object') ? targetOrId.id : targetOrId;
+    if ((entityId === null || entityId === undefined || entityId === '') || !this.statusManager || !Number.isFinite(deltaSeconds)) return null;
     const status = this.updateStatusForEntity(entityId, statusId, (entry) => {
       entry.remaining = Math.max(0, (Number(entry.remaining) || 0) + deltaSeconds);
       return entry;
@@ -2630,7 +2699,11 @@ export class Game {
       this.playerBurnDmg = burn?.magnitude ?? 0;
       this.playerSlowUntil = slow ? this.time + slow.remaining : 0;
       this.playerSlowMult = slow?.magnitude ?? 1;
-      this.stunTimer = stun?.remaining ?? 0;
+      const stunRemaining = Number(stun?.remaining);
+      this.stunTimer = Number.isFinite(stunRemaining) && stunRemaining > 0 ? stunRemaining : 0;
+      if (stun && this.stunTimer <= 0) {
+        this.statusManager.removeStatus('player', 'stun', this);
+      }
       this.playerPoisonUntil = poison ? this.time + poison.remaining : 0;
       this.playerPoisonDmgPerSec = poison?.magnitude ?? 0;
       this.playerHasteUntil = haste ? this.time + haste.remaining : 0;
@@ -2667,6 +2740,34 @@ export class Game {
     }
     if (this.enemySystem?.boss?.id) {
       this.syncEntityStatusCompatibility(this.enemySystem.boss.id);
+    }
+  }
+
+  spawnForestBiomeTestMapEnemyFixtures() {
+    if (this.testMapId !== 'forest_biome_0' || !this.enemySystem || !this.world?.archetypeGrid?.grid) return;
+    if ((this.enemySystem.enemies || []).some((enemy) => enemy && enemy._forestTestFixture)) return;
+
+    // Test-map fixture only: stable combat population for browser bots and economy checks.
+    const spawnDefs = [
+      { col: 1, row: 1, tier: 'minion', type: 'm_5s_small_frog' },
+      { col: 1, row: 1, tier: 'minion', type: 'm_5h_medium_dummy' },
+      { col: 2, row: 1, tier: 'minion', type: 'm_5f_ghoul' },
+      { col: 2, row: 1, tier: 'elite', type: 'm_5l_medium_dwarfette' },
+      { col: 1, row: 2, tier: 'minion', type: 'm_6d_cultist' },
+      { col: 1, row: 2, tier: 'elite', type: 'GoblinElite' },
+      { col: 2, row: 2, tier: 'minion', type: 'm_5o_small_mimic' },
+      { col: 2, row: 2, tier: 'elite', type: 'm_7d_manticore' },
+      { col: 2, row: 2, tier: 'miniBoss', type: 'm_5j_large_dummy' }
+    ];
+
+    for (const def of spawnDefs) {
+      const bounds = getBiomeCellBounds(this.world, def.col, def.row);
+      const anchor = {
+        x: bounds.x + bounds.w * 0.5,
+        y: bounds.y + bounds.h * 0.5
+      };
+      const enemy = this.enemySystem.spawnOne(def.tier, null, anchor, this, def.type, false);
+      if (enemy) enemy._forestTestFixture = true;
     }
   }
 
@@ -2740,48 +2841,8 @@ export class Game {
       sourceType: 'legacy_sync'
     } : null);
 
-    const allEnemies = [
-      ...(this.enemySystem?.enemies || []),
-      ...(this.enemySystem?.boss ? [this.enemySystem.boss] : [])
-    ];
-    for (const entity of allEnemies) {
-      compareAndApply(entity.id, 'slow', entity.slowUntil != null && entity.slowUntil > this.time ? {
-        statusId: 'slow',
-        duration: entity.slowUntil - this.time,
-        magnitude: entity.slowMult ?? 1,
-        sourceType: 'legacy_sync'
-      } : null);
-      compareAndApply(entity.id, 'stun', entity.stunUntil != null && entity.stunUntil > this.time ? {
-        statusId: 'stun',
-        duration: entity.stunUntil - this.time,
-        sourceType: 'legacy_sync'
-      } : null);
-      compareAndApply(entity.id, 'poison', entity.toxicUntil != null && entity.toxicUntil > this.time && (entity.toxicStacks || 0) > 0 ? {
-        statusId: 'poison',
-        duration: entity.toxicUntil - this.time,
-        magnitude: entity.maxHealth * 0.05,
-        maxStacks: 3,
-        stacks: entity.toxicStacks,
-        sourceType: 'legacy_sync'
-      } : null);
-      compareAndApply(entity.id, 'burn', entity.burnUntil != null && entity.burnUntil > this.time ? {
-        statusId: 'burn',
-        duration: entity.burnUntil - this.time,
-        magnitude: entity.burnDps || 0,
-        stacks: entity.burnStacks || 1,
-        sourceType: 'legacy_sync',
-        data: {
-          damageModel: 'dps',
-          reason: 'enemy_burn_tick'
-        }
-      } : null);
-      compareAndApply(entity.id, 'void', entity.voidDefenseUntil != null && entity.voidDefenseUntil > this.time ? {
-        statusId: 'void',
-        duration: entity.voidDefenseUntil - this.time,
-        magnitude: entity.voidDefenseMult ?? 1,
-        sourceType: 'legacy_sync'
-      } : null);
-    }
+    // Enemy migrated statuses are owned by the status manager. Legacy enemy
+    // timer fields remain one-way compatibility mirrors for AI/rendering only.
     this.syncAllStatusCompatibility();
   }
 
@@ -2831,9 +2892,7 @@ export class Game {
     }
     const isPlayerMelee = hitbox?.defId === 'player_fan' || hitbox?.defId === 'player_thrust' || hitbox?.defId === 'soul_siphon_beam';
     const skillId = hitbox?.defId === 'player_fan' ? 'fanStrike' : hitbox?.defId === 'player_thrust' ? 'thrustStrike' : hitbox?.defId === 'player_pulse' ? 'pulseShot' : hitbox?.defId === 'player_projectile' ? 'projectile' : hitbox?.defId === 'soul_siphon_beam' ? 'soulSiphon' : undefined;
-    const pulseStun = hitbox?.defId === 'player_pulse' && hitbox?.stunDuration != null ? hitbox.stunDuration : 0.1;
-    const beamStun = hitbox?.defId === 'soul_siphon_beam' && hitbox?.stunDuration != null ? hitbox.stunDuration : 0.1;
-    const meleeFreeze = hitbox?.defId === 'player_pulse' ? pulseStun : hitbox?.defId === 'soul_siphon_beam' ? beamStun : 0.1;
+    const meleeFreeze = Math.max(0, Number(hitbox?.stunDuration) || 0);
     if (hitbox?._fromSpiritSlam && enemy.soulSiphonMarkedUntil != null && this.time < enemy.soulSiphonMarkedUntil) {
       effectiveAmount = Math.round(effectiveAmount * 2);
       enemy.soulSiphonMarkedUntil = 0;
@@ -3374,7 +3433,12 @@ export class Game {
   spawnEnemyConeHitbox(enemy, ex, ey, dirX, dirY, range, arcDeg, baseDmg, attackId) {
     const halfAngleRad = ((arcDeg ?? 90) * 0.5 * Math.PI) / 180;
     const damage = Math.max(1, Math.round(baseDmg));
-    const def = attackId === 'death_knight_cleave' ? DEATH_KNIGHT_CONE_DEF : {
+    // Enemy cone melee attacks own damage + knockback only. Player movement lock
+    // should come from explicit status effects, not generic hitbox stun.
+    const def = attackId === 'death_knight_cleave' ? {
+      ...DEATH_KNIGHT_CONE_DEF,
+      hitStunMs: 0
+    } : {
       id: attackId || 'enemy_cone',
       shape: 'cone',
       radius: range ?? 80,
@@ -3382,7 +3446,7 @@ export class Game {
       durationMs: 80,
       moveSpeed: 0,
       damage,
-      hitStunMs: 150,
+      hitStunMs: 0,
       knockback: 60,
       maxHitsPerTarget: 1,
       followOwner: false,
@@ -3539,7 +3603,12 @@ export class Game {
   spawnEnemyRectHitbox(enemy, ex, ey, dirX, dirY, length, width, baseDmg, attackId) {
     const offset = 20;
     const rect = thrustRectFromDirection(ex, ey, dirX, dirY, length, width, offset);
-    const def = attackId === 'human_lancer_thrust' ? HUMAN_LANCER_THRUST_RECT_DEF : {
+    // Enemy rect melee attacks also avoid generic player stun. Specific control
+    // effects should be applied through statuses instead of shared hitbox data.
+    const def = attackId === 'human_lancer_thrust' ? {
+      ...HUMAN_LANCER_THRUST_RECT_DEF,
+      hitStunMs: 0
+    } : {
       id: attackId || 'enemy_rect',
       shape: 'rect',
       width: rect.width,
@@ -3547,7 +3616,7 @@ export class Game {
       durationMs: 80,
       moveSpeed: 0,
       damage: baseDmg,
-      hitStunMs: 120,
+      hitStunMs: 0,
       knockback: 50,
       maxHitsPerTarget: 1,
       followOwner: false,
@@ -3577,6 +3646,10 @@ export class Game {
       dt = 0;
     }
     this.time += dt;
+    if (this.time - (this.runModDropsMinuteResetAt || 0) >= 60) {
+      this.runModDropsMinuteResetAt = this.time;
+      this.runModDropsThisMinute = 0;
+    }
     tickAncestorSystem(this, dt);
     this.captureLegacyStatusCompatibility();
     if (this.statusManager) {
@@ -3626,12 +3699,6 @@ export class Game {
       if (inHazard.type === "slowZone" || inHazard.type === "webZone" || inHazard.type === "rootZone") {
         effectiveSpeed *= inHazard.slowMult ?? 0.6;
       }
-      if (inHazard.type === "shockingGround" && Math.random() < dt * 0.2) {
-        this.applyStatusToEntity('player', 'stun', {
-          duration: 0.5,
-          sourceType: 'hazard'
-        });
-      }
       if (inHazard.type === "toxicGround") {
         this.toxicGroundTimer += dt;
         if (this.toxicGroundTimer >= 1) {
@@ -3646,6 +3713,12 @@ export class Game {
             canKill: true
           });
         }
+      }
+      if (inHazard.type === "shockingGround" && Math.random() < dt * 0.2) {
+        this.applyStatusToEntity('player', 'stun', {
+          duration: 0.5,
+          sourceType: 'hazard'
+        });
       }
       if (inHazard.type === "burningGround") {
         this.burningGroundTimer += dt;
@@ -4083,6 +4156,7 @@ export class Game {
         const cy = this.player.position.y + this.player.size / 2;
         const hit = this.enemiesInRadius(cx, cy, 45);
         const slot = this.knightSlideSlot;
+        const castId = this.knightSlideCastId || 0;
         const mods = slot != null ? getModsForSkillSlot(this, slot) : [];
         for (const e of hit) {
           if (!this.knightSlideHitIds.has(e.id)) {
@@ -4092,11 +4166,14 @@ export class Game {
               skillSlot: slot,
               modList: mods
             });
-            this.applyStatusToEntity(e.id, 'stun', {
-              duration: 0.9,
-              sourceId: 'player',
-              sourceType: 'player_skill'
-            });
+            if (e._lastKnightSlideStunCastId !== castId) {
+              e._lastKnightSlideStunCastId = castId;
+              this.applyStatusToEntity(e.id, 'stun', {
+                duration: 0.9,
+                sourceId: 'player',
+                sourceType: 'player_skill'
+              });
+            }
           }
         }
       }
@@ -4135,6 +4212,15 @@ export class Game {
       const heal = this.currentStats.maxHealth * 0.03 * dt;
       this.currentHealth = Math.min(this.currentStats.maxHealth, this.currentHealth + heal);
       this.updateHealthBar();
+    }
+
+    if (!Number.isFinite(this.stunTimer) || this.stunTimer < 0) {
+      this.stunTimer = 0;
+      this.removeStatusFromEntity?.('player', 'stun');
+      if (this.playerDebuffVFX?.stun) {
+        this.playerDebuffVFX.stun.active = false;
+        this.playerDebuffVFX.stun.until = 0;
+      }
     }
 
     if (this.fierySpawned && !this.fieryKilled && this.fieryTimer > 0) {
@@ -4733,9 +4819,10 @@ export class Game {
     const exitPixel = this.world.exitPixel || { x: this.world.width - 100, y: this.world.height / 2 - 60 };
     const exitZone = { x: exitPixel.x - 80, y: exitPixel.y - 80, w: 160, h: 160 };
     const playerMargin = 120;
+    const { cols, rows } = getBiomeGridDimensions(this.world);
 
-    for (let row = 0; row < BIOME_GRID_ROWS; row++) {
-      for (let col = 0; col < BIOME_GRID_COLS; col++) {
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
         const archetype = data.grid[row][col];
         if (archetype === BIOME_ARCHETYPE.START || archetype === BIOME_ARCHETYPE.EXIT) continue;
         if (archetype === BIOME_ARCHETYPE.CORRIDORS || archetype === BIOME_ARCHETYPE.LOST_CAMPS || archetype === BIOME_ARCHETYPE.MINIBOSS || archetype === BIOME_ARCHETYPE.VAULT) continue;
@@ -4800,8 +4887,8 @@ export class Game {
       const placeW = placeSize.w;
       const placeH = placeSize.h;
       const ruinsBounds = [];
-      for (let row = 0; row < BIOME_GRID_ROWS; row++) {
-        for (let col = 0; col < BIOME_GRID_COLS; col++) {
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
           if (data.grid[row][col] !== BIOME_ARCHETYPE.RUINS) continue;
           const bounds = getBiomeCellBounds(this.world, col, row);
           const margin = this.world.wallThickness + 40;
@@ -5993,7 +6080,7 @@ export class Game {
       if (!suppressSfx) playSfx("playerAttack");
       const PULSE_RADIUS = 55;
       const PULSE_DELAY = 0.35;
-      this.skillEffects.push({ type: "pulseStrike", x: targetX, y: targetY, damage: attackDamage, radius: PULSE_RADIUS, delay: PULSE_DELAY, t: 0, duration: PULSE_DELAY + 0.25 });
+      this.skillEffects.push({ type: "pulseStrike", x: targetX, y: targetY, damage: attackDamage, radius: PULSE_RADIUS, delay: PULSE_DELAY, t: 0, duration: PULSE_DELAY + 0.25, stunDuration: 0.1 });
       return true;
     }
 
@@ -7327,7 +7414,7 @@ export class Game {
         const hit = this.enemiesInCone(px, py, s.dirX, s.dirY, DASH_STRIKE_FAN_RANGE, 45);
         const dmg = s.damage ?? (this.computePlayerDamage(null) + getSkillFlatDamageBonus(this, "dashStrike"));
         for (const e of hit) {
-          this.dealDamageToEnemy(e, dmg, { meleeFreeze: 0.1, skillId: "dashStrike", isMeleeHit: true });
+          this.dealDamageToEnemy(e, dmg, { meleeFreeze: 0, skillId: "dashStrike", isMeleeHit: true });
           const ex = e.position.x + e.size / 2;
           const ey = e.position.y + e.size / 2;
           onFanStrikeHitEnemy({ enemyX: ex, enemyY: ey, sweepAngle: facingAngle, playerX: px, playerY: py });
@@ -7356,7 +7443,7 @@ export class Game {
         const hit = this.enemiesInCone(px, py, s.dirX, s.dirY, DASH_STRIKE_FAN_RANGE, 45);
         const dmg = s.damage ?? (this.computePlayerDamage(null) + getSkillFlatDamageBonus(this, "dashStrike"));
         for (const e of hit) {
-          this.dealDamageToEnemy(e, dmg, { meleeFreeze: 0.1, skillId: "dashStrike", isMeleeHit: true });
+          this.dealDamageToEnemy(e, dmg, { meleeFreeze: 0, skillId: "dashStrike", isMeleeHit: true });
           const ex = e.position.x + e.size / 2;
           const ey = e.position.y + e.size / 2;
           onFanStrikeHitEnemy({ enemyX: ex, enemyY: ey, sweepAngle: facingAngle, playerX: px, playerY: py });
@@ -7642,8 +7729,10 @@ export class Game {
       const leadY = ey + Math.sin(leadAngle) * beamLen;
       this.transientVFX.addLine(ex, ey, leadX, leadY, 0.2, "rgba(6,182,212,0.3)", 1);
       
-      // If player is in the beam and hasn't been hit yet in this sweep, deal damage
-      if (playerInBeam && !enemy._laserHitPlayer) {
+      const laserReady = !Number.isFinite(vfx.lastHitTime) || (this.time - vfx.lastHitTime) >= 1;
+
+      // Lasering should tick at most once per second while the player is inside the beam.
+      if (playerInBeam && laserReady) {
         this.applyDamage({
           targetType: "player",
           sourceEntity: enemy,
@@ -7655,7 +7744,6 @@ export class Game {
           bypassMitigation: false,
           canKill: true
         });
-        enemy._laserHitPlayer = true;
         vfx.lastHitTime = this.time;
         
         // Zap burst at player
@@ -7665,11 +7753,6 @@ export class Game {
           this.particlePool.spawn(px, py, Math.cos(angle) * speed, Math.sin(angle) * speed, 0.1, 2, "#06b6d4");
         }
         this.transientVFX.addRing(px, py, 8, 0.08, "#ffffff");
-      }
-      
-      // Reset hit flag when player is no longer in the beam
-      if (!playerInBeam) {
-        enemy._laserHitPlayer = false;
       }
     }
 
@@ -11143,6 +11226,7 @@ export class Game {
       this.damageSkillsUsedThisRun.add("knight_slide");
       const dx = tx - px; const dy = ty - py;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      this.knightSlideCastId = (this.knightSlideCastId || 0) + 1;
       this.knightSlideActive = true;
       this.knightSlideTimer = 0.35;
       this.knightSlideHitIds.clear();
@@ -11536,15 +11620,21 @@ export class Game {
         damage: useDmg
       };
       if (beamStunSec > 0) payload.stunDuration = beamStunSec;
-      createHitbox(SOUL_SIPHON_BEAM_RECT_DEF, payload);
+      const hitbox = createHitbox(SOUL_SIPHON_BEAM_RECT_DEF, payload);
       this.skillEffects.push({
         type: "soulSiphonBeam",
+        hitboxId: hitbox?.id || null,
         x: px,
         y: py,
+        rectX: rectLocal.x,
+        rectY: rectLocal.y,
+        rectWidth: rectLocal.width,
+        rectHeight: rectLocal.height,
         dirX: beamDirX,
         dirY: beamDirY,
         length: beamLength,
         width: beamWidth * beamWidthMult,
+        angleRad: Math.atan2(beamDirY, beamDirX),
         t: 0,
         duration: 0.15
       });
@@ -13228,20 +13318,29 @@ export class Game {
         ctx.lineTo(x1, y1);
         ctx.stroke();
       } else if (eff.type === "soulSiphonBeam") {
-        const sx = eff.x + ox;
-        const sy = eff.y + oy;
-        const len = eff.length ?? 200;
-        const w = eff.width ?? 40;
+        const liveHitbox = eff.hitboxId
+          ? getActiveHitboxes().find((hitbox) => hitbox?.id === eff.hitboxId)
+          : null;
+        const rectX = Number.isFinite(liveHitbox?.x) ? liveHitbox.x : (Number.isFinite(eff.rectX) ? eff.rectX : eff.x);
+        const rectY = Number.isFinite(liveHitbox?.y) ? liveHitbox.y : (Number.isFinite(eff.rectY) ? eff.rectY : ((eff.y ?? 0) - (eff.width ?? 40) / 2));
+        const rectW = Number.isFinite(liveHitbox?.width) ? liveHitbox.width : (eff.rectWidth ?? eff.length ?? 200);
+        const rectH = Number.isFinite(liveHitbox?.height) ? liveHitbox.height : (eff.rectHeight ?? eff.width ?? 40);
         const alpha = 1 - eff.t / (eff.duration ?? 0.15);
-        const angle = Math.atan2(eff.dirY || 0, eff.dirX || 1);
+        const angle = Number.isFinite(liveHitbox?.angleRad)
+          ? liveHitbox.angleRad
+          : (Number.isFinite(eff.angleRad)
+            ? eff.angleRad
+            : Math.atan2(eff.dirY || 0, eff.dirX || 1));
+        const cx = rectX + rectW / 2 + ox;
+        const cy = rectY + rectH / 2 + oy;
         ctx.save();
-        ctx.translate(sx, sy);
+        ctx.translate(cx, cy);
         ctx.rotate(angle);
         ctx.fillStyle = `rgba(180, 160, 255, ${0.25 * alpha})`;
-        ctx.fillRect(0, -w / 2, len, w);
+        ctx.fillRect(-rectW / 2, -rectH / 2, rectW, rectH);
         ctx.strokeStyle = `rgba(200, 180, 255, ${0.8 * alpha})`;
         ctx.lineWidth = 2;
-        ctx.strokeRect(0, -w / 2, len, w);
+        ctx.strokeRect(-rectW / 2, -rectH / 2, rectW, rectH);
         ctx.restore();
       } else if (eff.type === "spiritGroundPulse") {
         const sx = eff.x + ox; const sy = eff.y + oy;
@@ -16339,6 +16438,7 @@ applyGameUIMixin(Game);
 applyGameLevelUpMixin(Game);
 applyGameInputMixin(Game);
 applyGameLootMixin(Game);
+applyGameModLootMixin(Game);
 applyGameCollisionMixin(Game);
 applyGameMapMixin(Game);
 applyGameEventsMixin(Game);

@@ -855,3 +855,173 @@
   letter-spacing: 0.06em;
   text-align: center;
   margin-bottom: 8px;
+}
+
+/* -------- Mod Pack overlay -------- */
+.mod-screen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  background: rgba(5, 6, 10, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mod-screen-overlay.hidden {
+  display: none;
+}
+.mod-screen-box {
+  background: linear-gradient(180deg, #0f172a 0%, #020617 100%);
+  border: 2px solid #475569;
+  border-radius: 12px;
+  padding: 20px 24px;
+  max-width: 520px;
+  width: 92%;
+  max-height: 85vh;
+  overflow: auto;
+}
+.mod-screen-title {
+  margin: 0 0 8px 0;
+  font-size: 22px;
+  color: #e2e8f0;
+}
+.mod-screen-shards {
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #94a3b8;
+}
+.mod-screen-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.mod-screen-skills-label,
+.mod-screen-pack-label {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+.mod-screen-skills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mod-screen-skill-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.mod-screen-skill-name {
+  min-width: 100px;
+  font-size: 14px;
+  color: #e2e8f0;
+}
+.mod-screen-sockets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.mod-screen-socket {
+  padding: 6px 10px;
+  font-size: 12px;
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+.mod-screen-socket:hover {
+  background: #334155;
+  border-color: #64748b;
+}
+.mod-screen-socket.selected {
+  border-color: #a78bfa;
+  background: rgba(124, 58, 237, 0.25);
+}
+.mod-screen-pack-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.mod-screen-pack-item {
+  padding: 8px 12px;
+  font-size: 13px;
+  text-align: left;
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+.mod-screen-pack-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mod-screen-pack-item-row .mod-screen-pack-item {
+  flex: 1;
+  min-width: 120px;
+}
+.mod-screen-pack-item:hover {
+  background: #334155;
+}
+.mod-screen-salvage-btn,
+.mod-screen-reroll-btn {
+  padding: 4px 8px;
+  font-size: 11px;
+  background: #334155;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  color: #94a3b8;
+  cursor: pointer;
+}
+.mod-screen-salvage-btn:hover,
+.mod-screen-reroll-btn:hover {
+  background: #475569;
+  color: #e2e8f0;
+}
+.mod-screen-pack-row {
+  font-size: 13px;
+  color: #94a3b8;
+  padding: 4px 0;
+}
+.mod-screen-unequip {
+  color: #94a3b8;
+  font-style: italic;
+}
+.mod-screen-hint {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0 0 8px 0;
+}
+.mod-screen-close {
+  margin-top: 16px;
+  padding: 8px 20px;
+  font-size: 14px;
+  background: #334155;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+.mod-screen-close:hover {
+  background: #475569;
+}
+.mod-screen-button {
+  position: fixed;
+  z-index: 30;
+  padding: 6px 12px;
+  font-size: 12px;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid #475569;
+  border-radius: 6px;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+.mod-screen-button:hover {
+  background: #334155;
+}

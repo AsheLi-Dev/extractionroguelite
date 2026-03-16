@@ -27,6 +27,10 @@ function cloneEntry(entry) {
   };
 }
 
+function hasValidEntityId(entityId) {
+  return entityId !== null && entityId !== undefined && entityId !== '';
+}
+
 function compareStrength(definition, nextMagnitude, currentMagnitude) {
   const mode = definition?.compareMagnitude || 'higher';
   const next = Number(nextMagnitude);
@@ -122,7 +126,7 @@ export class StatusManager {
 
   applyStatus(entityId, statusData, world = null) {
     const statusId = statusData?.statusId || statusData?.id;
-    if (!entityId || !statusId) return null;
+    if (!hasValidEntityId(entityId) || !statusId) return null;
     const definition = this.getDefinition(statusId);
     if (!definition) return null;
 
@@ -273,7 +277,7 @@ export class StatusManager {
     if (!entityStore) return null;
     const current = entityStore.get(statusId);
     if (!current || Array.isArray(current) || typeof updater !== 'function') return null;
-    const next = updater(current, this.getDefinition(statusId)) || current;
+    const next = updater(current, this.getDefinition(statusId));
     if (!next || (Number(next.remaining) || 0) <= 0 || (Number(next.stacks) || 0) <= 0) {
       this._setStatus(entityId, statusId, null);
       return null;

@@ -138,7 +138,6 @@ export const MAP_DEFS = [
     wallColor: "#2d4a2e",
     wallAccent: "#3d6b3e",
     exits: [
-      { x: 0, y: MAP_HEIGHT / 2 - 60, w: WALL_THICKNESS + 60, h: 120, targetMapId: 0, spawnSide: "right" },
       { x: MAP_WIDTH - WALL_THICKNESS - 80, y: MAP_HEIGHT / 2 - 60, w: 80, h: 120, targetMapId: 2, spawnSide: "left" }
     ],
     enemyCount: 8,
@@ -154,7 +153,6 @@ export const MAP_DEFS = [
     wallColor: "#2a2a3e",
     wallAccent: "#3a3a4e",
     exits: [
-      { x: 0, y: MAP_HEIGHT / 2 - 60, w: WALL_THICKNESS + 60, h: 120, targetMapId: 1, spawnSide: "right" },
       { x: MAP_WIDTH - WALL_THICKNESS - 80, y: MAP_HEIGHT / 2 - 60, w: 80, h: 120, targetMapId: 3, spawnSide: "left" }
     ],
     enemyCount: 10,
@@ -170,7 +168,6 @@ export const MAP_DEFS = [
     wallColor: "#4a4a5a",
     wallAccent: "#6a6a7a",
     exits: [
-      { x: 0, y: MAP_HEIGHT / 2 - 60, w: WALL_THICKNESS + 60, h: 120, targetMapId: 2, spawnSide: "right" },
       { x: MAP_WIDTH - WALL_THICKNESS - 80, y: MAP_HEIGHT / 2 - 60, w: 80, h: 120, targetMapId: 4, spawnSide: "left" }
     ],
     enemyCount: 12,
@@ -185,9 +182,7 @@ export const MAP_DEFS = [
     floorPattern: "cracked",
     wallColor: "#4a4035",
     wallAccent: "#6a5a45",
-    exits: [
-      { x: 0, y: MAP_HEIGHT / 2 - 60, w: WALL_THICKNESS + 60, h: 120, targetMapId: 3, spawnSide: "right" }
-    ],
+    exits: [],
     enemyCount: 16,
     enemyScale: { hp: 2.5, attack: 1.8, speed: 1.5 },
     lootQuality: 0.85,
@@ -211,9 +206,55 @@ export const BIOME_MAP_DEF = {
   lootQuality: 0.3,
 };
 
+/** Deterministic forest-biome fixture used by browser bots and dev validation runs. */
+export const FOREST_BIOME_TEST_MAP_DEF = {
+  id: 'forest_biome_test',
+  name: 'Forest Biome Test Map',
+  number: 0,
+  floorColor: '#0d2818',
+  floorPattern: 'grass',
+  wallColor: '#2d4a2e',
+  wallAccent: '#3d6b3e',
+  exits: [],
+  enemyCount: 0,
+  enemyScale: { hp: 1, attack: 1, speed: 1 },
+  lootQuality: 0.3,
+};
+
+/** Test-map biome preset: 8x4 biome cells, each cell 30x30 tiles. */
+export const PRESET_FOREST_BIOME_TEST = {
+  W: 240,
+  H: 120,
+  config: {
+    borderThickness: 1,
+    corridorWidth: 10,
+    waypointCount: 6,
+    blockerCount: 0,
+    roomStampCount: 0,
+    roomMinSize: 2,
+    roomMaxSize: 5,
+    waypointYMin: 30,
+    waypointYMax: 89,
+  },
+};
+
 /** 4x4 biome grid: 4 columns, 4 rows. Middle two rows = 8 cells (start/exit/etc.); top/bottom rows = 1–2 random cells each, rest empty (walled). */
 export const BIOME_GRID_COLS = 4;
 export const BIOME_GRID_ROWS = 4;
+
+export function getBiomeGridDimensions(world = null) {
+  const grid = world?.archetypeGrid?.grid;
+  if (Array.isArray(grid) && grid.length > 0 && Array.isArray(grid[0]) && grid[0].length > 0) {
+    return {
+      cols: grid[0].length,
+      rows: grid.length,
+    };
+  }
+  return {
+    cols: BIOME_GRID_COLS,
+    rows: BIOME_GRID_ROWS,
+  };
+}
 
 /** Subarea system: 20×20 grid of sub-archetypes within a single 30×30 (tile) biome cell. Only one subarea per cell; some archetypes have none. */
 export const SUBAREA_GRID_SIZE = 20;
@@ -393,13 +434,38 @@ export function buildArchetypeGrid(world) {
   return { grid, startCell, exitCell };
 }
 
+export function buildForestBiomeTestArchetypeGrid(world) {
+  void world;
+  const cols = 8;
+  const pickActiveCols = () => {
+    const count = Math.random() < 0.5 ? 1 : 2;
+    const indices = Array.from({ length: cols }, (_, index) => index);
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    return indices.slice(0, count);
+  };
+  const topActiveCols = new Set(pickActiveCols());
+  const bottomActiveCols = new Set(pickActiveCols());
+  return {
+    grid: [
+      Array.from({ length: cols }, (_, col) => topActiveCols.has(col) ? BIOME_ARCHETYPE.OPEN_SPACE : BIOME_ARCHETYPE.EMPTY),
+      [BIOME_ARCHETYPE.START, BIOME_ARCHETYPE.OPEN_SPACE, BIOME_ARCHETYPE.WOODS, BIOME_ARCHETYPE.RUINS, BIOME_ARCHETYPE.OPEN_SPACE, BIOME_ARCHETYPE.WOODS, BIOME_ARCHETYPE.CORRIDORS, BIOME_ARCHETYPE.EXIT],
+      [BIOME_ARCHETYPE.EMPTY, BIOME_ARCHETYPE.RUINS, BIOME_ARCHETYPE.VAULT, BIOME_ARCHETYPE.WOODS, BIOME_ARCHETYPE.OPEN_SPACE, BIOME_ARCHETYPE.RUINS, BIOME_ARCHETYPE.MINIBOSS, BIOME_ARCHETYPE.EMPTY],
+      Array.from({ length: cols }, (_, col) => bottomActiveCols.has(col) ? BIOME_ARCHETYPE.OPEN_SPACE : BIOME_ARCHETYPE.EMPTY)
+    ],
+    startCell: { col: 0, row: 1 },
+    exitCell: { col: 7, row: 1 }
+  };
+}
+
 /**
  * Get cell (col, row) for a pixel position. col in [0, COLS-1], row in [0, ROWS-1].
  */
 export function getBiomeCellAtPixel(world, x, y) {
   if (!world.archetypeGrid) return null;
-  const cols = BIOME_GRID_COLS;
-  const rows = BIOME_GRID_ROWS;
+  const { cols, rows } = getBiomeGridDimensions(world);
   const cellPixelsX = world.width / cols;
   const cellPixelsY = world.height / rows;
   const col = Math.max(0, Math.min(cols - 1, Math.floor(x / cellPixelsX)));
@@ -422,8 +488,7 @@ export function getArchetypeAtPixel(world, x, y) {
  * Get pixel bounds for a cell { col, row }: { x, y, w, h }.
  */
 export function getBiomeCellBounds(world, col, row) {
-  const cols = BIOME_GRID_COLS;
-  const rows = BIOME_GRID_ROWS;
+  const { cols, rows } = getBiomeGridDimensions(world);
   const cellPixelsX = world.width / cols;
   const cellPixelsY = world.height / rows;
   return {
@@ -741,14 +806,15 @@ export function applyBiomeTopBottomWalls(world, archetypeGrid, mapSeed = 0) {
   if (!grid?.length) return;
   const W = grid[0].length;
   const H = grid.length;
-  const cellW = Math.floor(W / BIOME_GRID_COLS);
-  const cellH = Math.floor(H / BIOME_GRID_ROWS);
+  const { cols, rows } = getBiomeGridDimensions(world);
+  const cellW = Math.floor(W / cols);
+  const cellH = Math.floor(H / rows);
   const tileSize = world.tileSize || 32;
 
   const blockerCells = [];
   for (const row of [0, 3]) {
     if (row >= data.grid.length) continue;
-    for (let col = 0; col < BIOME_GRID_COLS; col++) {
+    for (let col = 0; col < cols; col++) {
       if (data.grid[row][col] !== BIOME_ARCHETYPE.EMPTY) continue;
       blockerCells.push({ col, row });
     }
@@ -815,10 +881,12 @@ export function buildCobblestonePath(world, archetypeGrid, rng = Math.random) {
   const W = grid[0].length;
   const H = grid.length;
   const tileSize = world.tileSize || 32;
-  const cellW = Math.floor(W / BIOME_GRID_COLS);
-  const cellH = Math.floor(H / BIOME_GRID_ROWS);
+  const { cols, rows } = getBiomeGridDimensions(world);
+  const cellW = Math.floor(W / cols);
+  const cellH = Math.floor(H / rows);
   const startCell = archetypeGrid.startCell;
   const exitCell = archetypeGrid.exitCell;
+  void rows;
 
   function cellCenterTile(col, row) {
     const gx = Math.floor(col * cellW + cellW / 2);
@@ -932,10 +1000,11 @@ export function applyCorridorCellLayouts(world, archetypeGrid, rng) {
   world.corridorMiddlePoints = world.corridorMiddlePoints || {};
   const W = grid[0].length;
   const H = grid.length;
-  const cellW = Math.floor(W / BIOME_GRID_COLS);
-  const cellH = Math.floor(H / BIOME_GRID_ROWS);
-  for (let row = 0; row < BIOME_GRID_ROWS; row++) {
-    for (let col = 0; col < BIOME_GRID_COLS; col++) {
+  const { cols, rows } = getBiomeGridDimensions(world);
+  const cellW = Math.floor(W / cols);
+  const cellH = Math.floor(H / rows);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
       if (data.grid[row][col] !== BIOME_ARCHETYPE.CORRIDORS) continue;
       const originGx = col * cellW;
       const originGy = row * cellH;
@@ -959,8 +1028,9 @@ export function applyLostCampCellLayouts(world, archetypeGrid) {
   const tileSize = world.tileSize || 32;
   const stampW = LOST_CAMP_TILE_WIDTH * LOST_CAMP_TILE_SIZE;
   const stampH = LOST_CAMP_TILE_HEIGHT * LOST_CAMP_TILE_SIZE;
-  for (let row = 0; row < BIOME_GRID_ROWS; row++) {
-    for (let col = 0; col < BIOME_GRID_COLS; col++) {
+  const { cols, rows } = getBiomeGridDimensions(world);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
       if (data.grid[row][col] !== BIOME_ARCHETYPE.LOST_CAMPS) continue;
       const bounds = getBiomeCellBounds(world, col, row);
       const ox = bounds.x;
@@ -1004,8 +1074,9 @@ export function applyVaultCellLayouts(world, archetypeGrid, rng = Math.random) {
   const tileSize = world.tileSize || 32;
   const radiusPx = VAULT_CIRCLE_TILE_RADIUS * tileSize;
   let id = 1;
-  for (let row = 0; row < BIOME_GRID_ROWS; row++) {
-    for (let col = 0; col < BIOME_GRID_COLS; col++) {
+  const { cols, rows } = getBiomeGridDimensions(world);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
       if (data.grid[row][col] !== BIOME_ARCHETYPE.VAULT) continue;
       const bounds = getBiomeCellBounds(world, col, row);
       const inset = radiusPx + tileSize;
@@ -1038,8 +1109,9 @@ export function applyVaultTreasureDecorations(world, archetypeGrid, rng = Math.r
   const margin = radiusPx + tileSize * 2;
   const clusterSpread = tileSize * 2;
 
-  for (let row = 0; row < BIOME_GRID_ROWS; row++) {
-    for (let col = 0; col < BIOME_GRID_COLS; col++) {
+  const { cols, rows } = getBiomeGridDimensions(world);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
       if (data.grid[row][col] !== BIOME_ARCHETYPE.VAULT) continue;
       const bounds = getBiomeCellBounds(world, col, row);
       const inner = {
@@ -1099,8 +1171,9 @@ export function applyMinibossCellDecorations(world, archetypeGrid, rng = Math.ra
   world.minibossFlowers = [];
   const flowerSize = 32;
 
-  for (let row = 0; row < BIOME_GRID_ROWS; row++) {
-    for (let col = 0; col < BIOME_GRID_COLS; col++) {
+  const { cols, rows } = getBiomeGridDimensions(world);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
       if (data.grid[row][col] !== BIOME_ARCHETYPE.MINIBOSS) continue;
       const bounds = getBiomeCellBounds(world, col, row);
       const margin = (world.wallThickness || 32) + 40;

@@ -662,7 +662,7 @@ export class EnemySystem {
     let groupSize = 1; // Default
     if (tier === "minion") {
       if (sizeCategory === "small") {
-        groupSize = 4 + Math.floor(Math.random() * 3); // 4-6
+        groupSize = 4 + Math.floor(Math.random() * 2); // 4-5
       } else if (sizeCategory === "medium") {
         groupSize = 2 + Math.floor(Math.random() * 2); // 2-3
       } else {
@@ -671,7 +671,7 @@ export class EnemySystem {
       }
     } else if (tier === "elite") {
       if (sizeCategory === "small") {
-        groupSize = 2 + Math.floor(Math.random() * 3); // 2-4
+        groupSize = 2 + Math.floor(Math.random() * 2); // 2-3
       } else if (sizeCategory === "medium") {
         groupSize = 1 + Math.floor(Math.random() * 2); // 1-2
       } else {
@@ -794,22 +794,20 @@ export class EnemySystem {
               game._goblinKingSpawnRolled = true;
               if (Math.random() < 0.05) this.spawnGoblinKingEncounter(game);
             }
-            for (let i = 0; i < 4; i++) this.spawnGroup('minion', game);
+            for (let i = 0; i < 3; i++) this.spawnGroup('minion', game);
             if (Math.random() < 0.7) this.spawnGroup('elite', game);
             if (Math.random() < 0.5) this.spawnGroup('elite', game);
           } else if (archetype === BIOME_ARCHETYPE.CORRIDORS) {
-            const n = 2 + Math.floor(Math.random() * 2);
-            for (let i = 0; i < n; i++) {
-              this.spawnGroup(Math.random() < 0.7 ? 'minion' : 'elite', game, { onlySizeCategory: 'small' });
-            }
+            for (let i = 0; i < 2; i++) this.spawnGroup('elite', game, { onlySizeCategory: 'small' });
           } else if (archetype === BIOME_ARCHETYPE.LOST_CAMPS) {
             for (let i = 0; i < 3; i++) this.spawnGroup('elite', game);
             if (Math.random() < 0.5) this.spawnGroup('elite', game);
           } else if (archetype === BIOME_ARCHETYPE.MINIBOSS) {
             this.spawnGroup('miniBoss', game);
           } else if (archetype === BIOME_ARCHETYPE.VAULT) {
-            const n = 1 + Math.floor(Math.random() * 2);
-            for (let i = 0; i < n; i++) this.spawnGroup(Math.random() < 0.5 ? 'minion' : 'elite', game);
+            this.spawnGroup('elite', game);
+            this.spawnGroup('elite', game);
+            this.spawnGroup('minion', game);
           } else if (archetype === BIOME_ARCHETYPE.RUINS) {
             for (let i = 0; i < 3; i++) this.spawnGroup(Math.random() < 0.6 ? 'minion' : 'elite', game);
           } else if (archetype === BIOME_ARCHETYPE.WOODS) {

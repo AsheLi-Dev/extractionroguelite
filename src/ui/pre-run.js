@@ -735,6 +735,7 @@ export function confirmSkillSelectAndStart() {
   if (mainMenu) mainMenu.classList.add("hidden");
   if (gameRoot) gameRoot.classList.remove("hidden");
   document.getElementById("pause-toggle")?.classList.remove("hidden");
+  document.getElementById("mod-screen-button")?.classList.remove("hidden");
   if (SHOW_DEV_CONTROLS) {
     document.getElementById("dev-toggle")?.classList.remove("hidden");
   }

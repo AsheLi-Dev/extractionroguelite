@@ -388,11 +388,29 @@ export function applyGameLootMixin(Game) {
         this.searchableProps.push(chest);
         this.searchablePropNextId = chestId + 1;
       }
+      if (typeof this.tryRollModDropForEnemy === "function") {
+        this.tryRollModDropForEnemy(enemy);
+      }
       return martyrMinions;
     },
 
     handleLootPickup(lootItem) {
       handleAncestorOnLootPickup(this, lootItem);
+      if (lootItem.type === "ModCard" && lootItem.modId) {
+        const added = this.addModToInventory(lootItem.modId);
+        if (added) {
+          if (typeof playSfx === "function") playSfx("collectGold");
+        } else {
+          if (typeof this.showModPackFullToast === "function") {
+            this.showModPackFullToast(lootItem.modId);
+          }
+          const pos = lootItem.position || lootItem.displayPosition;
+          if (pos && typeof this.spawnModDrop === "function") {
+            this.spawnModDrop(pos.x, pos.y, lootItem.modId);
+          }
+        }
+        return;
+      }
       if (lootItem.type === "Gold" && lootItem.goldAmount > 0) {
         addGold(this, lootItem.goldAmount, "loot_pickup", {});
         if (typeof playSfx === "function") playSfx("collectGold");

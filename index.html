@@ -560,6 +560,24 @@
       <button id="inventory-button" class="inventory-button">Inventory (I)</button>
       <button id="build-log-toggle" class="build-log-toggle" title="Build log">Build</button>
       <button id="pause-toggle" class="pause-toggle">Pause</button>
+      <button id="mod-screen-button" class="mod-screen-button" title="Mod Pack (M)">Mods (M)</button>
+      <div id="mod-screen-overlay" class="mod-screen-overlay hidden">
+        <div class="mod-screen-box">
+          <h2 class="mod-screen-title">Mod Pack</h2>
+          <div class="mod-screen-shards">Mod Shards: <span id="mod-screen-shards">0</span></div>
+          <div class="mod-screen-layout">
+            <div class="mod-screen-skills">
+              <div class="mod-screen-skills-label">Skills &amp; sockets</div>
+              <div id="mod-screen-skills-list" class="mod-screen-skills-list"></div>
+            </div>
+            <div class="mod-screen-pack">
+              <div class="mod-screen-pack-label">Mod Pack — click a socket to equip</div>
+              <div id="mod-screen-pack-list" class="mod-screen-pack-list"></div>
+            </div>
+          </div>
+          <button id="mod-screen-close" class="mod-screen-close">Close</button>
+        </div>
+      </div>
       <div id="pause-enemy-panel" class="pause-enemy-panel hidden">
         <div class="pause-enemy-panel-title">Enemy Test Spawn</div>
         <div class="pause-enemy-panel-row">

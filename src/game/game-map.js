@@ -2,7 +2,7 @@
 // Map transitions, obstacles
 // This module adds methods to Game.prototype when imported
 
-import { MAP_DEFS, createProceduralWorld, PRESET_MEDIUM, getBiomeCellBounds, BIOME_ARCHETYPE, BIOME_GRID_COLS, BIOME_GRID_ROWS } from '../data/maps.js';
+import { MAP_DEFS, createProceduralWorld, PRESET_MEDIUM, PRESET_BIOME, buildArchetypeGrid, buildAllSubareaGrids, buildSubareaZonesForWorld, applyCorridorCellLayouts, applyBiomeTopBottomWalls, buildCobblestonePath, applyLostCampCellLayouts, applyVaultCellLayouts, applyVaultTreasureDecorations, applyMinibossCellDecorations, getBiomeCellBounds, getBiomeGridDimensions, BIOME_ARCHETYPE, BIOME_GRID_COLS, BIOME_GRID_ROWS } from '../data/maps.js';
 import { REST_ROOM_LAYOUT, REST_ROOM_MAP_DEF, REST_ROOM_MAP_ID, REST_ROOM_WORLD_PRESET, isRestRoomMapId } from '../data/rest-room.js';
 import { OBSTACLE_TYPES } from '../data/obstacles.js';
 import { BREAKABLE_DEFS } from '../data/breakables-data.js';
@@ -19,12 +19,62 @@ import { LootItem } from '../entities/loot.js';
 import { hasTalent } from '../data/talents.js';
 import { preloadSound } from '../audio.js';
 import { Totem } from '../entities/totem.js';
+import { mulberry32 } from '../map-gen-blockers.js';
+import { LOST_CAMP_TILESET } from '../data/lost-camp-data.js';
+import { setMinimapWorld } from '../ui/minimap.js';
 
 export function applyGameMapMixin(Game) {
   Object.assign(Game.prototype, {
     getMapDefById(mapId) {
       if (isRestRoomMapId(mapId)) return REST_ROOM_MAP_DEF;
       return MAP_DEFS.find((m) => m.id === mapId) || null;
+    },
+
+    shouldUseBiomeMapGeneration(mapId, options = {}) {
+      const bossMapId = MAP_DEFS[MAP_DEFS.length - 1]?.id;
+      if (options?.tutorial === true) return false;
+      if (isRestRoomMapId(mapId)) return false;
+      const numericMapId = Number(mapId);
+      if (!Number.isFinite(numericMapId)) return false;
+      return numericMapId !== bossMapId;
+    },
+
+    buildBiomeWorldForMap(mapDef, seed) {
+      const { world } = createProceduralWorld(PRESET_BIOME, seed, mapDef);
+      world.archetypeGrid = buildArchetypeGrid(world);
+      buildAllSubareaGrids(world, world.archetypeGrid, mulberry32(seed ^ 0x7a3f));
+      buildSubareaZonesForWorld(world, world.archetypeGrid, mulberry32(seed ^ 0xc4d2), { chancePerCell: 0.5, totemWeight: 0.4, ambushWeight: 0.4 });
+      applyCorridorCellLayouts(world, world.archetypeGrid, mulberry32(seed));
+      applyBiomeTopBottomWalls(world, world.archetypeGrid, seed);
+      buildCobblestonePath(world, world.archetypeGrid, mulberry32(seed ^ 0x8f2a));
+      applyLostCampCellLayouts(world, world.archetypeGrid);
+      applyVaultCellLayouts(world, world.archetypeGrid, mulberry32(seed ^ 0x9b3c));
+      applyVaultTreasureDecorations(world, world.archetypeGrid, mulberry32(seed ^ 0x9b3c));
+      applyMinibossCellDecorations(world, world.archetypeGrid, mulberry32(seed ^ 0x5a17));
+      const ag = world.archetypeGrid;
+      if (ag?.startCell != null) {
+        const bounds = getBiomeCellBounds(world, ag.startCell.col, ag.startCell.row);
+        const ts = world.tileSize || 32;
+        const playerSize = 100;
+        world.startPixel = {
+          x: bounds.x + bounds.w / 2 - playerSize / 2 - ts,
+          y: bounds.y + bounds.h / 2 - ts / 2
+        };
+      }
+      if (ag?.grid) {
+        for (let row = 0; row < ag.grid.length; row++) {
+          for (let col = 0; col < ag.grid[row].length; col++) {
+            if (ag.grid[row][col] === BIOME_ARCHETYPE.MINIBOSS) {
+              world.minibossBounds = getBiomeCellBounds(world, col, row);
+              row = ag.grid.length;
+              break;
+            }
+          }
+        }
+      }
+      world.lostCampAtlas = new Image();
+      world.lostCampAtlas.src = LOST_CAMP_TILESET.image;
+      return world;
     },
 
     shouldVisitRestRoomBeforeMap(targetMapId, spawnSide) {
@@ -798,8 +848,9 @@ export function applyGameMapMixin(Game) {
         return weights[0].id;
       };
       let placed = 0;
-      for (let row = 0; row < BIOME_GRID_ROWS; row++) {
-        for (let col = 0; col < BIOME_GRID_COLS; col++) {
+      const { cols, rows } = getBiomeGridDimensions(this.world);
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
           const archetype = data.grid[row][col];
           if (archetype === BIOME_ARCHETYPE.START || archetype === BIOME_ARCHETYPE.EXIT) continue;
           if (archetype === BIOME_ARCHETYPE.LOST_CAMPS || archetype === BIOME_ARCHETYPE.MINIBOSS) continue;
@@ -842,6 +893,7 @@ export function applyGameMapMixin(Game) {
       const WALL = 1;
       const FLOOR = 0;
       const nextId = this.searchablePropNextId ?? 1;
+      const { cols, rows } = getBiomeGridDimensions(this.world);
       const weights = [
         { typeId: 'crate', w: 45 },
         { typeId: 'locker', w: 25 },
@@ -925,8 +977,8 @@ export function applyGameMapMixin(Game) {
           clusterPlaced++;
         }
       };
-      for (let row = 0; row < BIOME_GRID_ROWS; row++) {
-        for (let col = 0; col < BIOME_GRID_COLS; col++) {
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
           const archetype = data.grid[row][col];
           if (archetype === BIOME_ARCHETYPE.START || archetype === BIOME_ARCHETYPE.EXIT) continue;
           if (archetype === BIOME_ARCHETYPE.MINIBOSS) continue;
@@ -1323,6 +1375,7 @@ export function applyGameMapMixin(Game) {
       if (this.world?.archetypeGrid?.grid) {
         const data = this.world.archetypeGrid;
         const tileSize = this.world.tileSize || 32;
+        const { cols, rows } = getBiomeGridDimensions(this.world);
         const npcDefs = Object.values(NPC_DEFS || {}).filter((d) => d && d.type && d.type !== NPC_DEFS.rogue?.type);
         const pickNpcDef = () => npcDefs[Math.floor(Math.random() * npcDefs.length)];
 
@@ -1383,8 +1436,8 @@ export function applyGameMapMixin(Game) {
           });
         };
 
-        for (let row = 0; row < BIOME_GRID_ROWS; row++) {
-          for (let col = 0; col < BIOME_GRID_COLS; col++) {
+        for (let row = 0; row < rows; row++) {
+          for (let col = 0; col < cols; col++) {
             const archetype = data.grid[row][col];
             if (archetype === BIOME_ARCHETYPE.LOST_CAMPS) {
               trySpawnNpcInCell(row, col);
@@ -1540,21 +1593,27 @@ export function applyGameMapMixin(Game) {
 
       this.currentMapId = targetMapId;
       this.currentMap = targetMap;
+      this.runModDropsThisRoom = 0;
 
       if (this.useProceduralMap) {
         const seed = (this.proceduralSeed ?? Date.now()) + Number(targetMapId) * 1000;
-        const preset = isRestRoom
-          ? { W: REST_ROOM_WORLD_PRESET.W, H: REST_ROOM_WORLD_PRESET.H, config: PRESET_MEDIUM.config }
-          : targetMapId === 4
-          ? { W: 30, H: 30, config: PRESET_MEDIUM.config }
-          : PRESET_MEDIUM;
-        const { world } = createProceduralWorld(preset, seed, targetMap);
-        this.world = world;
-        if (this.enemySystem) this.enemySystem.world = world;
-        if (this.lootSystem) this.lootSystem.world = world;
+        if (this.shouldUseBiomeMapGeneration(targetMapId, { tutorial: this.tutorialMode })) {
+          this.world = this.buildBiomeWorldForMap(targetMap, seed);
+        } else {
+          const preset = isRestRoom
+            ? { W: REST_ROOM_WORLD_PRESET.W, H: REST_ROOM_WORLD_PRESET.H, config: PRESET_MEDIUM.config }
+            : targetMapId === 4
+            ? { W: 30, H: 30, config: PRESET_MEDIUM.config }
+            : PRESET_MEDIUM;
+          const { world } = createProceduralWorld(preset, seed, targetMap);
+          this.world = world;
+        }
+        if (this.enemySystem) this.enemySystem.world = this.world;
+        if (this.lootSystem) this.lootSystem.world = this.world;
       } else {
         this.world.setTheme(targetMap);
       }
+      setMinimapWorld(this.world);
 
       this.hazardSystem = isRestRoom ? null : new HazardSystem(this.world, this.conditions);
 
@@ -1593,9 +1652,15 @@ export function applyGameMapMixin(Game) {
           this.enemySystem.respawnQueue = [];
         } else {
           if (!isBossRoom) this.spawnMapNpcsForVisit(targetMapId);
-          this.spawnObstacles(targetMapId);
-          this.spawnBreakablesForMap(targetMap, () => Math.random());
-          this.spawnSearchableProps(targetMap, () => Math.random());
+          if (this.world.archetypeGrid) {
+            this.spawnObstaclesForBiome();
+            this.spawnBreakablesForBiome();
+            this.spawnSearchablePropsForBiome();
+          } else {
+            this.spawnObstacles(targetMapId);
+            this.spawnBreakablesForMap(targetMap, () => Math.random());
+            this.spawnSearchableProps(targetMap, () => Math.random());
+          }
         }
         if (!isRestRoom && this.world.vaultZones && this.world.vaultZones.length) {
           for (const v of this.world.vaultZones) {

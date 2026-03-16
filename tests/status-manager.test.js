@@ -115,6 +115,16 @@ describe("StatusManager", () => {
     assert.strictEqual(manager.hasStatus("enemy-1", "slow"), false);
   });
 
+  it("removes a status when updateStatus returns null", async () => {
+    const { StatusManager, STATUS_DEFS } = await loadStatusModules();
+    const manager = new StatusManager(STATUS_DEFS);
+    const world = { time: 4 };
+    manager.applyStatus("enemy-1", { statusId: "burn", duration: 2, magnitude: 5, stacks: 1 }, world);
+    const updated = manager.updateStatus("enemy-1", "burn", () => null);
+    assert.strictEqual(updated, null);
+    assert.strictEqual(manager.hasStatus("enemy-1", "burn"), false);
+  });
+
   it("exposes read helpers for move speed and stun", async () => {
     const { StatusManager, STATUS_DEFS } = await loadStatusModules();
     const manager = new StatusManager(STATUS_DEFS);

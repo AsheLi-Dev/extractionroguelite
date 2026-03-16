@@ -37,6 +37,19 @@ export const DELIVERY_TRIGGER_MOD_IDS = MODIFICATION_CARD_DEFS.filter(
 export function getModsForSkillSlot(game, slot) {
   const skillId = game.skills?.[slot];
   if (!skillId) return [];
+  // In-run: use run mod state (dropped/equipped mods this run)
+  const runSkillMods = game.runSkillMods;
+  if (runSkillMods && typeof runSkillMods === 'object' && Array.isArray(runSkillMods[skillId])) {
+    const list = runSkillMods[skillId].filter(Boolean);
+    const overrides = game.devModOverrides?.[slot];
+    if (Array.isArray(overrides) && overrides.length > 0) {
+      const set = new Set(list);
+      for (const id of overrides) set.add(id);
+      return [...set];
+    }
+    return list;
+  }
+  // Pre-run / legacy: use persisted sockets from skill library
   const sockets = getSkillModSockets();
   const list = (sockets[skillId] || []).filter(Boolean);
   const overrides = game.devModOverrides?.[slot];

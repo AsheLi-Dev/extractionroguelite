@@ -25,9 +25,9 @@ import {
 import {
   showPreRunScreen, setPreRunDifficulty, rerollPreRunConditions,
   acceptPreRunAndStart, confirmSkillSelectAndStart, clearSkillSelectUpgrades,
-  setStartGameCallback, showSkillSelectScreen,
-  setPendingDevMode, setSkillSelectBackTarget, getSkillSelectBackTarget,
-  setPreRunStateForDevMode
+  setStartGameCallback,
+  setPendingDevMode, getSkillSelectBackTarget,
+  setPreRunStateForDevMode, renderPreRunScreen
 } from "./ui/pre-run.js";
 import { showSelectHeroScreen, hideSelectHeroScreen, setSelectHeroBackTarget } from "./ui/select-hero.js";
 import { installPillarSystem } from "./game/game-pillar.js";
@@ -47,6 +47,7 @@ import { installRiteOfFear } from "./rites/rite-of-fear.js";
 import { installRiteOfMonstrosity } from "./rites/rite-of-monstrosity.js";
 import { installRiteOfTorment } from "./rites/rite-of-torment.js";
 import { installRiteOfSovereign } from "./rites/rite-of-sovereign.js";
+import { DEFAULT_PLAYABLE_CHARACTER_ID } from "./data/playable-characters.js";
 
 let currentGame = null;
 let menuPillarGame = null;
@@ -91,6 +92,7 @@ function queueSceneTransition(task, options = {}) {
 function setRunHudVisibility(visible) {
   const ids = [
     "pause-toggle",
+    "mod-screen-button",
     "inventory-button",
     "build-log-toggle"
   ];
@@ -280,6 +282,7 @@ function startGameImmediate(legacyItems = [], runConfig = {}) {
   document.querySelector(".game-root")?.classList.remove("hidden");
   if (runConfig.tutorial === true) {
     document.getElementById("pause-toggle")?.classList.add("hidden");
+    document.getElementById("mod-screen-button")?.classList.add("hidden");
     document.getElementById("dev-toggle")?.classList.add("hidden");
     document.getElementById("inventory-button")?.classList.add("hidden");
   }
@@ -349,6 +352,19 @@ function startGame(legacyItems = [], runConfig = {}) {
   void queueSceneTransition(() => {
     startGameImmediate(legacyItems, runConfig);
   }, { outDurationMs: 120, inDurationMs: 160 });
+}
+
+function startForestBiomeTestMap() {
+  startGame([], {
+    difficulty: 1,
+    conditions: [],
+    devMode: true,
+    testMapId: "forest_biome_0",
+    attackType: "projectile",
+    secondaryAttackType: "projectile",
+    selectedUpgrades: [],
+    playableCharacterId: DEFAULT_PLAYABLE_CHARACTER_ID
+  });
 }
 
 function startRiteRun(riteId) {
@@ -455,6 +471,7 @@ function bootstrap() {
         document.getElementById("main-menu")?.classList.add("hidden");
         document.querySelector(".game-root")?.classList.remove("hidden");
         document.getElementById("pause-toggle")?.classList.add("hidden");
+        document.getElementById("mod-screen-button")?.classList.add("hidden");
         if (SHOW_DEV_CONTROLS) {
           document.getElementById("dev-toggle")?.classList.add("hidden");
         }
@@ -483,18 +500,13 @@ function bootstrap() {
     if (SHOW_DEV_MENU && devModeBtn) {
       devModeBtn.addEventListener("click", () => {
         setPendingDevMode(true);
+        openPreRunFrom("menu", []);
         setPreRunStateForDevMode();
-        setSkillSelectBackTarget("menu");
-        document.getElementById("main-menu")?.classList.add("hidden");
-        document.querySelector(".game-root")?.classList.add("hidden");
-        document.getElementById("pause-toggle")?.classList.add("hidden");
-        if (SHOW_DEV_CONTROLS) {
-          document.getElementById("dev-toggle")?.classList.add("hidden");
-        }
-        document.getElementById("inventory-button")?.classList.add("hidden");
-        showSkillSelectScreen();
+        renderPreRunScreen();
       });
     }
+
+    window.startForestBiomeTestMap = () => startForestBiomeTestMap();
 
     const legacyVaultBtn = document.getElementById("main-menu-legacy-vault");
     if (legacyVaultBtn) {
