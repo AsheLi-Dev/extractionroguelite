@@ -3,7 +3,19 @@
 // This module adds methods to Game.prototype when imported
 
 import { escapeHtml } from '../utils.js';
-import { EQUIPMENT_BASE_STAT, EQUIPMENT_SECONDARY_BASE, MODIFIER_POOL, LOCAL_STAT_SCALE_MOD_IDS, NAME_PREFIXES, NAME_SUFFIXES, getModifierPoolForType, rollLocalStatScaleValueForDifficulty, getEquipmentSpriteCell } from '../data/loot-data.js';
+import {
+  EQUIPMENT_BASE_STAT,
+  EQUIPMENT_SECONDARY_BASE,
+  MODIFIER_POOL,
+  LOCAL_STAT_SCALE_MOD_IDS,
+  NAME_PREFIXES,
+  NAME_SUFFIXES,
+  getModifierPoolForType,
+  rollLocalStatScaleValueForDifficulty,
+  getEquipmentSpriteCell,
+  rollUniqueModifierDefsByRarity,
+  resolveModifierStatMods
+} from '../data/loot-data.js';
 import { getRingDefById, getRingSpriteCell } from '../data/rings-data.js';
 import { MODIFIER_CUBES, UPGRADE_CUBES, LEGENDARY_CUBES, LEGENDARY_MODIFIER_IDS, rollModifierForTier, getModifierRollRangeForTier, getCubeDifficultyForTier } from '../data/cubes-data.js';
 import {
@@ -1015,7 +1027,7 @@ export function applyGameInventoryMixin(Game) {
               preview = "Modifier cubes can only be used on Magic or Rare items. Use a Magic Cube first.";
             } else {
               const existing = item.modifiers?.find((m) => m.id === modCube.modifierId);
-              const maxMods = item.rarity === "common" ? 0 : item.rarity === "magic" ? 2 : 4;
+              const maxMods = item.rarity === "common" ? 0 : item.rarity === "magic" ? 1 : 2;
               const currentCount = item.modifiers?.length || 0;
               const r = getModifierRollRangeForTier(tier, modCube.modifierId);
               const range = (r.min * 100).toFixed(0) + "-" + (r.max * 100).toFixed(0) + "%";
@@ -1053,8 +1065,8 @@ export function applyGameInventoryMixin(Game) {
                 canCraft = true;
               }
             } else {
-              if (upgCube.id === "magicCube") preview = "Upgrades to Blue and adds 2 random modifiers.";
-              else if (upgCube.id === "rareCube") preview = "Upgrades to Yellow and adds 2 more modifiers.";
+              if (upgCube.id === "magicCube") preview = "Upgrades to Blue and adds 1 random modifier.";
+              else if (upgCube.id === "rareCube") preview = "Upgrades to Yellow and adds 1 more modifier.";
               else preview = "Rerolls all modifiers with new random values.";
               canCraft = true;
             }
@@ -1270,13 +1282,14 @@ export function applyGameInventoryMixin(Game) {
         id: cubeDef.modifierId,
         label: cubeDef.modifierLabel,
         statKey: poolEntry?.statKey || cubeDef.modifierId.replace("Percent", ""),
+        rarity: poolEntry?.rarity || "normal",
         value,
         appliesTo: poolEntry?.appliesTo,
         addedAt: Date.now()
       };
 
       const existingIdx = item.modifiers.findIndex((m) => m.id === cubeDef.modifierId);
-      const maxMods = item.rarity === "magic" ? 2 : item.rarity === "rare" ? 4 : 0;
+      const maxMods = item.rarity === "magic" ? 1 : item.rarity === "rare" ? 2 : 0;
       if (existingIdx >= 0) {
         item.modifiers[existingIdx] = { ...modEntry };
       } else if (item.modifiers.length < maxMods) {
@@ -1326,24 +1339,30 @@ export function applyGameInventoryMixin(Game) {
     },
 
     applyUpgradeCube(item, cubeDef, tier) {
-      const rollValueForMod = (m) => {
+      const rollValueForMod = (m, rollTier = tier) => {
         if (item.type === "Ring" && Number.isFinite(m?.min) && Number.isFinite(m?.max)) {
           return m.min + Math.random() * (m.max - m.min);
         }
         if (LOCAL_STAT_SCALE_MOD_IDS.includes(m.id)) {
-          return rollLocalStatScaleValueForDifficulty(getCubeDifficultyForTier(tier));
+          return rollLocalStatScaleValueForDifficulty(getCubeDifficultyForTier(rollTier));
         }
-        return rollModifierForTier(tier, m.id);
+        return rollModifierForTier(rollTier, m.id);
       };
       if (cubeDef.id === "magicCube") {
         item.rarity = "magic";
-        item.modifiers = item.modifiers || [];
+        item.modifiers = [];
         const pool = getCraftModifierPoolForItem(item);
-        for (let i = 0; i < 2; i++) {
-          const idx = Math.floor(Math.random() * pool.length);
-          const m = pool.splice(idx, 1)[0];
+        const chosen = rollUniqueModifierDefsByRarity(pool, 1, new Set());
+        for (const m of chosen) {
           const val = rollValueForMod(m);
-          item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, appliesTo: m.appliesTo, addedAt: Date.now() });
+          item.modifiers.push({
+            id: m.id,
+            label: m.label,
+            statKey: m.statKey,
+            value: val,
+            appliesTo: m.appliesTo,
+            addedAt: Date.now()
+          });
         }
         const hasPrefix = NAME_PREFIXES.some((p) => item.name.startsWith(p + " "));
         const hasSuffix = NAME_SUFFIXES.some((s) => item.name.includes(" " + s));
@@ -1357,16 +1376,19 @@ export function applyGameInventoryMixin(Game) {
       } else if (cubeDef.id === "rareCube") {
         item.rarity = "rare";
         item.modifiers = item.modifiers || [];
-        const pool = getCraftModifierPoolForItem(item).filter((p) => !item.modifiers.some((m) => m.id === p.id));
+        const pool = getCraftModifierPoolForItem(item);
         const transmutationProc = this.hasRunTalent("transmutation") && Math.random() < 0.05;
         if (transmutationProc && typeof this.logTalentTrigger === "function") this.logTalentTrigger("transmutation", "Rare item from cube: 5% T1 modifier as base stat");
-        const extraMods = transmutationProc ? 3 : 2;
-        for (let i = 0; i < extraMods; i++) {
-          if (pool.length === 0) break;
-          const idx = Math.floor(Math.random() * pool.length);
-          const m = pool.splice(idx, 1)[0];
-          const val = rollValueForMod(m);
-          item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, appliesTo: m.appliesTo, addedAt: Date.now() });
+        const targetModifierCount = 2;
+        const existingIds = new Set((item.modifiers || []).map((m) => m?.id).filter(Boolean));
+        const needed = Math.max(0, targetModifierCount - existingIds.size);
+
+        const chosen = rollUniqueModifierDefsByRarity(pool, needed, existingIds);
+        for (let i = 0; i < chosen.length; i++) {
+          const m = chosen[i];
+          const rolledTier = transmutationProc && i === 0 ? 1 : tier;
+          const val = rollValueForMod(m, rolledTier);
+          item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, rarity: m.rarity || "normal", value: val, appliesTo: m.appliesTo, trigger: m.trigger, conditional: m.conditional, passiveStatKey: m.passiveStatKey, statMods: resolveModifierStatMods(m), data: m.data ? { ...m.data } : undefined, addedAt: Date.now() });
         }
         const hasPrefix = NAME_PREFIXES.some((p) => item.name.startsWith(p + " "));
         const hasSuffix = NAME_SUFFIXES.some((s) => item.name.includes(" " + s));
@@ -1375,12 +1397,11 @@ export function applyGameInventoryMixin(Game) {
       } else if (cubeDef.id === "reforgeCube") {
         item.modifiers = [];
         const pool = getCraftModifierPoolForItem(item);
-        const count = item.rarity === "magic" ? 2 : 4;
-        for (let i = 0; i < count; i++) {
-          const idx = Math.floor(Math.random() * pool.length);
-          const m = pool.splice(idx, 1)[0];
+        const count = item.rarity === "magic" ? 1 : item.rarity === "rare" ? 2 : 0;
+        const chosen = rollUniqueModifierDefsByRarity(pool, count, new Set());
+        for (const m of chosen) {
           const val = rollValueForMod(m);
-          item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, appliesTo: m.appliesTo, addedAt: Date.now() });
+          item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, rarity: m.rarity || "normal", value: val, appliesTo: m.appliesTo, trigger: m.trigger, conditional: m.conditional, passiveStatKey: m.passiveStatKey, statMods: resolveModifierStatMods(m), data: m.data ? { ...m.data } : undefined, addedAt: Date.now() });
         }
       }
       ensureItemVessels(item);

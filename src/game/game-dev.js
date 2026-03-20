@@ -9,7 +9,13 @@ import { SHRINE_DEFS } from '../data/shrines.js';
 import { ATTACK_UPGRADE_DEFS, getAggregatedUpgradeEffect, getAggregatedPenaltyEffect, rollUpgradeValue } from '../data/level-up-data.js';
 import { getAttackEvolutionsForWeapon, getAttackEvolutionById } from '../data/attack-evolutions.js';
 import { MODIFIER_CUBES, UPGRADE_CUBES, LEGENDARY_CUBES } from '../data/cubes-data.js';
-import { generateEquipmentItem } from '../data/loot-data.js';
+import {
+  generateEquipmentItem,
+  MODIFIER_POOL,
+  LOCAL_STAT_SCALE_MOD_IDS,
+  rollModifierValueForDifficulty,
+  rollLocalStatScaleValueForDifficulty
+} from '../data/loot-data.js';
 import { BREAKABLE_DEFS } from '../data/breakables-data.js';
 import { SEARCHABLE_PROP_DEFS } from '../data/searchable-props-data.js';
 import { NPC_DEFS } from '../data/npc-data.js';
@@ -58,6 +64,35 @@ export function applyGameDevMixin(Game) {
       const devRandomItemEl = document.getElementById("dev-random-item");
       if (devRandomItemEl) {
         this.addManagedListener(devRandomItemEl, "click", () => this.handleDevRandomItem());
+      }
+      const devModifierIdInput = document.getElementById("dev-modifier-id-input");
+      const devModifierRaritySelect = document.getElementById("dev-modifier-rarity-select");
+      const devModifierTypeSelect = document.getElementById("dev-modifier-type-select");
+      const devSpawnModifierItemBtn = document.getElementById("dev-spawn-modifier-item");
+      if (devSpawnModifierItemBtn && devModifierIdInput) {
+        devModifierIdInput.innerHTML = '<option value="">Select modifier id</option>';
+        for (const mod of MODIFIER_POOL || []) {
+          if (!mod?.id) continue;
+          const opt = document.createElement("option");
+          opt.value = mod.id;
+          const rarity = mod.rarity ? ` (${mod.rarity})` : "";
+          opt.textContent = `${mod.id}${rarity}`;
+          devModifierIdInput.appendChild(opt);
+        }
+        const runSpawn = () => {
+          const modifierId = String(devModifierIdInput.value || "").trim();
+          if (!modifierId) return;
+          const options = {};
+          const rarity = String(devModifierRaritySelect?.value || "").trim();
+          const type = String(devModifierTypeSelect?.value || "").trim();
+          if (rarity) options.rarity = rarity;
+          if (type) options.type = type;
+          const item = this.devGiveItemWithModifier(modifierId, options);
+          if (item && typeof this.showNotification === "function") {
+            this.showNotification("Dev", `Spawned item with ${modifierId}.`);
+          }
+        };
+        this.addManagedListener(devSpawnModifierItemBtn, "click", runSpawn);
       }
       const devLevelUpEl = document.getElementById("dev-level-up");
       if (devLevelUpEl) {
@@ -482,6 +517,19 @@ export function applyGameDevMixin(Game) {
           this.spawnDevNpcNearPlayer(npcKey);
         });
       }
+
+      // Expose a few dev helpers on window for quick testing.
+      // Usage:
+      // - window.devSetSkill(1, "fireball")  // slot is 1-4 (or 0-3)
+      // - window.devSwapSkills(1, 2)        // swap two slots
+      // - window.devClearSkill(3)           // clear slot
+      if (typeof window !== "undefined") {
+        window.devSetSkill = (slot, skillId) => this.devSetSkillInSlot(slot, skillId);
+        window.devClearSkill = (slot) => this.devSetSkillInSlot(slot, null);
+        window.devSwapSkills = (a, b) => this.devSwapSkillSlots(a, b);
+        window.devListModifierIds = () => (MODIFIER_POOL || []).map((m) => m?.id).filter(Boolean);
+        window.devGiveItemWithModifier = (modifierId, options = {}) => this.devGiveItemWithModifier(modifierId, options);
+      }
     },
 
     toggleDevPanel() {
@@ -767,6 +815,113 @@ export function applyGameDevMixin(Game) {
       attackSpeedRow.appendChild(attackSpeedSlider);
       attackSpeedRow.appendChild(attackSpeedValueSpan);
       container.appendChild(attackSpeedRow);
+    }
+
+    ,
+
+    devSetSkillInSlot(slot, skillId) {
+      if (!DEV_MODE_ENABLED) return false;
+      const slotIdx = Number(slot);
+      const idx = slotIdx >= 1 && slotIdx <= 4 ? slotIdx - 1 : slotIdx;
+      if (!Number.isFinite(idx) || idx < 0 || idx > 3) return false;
+
+      const nextSkillId = skillId == null || skillId === "" ? null : String(skillId);
+      if (nextSkillId) {
+        const exists = SKILL_DEFS.some((s) => s.id === nextSkillId);
+        if (!exists) return false;
+      }
+
+      if (!Array.isArray(this.skills)) this.skills = [null, null, null, null];
+      this.skills[idx] = nextSkillId;
+
+      // Ensure mod list exists for this skill so mod toggles/UI don't break.
+      this.runSkillMods = this.runSkillMods || {};
+      if (nextSkillId && !Array.isArray(this.runSkillMods[nextSkillId])) this.runSkillMods[nextSkillId] = [];
+
+      // Clear any per-skill progress trackers that would block casting.
+      if (nextSkillId !== "cruelFinisher") this.cruelFinisherBasicCount = 0;
+      if (nextSkillId !== "hauntingGhostCharges") this.hauntingGhostKillCount = 0;
+      if (nextSkillId !== "homingSkullCharges") this.homingSkullKillCount = 0;
+
+      // Re-sync cooldowns/charges and update HUD.
+      if (typeof this.syncSkillCharges === "function") this.syncSkillCharges("dev_set_skill");
+      if (typeof this.updateSkillUI === "function") this.updateSkillUI();
+      return true;
+    },
+
+    devSwapSkillSlots(a, b) {
+      if (!DEV_MODE_ENABLED) return false;
+      const aNum = Number(a);
+      const bNum = Number(b);
+      const ai = aNum >= 1 && aNum <= 4 ? aNum - 1 : aNum;
+      const bi = bNum >= 1 && bNum <= 4 ? bNum - 1 : bNum;
+      if (!Number.isFinite(ai) || !Number.isFinite(bi) || ai < 0 || ai > 3 || bi < 0 || bi > 3) return false;
+      if (!Array.isArray(this.skills)) this.skills = [null, null, null, null];
+      const tmp = this.skills[ai];
+      this.skills[ai] = this.skills[bi];
+      this.skills[bi] = tmp;
+      if (typeof this.syncSkillCharges === "function") this.syncSkillCharges("dev_swap_skills");
+      if (typeof this.updateSkillUI === "function") this.updateSkillUI();
+      return true;
+    },
+
+    devGiveItemWithModifier(modifierId, options = {}) {
+      if (!DEV_MODE_ENABLED) return null;
+      const id = String(modifierId || "").trim();
+      if (!id) return null;
+      const def = (MODIFIER_POOL || []).find((m) => m?.id === id);
+      if (!def) return null;
+
+      const allowedSlots = Array.isArray(def.allowedSlots) ? def.allowedSlots.filter(Boolean) : [];
+      const slotType = String(options.type || allowedSlots[0] || "Weapon");
+      const diff = Math.min(5, Math.max(1, Number(options.difficulty ?? this.difficulty ?? 1) || 1));
+      const luck = Math.max(0, Number(this.runCharacterAttributes?.luck ?? this.runConfig?.selectedCharacter?.attributes?.luck) || 0);
+      const forceRarity = String(options.rarity || (def.rarity === "rare" ? "rare" : "magic"));
+      const lootQuality = this.currentMap?.lootQuality ?? 0.6;
+
+      const itemDef = generateEquipmentItem(slotType, lootQuality, 0.6, forceRarity, { difficulty: diff, luck });
+      const value = LOCAL_STAT_SCALE_MOD_IDS.includes(def.id)
+        ? rollLocalStatScaleValueForDifficulty(diff)
+        : rollModifierValueForDifficulty(diff, def.id);
+      const forcedModifier = {
+        id: def.id,
+        label: def.label,
+        statKey: def.statKey ?? null,
+        rarity: def.rarity || "normal",
+        value,
+        appliesTo: def.appliesTo,
+        trigger: def.trigger,
+        conditional: def.conditional,
+        passiveStatKey: def.passiveStatKey,
+        data: def.data ? { ...def.data } : undefined,
+        addedAt: Date.now()
+      };
+
+      itemDef.modifiers = [forcedModifier];
+      if (typeof this.rebuildItemStats === "function") this.rebuildItemStats(itemDef);
+      const item = {
+        id: 91000 + Math.floor(Math.random() * 10000),
+        name: itemDef.name,
+        type: itemDef.type,
+        ringId: itemDef.ringId || null,
+        ringSpriteKey: itemDef.ringSpriteKey || null,
+        consumedOnTrigger: !!itemDef.consumedOnTrigger,
+        rolledModifiers: itemDef.rolledModifiers || null,
+        spriteCell: itemDef.spriteCell || null,
+        stats: itemDef.stats || {},
+        cardKey: null,
+        description: itemDef.description || "",
+        weight: itemDef.weight || null,
+        rarity: itemDef.rarity || null,
+        modifiers: itemDef.modifiers || [],
+        baseStat: itemDef.baseStat || null,
+        sockets: itemDef.sockets ?? 0,
+        vesselsMax: itemDef.vesselsMax ?? 0,
+        vessels: Array.isArray(itemDef.vessels) ? itemDef.vessels : []
+      };
+      this.inventory.push(item);
+      this.updateInventoryUI?.();
+      return item;
     }
   });
 }

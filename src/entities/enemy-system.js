@@ -682,6 +682,8 @@ export class EnemySystem {
       // miniBoss always 1
       groupSize = 1;
     }
+    const enemyCountMult = Math.max(0, Number(this.mapDef?.enemyCount) || 1);
+    groupSize = Math.max(1, Math.round(groupSize * enemyCountMult));
     
     // For elites, generate affixes once for the whole group
     let groupAffixes = [];
@@ -813,6 +815,8 @@ export class EnemySystem {
           } else if (archetype === BIOME_ARCHETYPE.WOODS) {
             for (let i = 0; i < 2; i++) this.spawnGroup('elite', game);
           }
+          const extraEliteGroups = Math.max(0, Number(game?.rollNodeExtraEliteGroupsPerCell?.() || 0));
+          for (let i = 0; i < extraEliteGroups; i++) this.spawnGroup('elite', game);
         } finally {
           game._biomeCellBounds = null;
           game._biomeCellArchetype = null;

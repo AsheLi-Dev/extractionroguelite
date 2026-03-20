@@ -108,8 +108,6 @@ export const TOTEM_DEFS = {
     auraBorderColor: "rgba(196, 181, 253, 0.65)",
     magicStyle: "lightningBolt",
     movementType: "zigzag",
-    onHitStun: true,
-    stunDuration: 0.35,
   },
 };
 

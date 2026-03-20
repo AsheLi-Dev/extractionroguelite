@@ -8,6 +8,8 @@ export class Player {
     this.drawWidth = 120;
     this.drawHeight = 120;
     this.speed = 44; // 20% of original 220
+    this.isSprinting = false;
+    this.sprintTimer = 0;
     this.color = "#ffff4d";
     
     // Animation properties
@@ -890,7 +892,8 @@ export class Player {
     
     // Compute movement with attack slowdown multiplier
     const moveMult = this.getAttackMoveMult();
-    const effectiveSpeed = this.speed * moveMult;
+    const sprintMult = this.isSprinting ? 1.3 : 1.0;
+    const effectiveSpeed = this.speed * moveMult * sprintMult;
     const dx = axis.x * effectiveSpeed * dt;
     const dy = axis.y * effectiveSpeed * dt;
 

@@ -296,6 +296,38 @@ function drawTelegraph(ctx, inst, ox, oy) {
   const alpha = t < 0.5 ? lerp(0, 0.18, t * 2) : lerp(0.18, 0, (t - 0.5) * 2);
   const sx = inst.x + ox;
   const sy = inst.y + oy;
+  // #region agent log (telegraph layer debugging)
+  if (!inst._debugFanTelegraphLogged && inst.elapsed < TELEGRAPH_DURATION * 0.2) {
+    inst._debugFanTelegraphLogged = true;
+    const tf = typeof ctx?.getTransform === "function" ? ctx.getTransform() : null;
+    fetch("http://127.0.0.1:7453/ingest/67f144d2-906e-4be5-b37e-c8486a8d0d9d", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8eb378" },
+      body: JSON.stringify({
+        sessionId: "8eb378",
+        runId: "debug_fanstrike_telegraph_layer_1",
+        hypothesisId: "H5_fanStrikeTelegraphOffset",
+        location: "src/vfx/fanStrikeVfx.js:drawTelegraph",
+        message: "FanStrike telegraph draw position vs camera/offset transform.",
+        data: {
+          canvasWidth: ctx?.canvas?.width,
+          canvasHeight: ctx?.canvas?.height,
+          instX: inst.x,
+          instY: inst.y,
+          radius: inst.radius,
+          camOx: ox,
+          camOy: oy,
+          sx,
+          sy,
+          alpha,
+          elapsed: inst.elapsed,
+          ctxTransform: tf ? { a: tf.a, d: tf.d, e: tf.e, f: tf.f } : null
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+  }
+  // #endregion
   drawSector(ctx, sx, sy, inst.radius, inst.startAngle, inst.endAngle, TELEGRAPH_FILL.slice(0, -2) + alpha + ")", alpha, true);
 }
 

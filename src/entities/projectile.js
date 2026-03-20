@@ -70,6 +70,8 @@ export class PlayerProjectile {
     this._spawn = null;
     this.magicStyle = options.magicStyle ?? null;
     this.bounceOffWalls = !!options.bounceOffWalls;
+    this.stopAfterTime = options.stopAfterTime != null ? options.stopAfterTime : null;
+    this.sizeGrowthPerSecond = options.sizeGrowthPerSecond != null ? options.sizeGrowthPerSecond : null;
     if (options.rectWidth != null && options.rectHeight != null) {
       this.rectWidth = options.rectWidth;
       this.rectHeight = options.rectHeight;
@@ -139,6 +141,14 @@ export class PlayerProjectile {
 
     if (this.maxLifetime != null) this.age += dt;
     this.flightTime += dt;
+
+    if (this.stopAfterTime != null && this.flightTime >= this.stopAfterTime) {
+      this.velocity.x = 0;
+      this.velocity.y = 0;
+    }
+    if (this.sizeGrowthPerSecond != null && this.sizeGrowthPerSecond > 0) {
+      this.size = (this.size || PLAYER_PROJECTILE_SIZE) + this.sizeGrowthPerSecond * dt;
+    }
 
     const homing = game && game.hasUpgradeCard && game.hasUpgradeCard("homing");
     const seeking = game && game.hasAttackUpgrade && game.hasAttackUpgrade("seeking");

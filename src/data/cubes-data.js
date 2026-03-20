@@ -44,26 +44,11 @@ export function getModifierRollRangeForTier(tier, modifierId = null) {
   return fallback;
 }
 
-export const MODIFIER_CUBES = [
-  { id: "attackCube", label: "Attack Cube", modifierId: "attackPercent", modifierLabel: "Attack Damage" },
-  { id: "speedCube", label: "Speed Cube", modifierId: "speedPercent", modifierLabel: "Movement Speed" },
-  { id: "healthCube", label: "Health Cube", modifierId: "maxHealthPercent", modifierLabel: "Max Health" },
-  { id: "defenseCube", label: "Defense Cube", modifierId: "defensePercent", modifierLabel: "Defense" },
-  { id: "swiftnessCube", label: "Swiftness Cube", modifierId: "attackSpeedPercent", modifierLabel: "Attack Speed" },
-  { id: "wisdomCube", label: "Wisdom Cube", modifierId: "xpGainedPercent", modifierLabel: "XP Gained" },
-  { id: "powerCube", label: "Power Cube", modifierId: "skillDamagePercent", modifierLabel: "Skill Damage" },
-  { id: "focusCube", label: "Focus Cube", modifierId: "cooldownReductionPercent", modifierLabel: "Cooldown Reduction" },
-  { id: "projectilePowerCube", label: "Projectile Power Cube", modifierId: "projectileDamagePct", modifierLabel: "Projectile Damage" },
-  { id: "meleePowerCube", label: "Melee Power Cube", modifierId: "meleeDamagePct", modifierLabel: "Melee Damage" },
-  { id: "areaPowerCube", label: "Area Power Cube", modifierId: "areaDamagePct", modifierLabel: "Area Damage" },
-  { id: "crowdControlCube", label: "Crowd Control Cube", modifierId: "crowdControlPowerPct", modifierLabel: "Crowd Control Power" },
-  { id: "curseCube", label: "Curse Cube", modifierId: "curseEffectPct", modifierLabel: "Curse Effect" },
-  { id: "defensePowerCube", label: "Defense Power Cube", modifierId: "defensePowerPct", modifierLabel: "Defense Power" }
-];
+export const MODIFIER_CUBES = [];
 
 export const UPGRADE_CUBES = [
-  { id: "magicCube", label: "Magic Cube", targetRarity: "common", newRarity: "magic", addsModifiers: 2 },
-  { id: "rareCube", label: "Rare Cube", targetRarity: "magic", newRarity: "rare", addsModifiers: 2 },
+  { id: "magicCube", label: "Magic Cube", targetRarity: "common", newRarity: "magic", addsModifiers: 1 },
+  { id: "rareCube", label: "Rare Cube", targetRarity: "magic", newRarity: "rare", addsModifiers: 1 },
   { id: "reforgeCube", label: "Reforge Cube", targetRarity: null, rerolls: true },
   { id: "vesselCube", label: "Vessel Cube", targetRarity: null, addsVessel: true }
 ];

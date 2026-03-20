@@ -177,9 +177,5 @@ export function markDifficultyCompleted(diff) {
 }
 
 export function getAvailableSkillSlots() {
-  const max = getHighestCompletedDifficulty();
-  if (max >= 5) return 4;
-  if (max >= 3) return 3;
-  if (max >= 1) return 2;
-  return 1;
+  return 4; // All skill slots unlocked
 }

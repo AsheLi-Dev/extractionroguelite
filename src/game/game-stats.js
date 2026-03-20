@@ -15,6 +15,7 @@ import {
   getRingExtraDashCharges,
   syncFocusCharges
 } from './ring-effects.js';
+import { getEquippedModifierStats } from './equipment-modifier-runtime.js';
 
 export function applyGameStatsMixin(Game) {
   Object.assign(Game.prototype, {
@@ -78,9 +79,15 @@ export function applyGameStatsMixin(Game) {
           }
         }
       }
+      // Lightweight runtime aggregation for non-core equipment modifier stats.
+      const runtimeModStats = getEquippedModifierStats(this);
+      this.equipmentPermanentAttackSpeedPercent = Number(this.equipmentPermanentAttackSpeedPercent) || 0;
       this.equipmentAttackSpeedMult = equipmentAttackSpeedMult;
+      this.equipmentAttackSpeedMult *= 1 + (Number(runtimeModStats.attackSpeedPercent) || 0);
+      this.equipmentAttackSpeedMult *= 1 + this.equipmentPermanentAttackSpeedPercent;
       // Cap cooldown reduction from item modifiers to 40% total.
       // cooldownRecovery is a multiplier (1 - CDR), so 40% CDR floor is 0.60.
+      equipmentCooldownRecovery *= 1 - (Number(runtimeModStats.cooldownReductionPercent) || 0);
       equipmentCooldownRecovery = Math.max(0.6, equipmentCooldownRecovery);
       this.itemCooldownRecovery = equipmentCooldownRecovery;
       this.equipmentCooldownRecovery = equipmentCooldownRecovery;
@@ -88,15 +95,35 @@ export function applyGameStatsMixin(Game) {
       this.equipmentSkillDamageMult = 1 + (percentMods.skillDamage || 0);
       equipmentSpeedPenalty = Math.max(0, Math.min(0.95, equipmentSpeedPenalty));
       this.equipmentSpeedMult = 1 - equipmentSpeedPenalty;
+      this.equipmentSpeedMult *= 1 + (Number(runtimeModStats.speedPercent) || 0);
       this.equipmentDashCooldownMult = hasHeavyArmour ? 1.2 : 1;
+      this.equipmentDashCooldownMult *= Math.max(0.1, Number(runtimeModStats.dashCooldownMultiplier) || 1);
       this.dashCooldownTime = this.baseDashCooldownTime * this.equipmentDashCooldownMult;
       this.dashCooldownTime = Math.max(0.1, this.dashCooldownTime - getRingDashCooldownOffset(this));
+
+      this.equipmentModifierStats = runtimeModStats;
+      this.equipmentCritChance = Number(runtimeModStats.critChance) || 0;
+      this.equipmentCritDamageBonus = Number(runtimeModStats.critDamageBonus) || 0;
+      this.equipmentSprintSpeedBonus = Number(runtimeModStats.sprintSpeedBonus) || 0;
+      this.equipmentHealingReceivedPercent = Number(runtimeModStats.healingReceivedPercent) || 0;
+      this.equipmentChestOpenSpeedPercent = Number(runtimeModStats.chestOpenSpeedPercent) || 0;
+      this.equipmentDashChargesFlat = Math.max(0, Math.floor(Number(runtimeModStats.dashChargesFlat) || 0));
+      this.equipmentFlatMaxHealth = Math.max(0, Math.round(Number(runtimeModStats.flatMaxHealth) || 0));
+      this.equipmentProjectileSpeedPercent = Number(runtimeModStats.projectileSpeedPercent) || 0;
+      this.equipmentAreaOfEffectPercent = Number(runtimeModStats.areaOfEffectPercent) || 0;
+      this.equipmentDashDistancePercent = Number(runtimeModStats.dashDistancePercent) || 0;
+      this.equipmentMovementCooldownRecovery = Number(runtimeModStats.movementCooldownRecovery) || 0;
+      this.equipmentXpRequiredReduction = Number(runtimeModStats.xpRequiredReduction) || 0;
+      this.equipmentProjectilePierce = Math.max(0, Math.floor(Number(runtimeModStats.projectilePierce) || 0));
+      this.equipmentCritChanceCap = Math.max(0, Number(runtimeModStats.critChanceCap) || 0);
+
       for (const key of ["attack", "maxHealth", "defense", "speed"]) {
         const pct = percentMods[key] || 0;
         if (pct !== 0) stats[key] = Math.round((stats[key] || 0) * (1 + pct));
       }
       if (this.hasRunTalent("bulwark")) stats.defense = Math.round((stats.defense || 0) * 1.1);
       if (this.hasRunTalent("thickSkin")) stats.defense = Math.round((stats.defense || 0) * 1.1);
+      if ((this.equipmentFlatMaxHealth || 0) !== 0) stats.maxHealth = (stats.maxHealth || 0) + this.equipmentFlatMaxHealth;
       stats.maxHealth = Math.round(stats.maxHealth);
       stats.speed = Math.round(stats.speed);
       stats.attack = Math.round(stats.attack);
@@ -165,7 +192,7 @@ export function applyGameStatsMixin(Game) {
         : null;
       const pillarInfiniteDash = !!pillarStatMods?.infiniteDashCharges;
       const pillarDashFlat = Math.max(0, Math.floor(Number(pillarStatMods?.dashChargesFlat) || 0));
-      const computedDashMax = 2 + getRingExtraDashCharges(this) + pillarDashFlat;
+      const computedDashMax = 2 + getRingExtraDashCharges(this) + pillarDashFlat + (this.equipmentDashChargesFlat || 0);
       this.dashMaxCharges = pillarDashOverride == null ? computedDashMax : Math.max(0, pillarDashOverride);
       if (pillarInfiniteDash) {
         this.dashMaxCharges = Math.max(1, this.dashMaxCharges || computedDashMax || 1);
@@ -204,7 +231,21 @@ export function applyGameStatsMixin(Game) {
       const cdRec = this.equipmentCooldownRecovery ?? 1;
       const cooldownReductionPct = Math.max(0, Math.round((1 - cdRec) * 100));
       const dashCd = this.equipmentDashCooldownMult ?? 1;
+      const conditionalBonuses = this.getEquipmentConditionalBonuses?.({
+        moveSpeed: this.currentStats?.speed || 0,
+        isTargetSlowed: false,
+        isTargetElite: false
+      }) || null;
+      const critChance = Math.max(
+        0,
+        (Number(this.equipmentCritChance) || 0)
+          + (((this.equipmentChestCritChanceBuffUntil || 0) > this.time) ? (Number(this.equipmentChestCritChanceBuff) || 0) : 0)
+          + (Number(conditionalBonuses?.critChanceFromMoveSpeed) || 0)
+      );
+      const critCap = Math.max(0, Number(this.equipmentCritChanceCap) || 0);
+      const shownCritChance = critCap > 0 ? Math.min(critChance, critCap) : critChance;
       rows.push(["Attack Speed", `${attacksPerSecond.toFixed(2)}/s`]);
+      rows.push(["Crit Chance", `${Math.round(shownCritChance * 100)}%`]);
       rows.push(["Cooldown Red.", `${cooldownReductionPct}%`]);
       rows.push(["Hazard DR", `${Math.round((Number(stats.hazardDamageReduction) || 0) * 100)}%`]);
       if (spdMult < 1) rows.push(["Armour", `-${Math.round((1 - spdMult) * 100)}% speed`]);
@@ -251,6 +292,13 @@ export function applyGameStatsMixin(Game) {
 
       if (this.hasRunTalent("cardSurge") && this.cardSurgeUntil > this.time) {
         effectiveCooldown /= 1.2;
+      }
+      if ((this.equipmentCritAttackSpeedUntil || 0) > this.time) {
+        const stacks = Math.max(0, Number(this.equipmentCritAttackSpeedStacks) || 0);
+        const perStack = Math.max(0, Number(this.equipmentCritAttackSpeedPerStack) || 0);
+        if (stacks > 0 && perStack > 0) {
+          effectiveCooldown /= (1 + stacks * perStack);
+        }
       }
       if (typeof this.getAttackPenaltyValue === "function") {
         effectiveCooldown += this.getAttackPenaltyValue("cooldown");

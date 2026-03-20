@@ -9,6 +9,32 @@ import { BLESSING_DEFS } from '../data/cubes-data.js';
 import { getRingTempBuffs } from './ring-effects.js';
 import { getSkillModById } from '../data/skill-mods.js';
 
+/**
+ * For skills that require a custom charge to use (kill-based or basic-attack-based).
+ * Returns { count, max, hasCharge } or null if not a charge-gated skill.
+ */
+export function getSkillChargeDisplay(game, slot) {
+  const skillId = game.skills?.[slot];
+  if (!skillId) return null;
+  if (skillId === 'hauntingGhostCharges') {
+    const count = Math.floor((game.hauntingGhostKillCount ?? 0) / 5);
+    const hasCharge = count >= 1;
+    return { count, max: null, hasCharge };
+  }
+  if (skillId === 'homingSkullCharges') {
+    const raw = Math.floor((game.homingSkullKillCount ?? 0) / 3);
+    const count = Math.min(3, raw);
+    const hasCharge = count >= 1;
+    return { count, max: 3, hasCharge };
+  }
+  if (skillId === 'cruelFinisher') {
+    const count = Math.min(5, game.cruelFinisherBasicCount ?? 0);
+    const hasCharge = count >= 5;
+    return { count, max: 5, hasCharge };
+  }
+  return null;
+}
+
 export function applyGameUIMixin(Game) {
   Object.assign(Game.prototype, {
     consumeSnack() {
@@ -60,7 +86,9 @@ export function applyGameUIMixin(Game) {
 
     updateMapUI() {
       if (!this.mapNameEl) return;
-      this.mapNameEl.textContent = `${this.currentMap.name} (Map ${this.currentMap.number})`;
+      const hasNode = Array.isArray(this.runMapNodes) && this.nodeX != null && this.nodeY != null;
+      const nodeSuffix = hasNode ? ` | Node ${this.nodeX + 1},${this.nodeY + 1}` : "";
+      this.mapNameEl.textContent = `${this.currentMap.name} (Map ${this.currentMap.number})${nodeSuffix}`;
       const goldEl = document.getElementById("gold-display");
       if (goldEl) goldEl.textContent = `Gold: ${this.gold ?? 0}`;
       this.updateEnemyCountUI();
@@ -162,6 +190,20 @@ export function applyGameUIMixin(Game) {
           if (nameEl) nameEl.textContent = `Beat Diff ${SKILL_SLOT_UNLOCK[i + 1]}`;
         } else {
           slotEl.classList.remove("locked");
+          const chargeInfo = getSkillChargeDisplay(this, i);
+          slotEl.classList.toggle("skill-no-charge", !!chargeInfo && !chargeInfo.hasCharge);
+          let chargeCountEl = slotEl.querySelector(".skill-charge-count");
+          if (!chargeCountEl) {
+            chargeCountEl = document.createElement("span");
+            chargeCountEl.className = "skill-charge-count";
+            slotEl.appendChild(chargeCountEl);
+          }
+          if (chargeInfo) {
+            chargeCountEl.textContent = chargeInfo.max != null ? `${chargeInfo.count}/${chargeInfo.max}` : String(chargeInfo.count);
+            chargeCountEl.style.display = "block";
+          } else {
+            chargeCountEl.style.display = "none";
+          }
           if (iconEl) {
             iconEl.innerHTML = "";
             if (def?.illustration) {

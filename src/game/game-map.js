@@ -914,6 +914,8 @@ export function applyGameMapMixin(Game) {
       const chestDef = SEARCHABLE_PROP_DEFS.chest;
       const chestW = chestDef?.width ?? 32;
       const chestH = chestDef?.height ?? 32;
+      const searchableMult = Math.max(1, Number(this.getNodeSearchableMultiplier?.() || 1));
+      const scaledCount = (base) => Math.max(0, Math.round(base * searchableMult));
       const clusterRadiusTiles = 2;
       const findNearestFloorTile = (startGx, startGy, radius = 3) => {
         if (!tileGrid) return { gx: startGx, gy: startGy };
@@ -949,7 +951,7 @@ export function applyGameMapMixin(Game) {
         return { gx: p1.gx + sx * Math.round(half - vLen), gy: p2.gy };
       };
       const tryPlaceChestCluster = (centerGx, centerGy) => {
-        const count = 3 + Math.floor(Math.random() * 3);
+        const count = scaledCount(3 + Math.floor(Math.random() * 3));
         let clusterPlaced = 0;
         for (let tries = 0; tries < count * 8 && clusterPlaced < count; tries++) {
           const offsetGx = (Math.random() * 2 - 1) * clusterRadiusTiles;
@@ -1041,7 +1043,7 @@ export function applyGameMapMixin(Game) {
             const bounds = getBiomeCellBounds(this.world, col, row);
             const margin = this.world.wallThickness + 40;
             const inner = { x: bounds.x + margin, y: bounds.y + margin, w: Math.max(0, bounds.w - 2 * margin), h: Math.max(0, bounds.h - 2 * margin) };
-            const chestCount = 7 + Math.floor(Math.random() * 3);
+            const chestCount = scaledCount(7 + Math.floor(Math.random() * 3));
             for (let i = 0; i < chestCount; i++) {
               for (let attempt = 0; attempt < 25; attempt++) {
                 const px = inner.x + Math.random() * Math.max(0, inner.w - chestW);
@@ -1068,7 +1070,8 @@ export function applyGameMapMixin(Game) {
               }
             }
           }
-          let count = (archetype === BIOME_ARCHETYPE.LOST_CAMPS || archetype === BIOME_ARCHETYPE.VAULT || archetype === BIOME_ARCHETYPE.WOODS) ? 0 : 1 + Math.floor(Math.random() * 2);
+          const baseCount = (archetype === BIOME_ARCHETYPE.LOST_CAMPS || archetype === BIOME_ARCHETYPE.VAULT || archetype === BIOME_ARCHETYPE.WOODS) ? 0 : 1 + Math.floor(Math.random() * 2);
+          const count = scaledCount(baseCount);
           const bounds = getBiomeCellBounds(this.world, col, row);
           const margin = this.world.wallThickness + 40;
           const inner = { x: bounds.x + margin, y: bounds.y + margin, w: Math.max(0, bounds.w - 2 * margin), h: Math.max(0, bounds.h - 2 * margin) };
@@ -1436,10 +1439,14 @@ export function applyGameMapMixin(Game) {
           });
         };
 
+        const attractionNode = this.isNodeAttractionActive?.() === true;
         for (let row = 0; row < rows; row++) {
           for (let col = 0; col < cols; col++) {
             const archetype = data.grid[row][col];
-            if (archetype === BIOME_ARCHETYPE.LOST_CAMPS) {
+            if (attractionNode) {
+              if (archetype === BIOME_ARCHETYPE.START || archetype === BIOME_ARCHETYPE.EXIT || archetype === BIOME_ARCHETYPE.EMPTY) continue;
+              trySpawnNpcInCell(row, col);
+            } else if (archetype === BIOME_ARCHETYPE.LOST_CAMPS) {
               trySpawnNpcInCell(row, col);
             } else if (archetype === BIOME_ARCHETYPE.OPEN_SPACE && Math.random() < 0.1) {
               trySpawnNpcInCell(row, col);
@@ -1567,8 +1574,10 @@ export function applyGameMapMixin(Game) {
       }
     },
 
-    transitionToMap(targetMapId, spawnSide) {
-      if (this.shouldVisitRestRoomBeforeMap(targetMapId, spawnSide)) {
+    transitionToMap(targetMapId, spawnSide, options = {}) {
+      const stateKey = options.stateKey ?? targetMapId;
+      const useNodeRoute = this.enableRunRouteGraph === true;
+      if (!useNodeRoute && this.shouldVisitRestRoomBeforeMap(targetMapId, spawnSide)) {
         this.pendingRestRoomExit = { targetMapId, spawnSide };
         targetMapId = REST_ROOM_MAP_ID;
         spawnSide = "left";
@@ -1577,7 +1586,7 @@ export function applyGameMapMixin(Game) {
       const targetMap = this.getMapDefById(targetMapId);
       if (!targetMap) return;
       const bossMapId = MAP_DEFS[MAP_DEFS.length - 1]?.id;
-      const isBossRoom = targetMapId === bossMapId;
+      const isBossRoom = !useNodeRoute && targetMapId === bossMapId;
       const isRestRoom = isRestRoomMapId(targetMapId);
 
       // Track exit reached for tutorial
@@ -1586,13 +1595,16 @@ export function applyGameMapMixin(Game) {
       }
 
       // Save current map's enemy state and environmental elements before leaving (if we were on a map)
-      if (this.currentMapId !== undefined && this.currentMapId !== null) {
-        this.saveMapEnemyState(this.currentMapId);
-        this.saveMapEnvironmentalState(this.currentMapId);
+      if (this.currentMapStateKey !== undefined && this.currentMapStateKey !== null) {
+        this.saveMapEnemyState(this.currentMapStateKey);
+        this.saveMapEnvironmentalState(this.currentMapStateKey);
       }
 
       this.currentMapId = targetMapId;
-      this.currentMap = targetMap;
+      this.currentMapStateKey = stateKey;
+      this.currentMap = useNodeRoute && !isRestRoom
+        ? { ...targetMap, exits: [] }
+        : targetMap;
       this.runModDropsThisRoom = 0;
 
       if (this.useProceduralMap) {
@@ -1633,7 +1645,7 @@ export function applyGameMapMixin(Game) {
       this.enemySystem.setMap(targetMap);
       
       // Check if we've visited this map before
-      const isFirstVisit = isRestRoom ? true : !this.visitedMaps.has(targetMapId);
+      const isFirstVisit = isRestRoom ? true : !this.visitedMaps.has(stateKey);
       
       if (isFirstVisit) {
         this.toughnessHitsThisMap = 0;
@@ -1682,7 +1694,7 @@ export function applyGameMapMixin(Game) {
         if (!isRestRoom) {
           this.spawnSubAreas(targetMapId);
           // Save the environmental state for future visits
-          this.saveMapEnvironmentalState(targetMapId);
+          this.saveMapEnvironmentalState(stateKey);
           
           // Spawn initial enemies (after sub-areas are spawned)
           this.enemySystem.enemies = [];
@@ -1691,12 +1703,12 @@ export function applyGameMapMixin(Game) {
           this.enemySystem.respawnQueue = [];
           this.enemySystem.spawnInitial(this);
           this.trySpawnUndeadHeroForCurrentMap();
-          this.visitedMaps.add(targetMapId);
+          this.visitedMaps.add(stateKey);
         }
       } else {
         // Returning to a visited map: restore environmental elements and enemy state
-        this.restoreMapEnvironmentalState(targetMapId);
-        this.restoreMapEnemyState(targetMapId);
+        this.restoreMapEnvironmentalState(stateKey);
+        this.restoreMapEnemyState(stateKey);
         this.trySpawnUndeadHeroForCurrentMap();
       }
 
@@ -1792,7 +1804,7 @@ export function applyGameMapMixin(Game) {
         this.camera.snapTo(this.player, this.world.width, this.world.height);
       }
 
-      if (this.bossExtractionTimerEnabled && targetMapId === bossMapId) {
+      if (!useNodeRoute && this.bossExtractionTimerEnabled && targetMapId === bossMapId) {
         this.bossExtractionActive = !this.victoryPortal;
         this.bossExtractionTimeLeft = this.bossExtractionDuration;
       } else {
@@ -1801,7 +1813,18 @@ export function applyGameMapMixin(Game) {
       }
 
       this.updateMapUI();
+      this.applyNodeTagOnMapLoad?.();
       this.updateVictoryPortalUI();
+      if (!isRestRoom) {
+        this.triggerEquipmentModifierEvent?.("enter_new_map", {
+          targetMapId,
+          spawnSide,
+          isFirstVisit,
+          isRestRoom,
+          isBossRoom,
+          time: this.time
+        });
+      }
     }
   });
 }

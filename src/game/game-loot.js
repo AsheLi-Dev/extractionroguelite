@@ -11,7 +11,7 @@ import { MODIFIER_CUBES, UPGRADE_CUBES, LEGENDARY_CUBES } from '../data/cubes-da
 import { getMiniBossSecondaryDropChance, rollEquipmentDropOutcome } from '../data/equipment-drop-tables.js';
 import { getSkillUnlocks, setSkillUnlock } from '../data/constants.js';
 import { hasTalent } from '../data/talents.js';
-import { generateEquipmentItem, getModifierPoolForType, LOCAL_STAT_SCALE_MOD_IDS, rollLocalStatScaleValueForDifficulty, rollModifierValueForDifficulty } from '../data/loot-data.js';
+import { generateEquipmentItem, getModifierPoolForType, LOCAL_STAT_SCALE_MOD_IDS, rollLocalStatScaleValueForDifficulty, rollModifierValueForDifficulty, resolveModifierStatMods } from '../data/loot-data.js';
 import { DIFFICULTY_STAT_MULTIPLIER } from '../data/constants.js';
 import { LEGENDARY_MODIFIER_IDS, LEGENDARY_MODIFIER_EFFECTS } from '../data/cubes-data.js';
 import { addGold, rollGoldDrop } from './economy.js';
@@ -150,11 +150,11 @@ export function applyGameLootMixin(Game) {
       }
 
       const isSpecialTier = enemy.enemyTier === "special" || enemy.isSpecial;
-      const goldType = enemy.enemyTier === "miniBoss" || enemy.isMiniBoss || enemy.isFiery || enemy.isCursedChestGuardian
+      const goldType = enemy.enemyTier === "miniBoss" || enemy.enemyTier === "miniboss" || enemy.isMiniBoss || enemy.isFiery || enemy.isCursedChestGuardian
         ? "elite"
         : (enemy.enemyTier === "elite" || enemy.isElite || isSpecialTier ? "elite" : "mob");
       const goldAmount = rollGoldDrop(goldType);
-      const useMiniBossChest = !!(enemy.enemyTier === "miniBoss" || enemy.isMiniBoss);
+      const useMiniBossChest = !!(enemy.enemyTier === "miniBoss" || enemy.enemyTier === "miniboss" || enemy.isMiniBoss);
       const queuedMiniBossLootDefs = [];
       const emitGold = (amount) => {
         const value = Math.max(0, Number(amount) || 0);
@@ -178,9 +178,17 @@ export function applyGameLootMixin(Game) {
         else this.lootSystem.spawnAncestorSpiritAt(ex, ey, def);
       };
       emitGold(goldAmount);
-      const isMiniBoss = !!(enemy.enemyTier === "miniBoss" || enemy.isMiniBoss || enemy.isFiery || enemy.isCursedChestGuardian);
+      const isMiniBoss = !!(enemy.enemyTier === "miniBoss" || enemy.enemyTier === "miniboss" || enemy.isMiniBoss || enemy.isFiery || enemy.isCursedChestGuardian);
       if (isMiniBoss) {
         this.activeBlessings = [];
+        if (this.enableRunRouteGraph && !this.clearedMaps?.has(this.currentMapStateKey)) {
+          this.clearedMaps.add(this.currentMapStateKey);
+          if (typeof this.spawnExitPortals === "function") {
+            const px = enemy.position.x + enemy.size / 2;
+            const py = enemy.position.y + enemy.size / 2;
+            this.spawnExitPortals(true, { x: px, y: py });
+          }
+        }
         const hasBlessed = (item) => item?.modifiers?.some((m) => m.id === "blessed");
         const activeIds = new Set();
         for (const [slot, item] of Object.entries(this.equipment)) {
@@ -195,7 +203,7 @@ export function applyGameLootMixin(Game) {
             this.activeBlessings.push({ ...def, until: this.time + 20 });
           }
         }
-        if (!this.victoryPortal && !enemy._bloodAltarMiniboss && typeof this.spawnExtractionPortalNearPlayer === "function") {
+        if (!this.enableRunRouteGraph && !this.victoryPortal && !enemy._bloodAltarMiniboss && typeof this.spawnExtractionPortalNearPlayer === "function") {
           this.spawnExtractionPortalNearPlayer();
         }
       }
@@ -332,7 +340,7 @@ export function applyGameLootMixin(Game) {
               const d = Math.min(5, Math.max(1, this.difficulty ?? 1));
               const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValueForDifficulty(d) : rollModifierValueForDifficulty(d);
               living.modifiers = living.modifiers || [];
-              living.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, appliesTo: m.appliesTo, addedAt: Date.now() });
+              living.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, rarity: m.rarity || "normal", value: val, appliesTo: m.appliesTo, trigger: m.trigger, conditional: m.conditional, passiveStatKey: m.passiveStatKey, statMods: resolveModifierStatMods(m), data: m.data ? { ...m.data } : undefined, addedAt: Date.now() });
               this.rebuildItemStats(living);
               this.recalculateStats();
               this.updateEquippedUI();
@@ -352,7 +360,7 @@ export function applyGameLootMixin(Game) {
 
       const isBoss = !!(enemy.isBoss || enemy === this.enemySystem?.boss);
       const isElite = !!(enemy.enemyTier === "elite" || enemy.enemyTier === "special" || enemy.isElite || enemy.isSpecial);
-      const isMiniBossForSpirit = !!(enemy.enemyTier === "miniBoss" || enemy.isMiniBoss || enemy.isFiery || enemy.isCursedChestGuardian);
+      const isMiniBossForSpirit = !!(enemy.enemyTier === "miniBoss" || enemy.enemyTier === "miniboss" || enemy.isMiniBoss || enemy.isFiery || enemy.isCursedChestGuardian);
       let spiritRarity = "normal";
       let spiritDropChance = 0.05;
       if (isBoss) {
@@ -506,6 +514,11 @@ export function applyGameLootMixin(Game) {
       ensureItemVessels(newItem);
 
       this.inventory.push(newItem);
+      this.triggerEquipmentModifierEvent?.("item_picked_up", {
+        item: newItem,
+        rarity: newItem.rarity,
+        lootItem
+      });
       if (this.hasRunTalent("cardSurge")) {
         if (typeof this.logTalentTrigger === "function") this.logTalentTrigger("cardSurge", "Loot pickup: +20% move/attack speed 3s");
         this.cardSurgeUntil = Math.max(this.cardSurgeUntil || 0, this.time + 3);
@@ -558,7 +571,7 @@ export function applyGameLootMixin(Game) {
     tryDropCubeFromEnemy(enemy, onDrop = null) {
       const ex = enemy.position.x + enemy.size / 2;
       const ey = enemy.position.y + enemy.size / 2;
-      const isMiniBoss = !!(enemy.enemyTier === "miniBoss" || enemy.isFiery || enemy.isCursedChestGuardian);
+      const isMiniBoss = !!(enemy.enemyTier === "miniBoss" || enemy.enemyTier === "miniboss" || enemy.isFiery || enemy.isCursedChestGuardian);
       const isElite = !!(enemy.enemyTier === "elite" || enemy.enemyTier === "special" || enemy.isElite || enemy.isSpecial);
       let dropMult = this.hasBlessing("fortune") ? 2 : 1;
       if (this.hasRunTalent("cubeMagnet")) {

@@ -3,7 +3,7 @@
 
 import { escapeHtml } from '../utils.js';
 import { buildLegacyVault } from './save-system.js';
-import { formatItemStats, formatItemModifiers } from './tooltips.js';
+import { formatItemStats, formatItemModifierEntries } from './tooltips.js';
 import { getGiftPreferenceLevel } from '../systems/friends-system.js';
 import { FRIENDS_CATALOG } from '../data/friends-data.js';
 
@@ -104,9 +104,9 @@ function renderLegacyVaultForGift() {
     }
     
     const statsStr = formatItemStats(entry.item);
-    const mods = formatItemModifiers(entry.item);
+    const mods = formatItemModifierEntries(entry.item);
     const modsHtml = mods.length
-      ? `<ul class="legacy-item-mods">${mods.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`
+      ? `<ul class="legacy-item-mods">${mods.map((mod) => `<li style="color:${escapeHtml(mod.color)}">${escapeHtml(mod.text)}</li>`).join("")}</ul>`
       : "";
     card.innerHTML = `
       ${preferenceBadge}

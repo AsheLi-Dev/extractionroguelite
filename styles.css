@@ -4453,3 +4453,8 @@ body {
 .item-tooltip .tooltip-stats.tooltip-worse {
   color: #ef4444;
 }
+
+.item-tooltip .tooltip-stat-delta {
+  font-weight: 600;
+  white-space: nowrap;
+}

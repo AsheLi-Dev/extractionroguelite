@@ -115,6 +115,14 @@ export const STATUS_DEFS = {
     maxStacks: 1,
     refreshOnReapply: true,
     tags: ['buff', 'movement']
+  },
+  spiritBanner: {
+    id: 'spiritBanner',
+    defaultDuration: 0.15,
+    stackingMode: STATUS_STACKING_MODES.REFRESH,
+    maxStacks: 1,
+    refreshOnReapply: true,
+    tags: ['buff', 'skill']
   }
 };
 

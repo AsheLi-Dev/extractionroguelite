@@ -461,6 +461,9 @@ export function applyGameLevelUpMixin(Game) {
 
     grantXP(amount) {
       let mult = this.equipmentXpGainedMult ?? 1;
+      if ((this.equipmentNewMapGoldXpBuffUntil || 0) > this.time) {
+        mult *= (this.equipmentNewMapGoldXpBuffMult || 1);
+      }
       if (this.frenzyBuffUntil > this.time) {
         mult *= 1.2;
       }
@@ -895,6 +898,10 @@ export function applyGameLevelUpMixin(Game) {
         leveled = true;
         this.runAttributePoints = Math.max(0, Number(this.runAttributePoints) || 0) + 1;
         onRingLevelUp(this);
+        this.triggerEquipmentModifierEvent?.("level_up", {
+          level: this.level,
+          previousLevel: this.level - 1
+        });
         if (typeof playSfx === "function") playSfx("levelUp");
         this.levelUpVfxStartTime = this.time;
         this.updateXpUI();
@@ -1057,7 +1064,7 @@ export function applyGameLevelUpMixin(Game) {
 
       if (choice?.type === "soulSiphonEvolution") {
         const cat = choice.category;
-        if (!["power", "tempo", "control", "spiritcraft"].includes(cat)) return;
+        if (!["damage", "rhythm", "control", "spiritcraft"].includes(cat)) return;
         if (choice.stage === "first") {
           this.soulSiphonEvolutionFirst = cat;
           this.soulSiphonEvolutionSecond = null;

@@ -34,6 +34,10 @@ export function applyGameCollisionMixin(Game) {
         if (obstacleIntersectsRect(obstacle, rect)) return true;
       }
 
+      for (const ob of this.getVaultEntranceBlocking?.() || []) {
+        if (obstacleIntersectsRect(ob, rect)) return true;
+      }
+
       for (const obj of this.mapInteractables || []) {
         if (!obj?.collisionRect) continue;
         const objRect = {
@@ -429,7 +433,12 @@ export function applyGameCollisionMixin(Game) {
     enemiesInRadius(cx, cy, r) {
       const out = [];
       const es = this.enemySystem;
-      for (const e of [...es.enemies, ...(es.boss ? [es.boss] : [])]) {
+      const allTargets = [
+        ...(es?.enemies || []),
+        ...(es?.boss ? [es.boss] : []),
+        ...(this.totems || [])
+      ];
+      for (const e of allTargets) {
         if (e.isDead) continue;
         const ex = e.position.x + e.size / 2; const ey = e.position.y + e.size / 2;
         if ((ex - cx) ** 2 + (ey - cy) ** 2 <= r * r) out.push(e);
@@ -440,7 +449,12 @@ export function applyGameCollisionMixin(Game) {
     enemiesInCone(cx, cy, dirX, dirY, length, angle) {
       const out = [];
       const es = this.enemySystem;
-      for (const e of [...es.enemies, ...(es.boss ? [es.boss] : [])]) {
+      const allTargets = [
+        ...(es?.enemies || []),
+        ...(es?.boss ? [es.boss] : []),
+        ...(this.totems || [])
+      ];
+      for (const e of allTargets) {
         if (e.isDead) continue;
         const ex = e.position.x + e.size / 2 - cx; const ey = e.position.y + e.size / 2 - cy;
         const dist = Math.sqrt(ex * ex + ey * ey) || 1;
@@ -459,7 +473,12 @@ export function applyGameCollisionMixin(Game) {
     getEnemiesInLine(px, py, dirX, dirY, maxDist, halfWidth = 8) {
       const es = this.enemySystem;
       const candidates = [];
-      for (const e of [...es.enemies, ...(es.boss ? [es.boss] : [])]) {
+      const allTargets = [
+        ...(es?.enemies || []),
+        ...(es?.boss ? [es.boss] : []),
+        ...(this.totems || [])
+      ];
+      for (const e of allTargets) {
         if (e.isDead) continue;
         const ex = e.position.x + e.size / 2 - px;
         const ey = e.position.y + e.size / 2 - py;

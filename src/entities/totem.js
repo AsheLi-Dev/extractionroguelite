@@ -344,6 +344,38 @@ export class Totem {
       ctx.strokeStyle = def.auraBorderColor ?? "#fff";
       ctx.lineWidth = 3;
       ctx.beginPath();
+      // #region agent log (telegraph layer debugging)
+      if (!this._debugTotemTelegraphLogged) {
+        this._debugTotemTelegraphLogged = true;
+        const cam = camera?.position ?? { x: 0, y: 0 };
+        const tf = typeof ctx?.getTransform === "function" ? ctx.getTransform() : null;
+        fetch("http://127.0.0.1:7453/ingest/67f144d2-906e-4be5-b37e-c8486a8d0d9d", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8eb378" },
+          body: JSON.stringify({
+            sessionId: "8eb378",
+            runId: "debug_totem_telegraph_layer_1",
+            hypothesisId: "H6_totemTelegraphOffset",
+            location: "src/entities/totem.js:draw.telegraph",
+            message: "Totem skill telegraph draw position vs camera/transform.",
+            data: {
+              totemId: this.id,
+              totemType: this.typeId,
+              camX: cam.x,
+              camY: cam.y,
+              sx: sx + radiusPx,
+              sy: sy + radiusPx,
+              radiusPx,
+              telegraphDuration: this.def.telegraphDuration,
+              telegraphUntil: this.telegraphUntil,
+              gameTime,
+              ctxTransform: tf ? { a: tf.a, d: tf.d, e: tf.e, f: tf.f } : null
+            },
+            timestamp: Date.now()
+          })
+        }).catch(() => {});
+      }
+      // #endregion
       ctx.arc(sx + radiusPx, sy + radiusPx, auraRadius + t * 15, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
@@ -399,12 +431,38 @@ function findTotemSpawnInZone(zone, game, totemSize) {
       if (onWall) continue;
     }
 
-    if (game.obstacles?.length) {
+    // Avoid spawning inside projectiles-blocking obstacles/breakables.
+    // If a totem spawns "inside" something that stops projectiles, it may appear
+    // unhittable because the projectile gets consumed by the blocking object first.
+    {
       const r = { x, y, w: totemSize, h: totemSize };
-      for (const ob of game.obstacles) {
-        if (ob.destroyed || !ob.blocksMovement) continue;
-        if (obstacleIntersectsRect(ob, r)) continue;
+
+      let onBlockingObstacle = false;
+      for (const ob of game.obstacles || []) {
+        if (ob.destroyed) continue;
+        // For projectile reachability we care about blocksProjectiles; blocksMovement
+        // alone would still be bad for pathing, but isn't the core "can't hit" issue.
+        if (!ob.blocksProjectiles && !ob.blocksMovement) continue;
+        if (obstacleIntersectsRect(ob, r)) {
+          onBlockingObstacle = true;
+          break;
+        }
       }
+      if (onBlockingObstacle) continue;
+
+      let onBreakable = false;
+      for (const br of game.breakables || []) {
+        if (br.isDead) continue;
+        const bx = br.position?.x ?? br.x ?? 0;
+        const by = br.position?.y ?? br.y ?? 0;
+        const bw = br.hitbox?.w ?? br.size ?? 16;
+        const bh = br.hitbox?.h ?? br.size ?? 16;
+        if (r.x < bx + bw && r.x + r.w > bx && r.y < by + bh && r.y + r.h > by) {
+          onBreakable = true;
+          break;
+        }
+      }
+      if (onBreakable) continue;
     }
 
     return { x, y };

@@ -4,9 +4,7 @@ export const UPGRADE_CATEGORIES = [
   "control",
   "onhit",
   "elemental",
-  // Soul Siphon-specific build categories
-  "power",
-  "tempo",
+  // Soul Siphon-specific build category
   "spiritcraft"
 ];
 
@@ -17,8 +15,6 @@ export function createEmptyCategoryCounts() {
     control: 0,
     onhit: 0,
     elemental: 0,
-    power: 0,
-    tempo: 0,
     spiritcraft: 0
   };
 }
@@ -180,12 +176,12 @@ export const ATTACK_UPGRADE_DEFS = {
   },
   soulSiphon: {
     standardUpgrades: [
-      // COMMON (power)
+      // COMMON (damage)
       {
         id: "soul_pressure",
         name: "Soul Pressure",
         rarity: "common",
-        category: "power",
+        category: "damage",
         description: "Soul Siphon damage +12%.",
         maxLevel: 5,
         valueRange: { min: 12, max: 12, percent: true },
@@ -195,7 +191,7 @@ export const ATTACK_UPGRADE_DEFS = {
         id: "condensed_beam",
         name: "Condensed Beam",
         rarity: "common",
-        category: "power",
+        category: "damage",
         description: "Beam width +16 px, damage +8%.",
         maxLevel: 4,
         // Store width bonus (px) per stack; damage handled in runtime using stacks.
@@ -206,18 +202,18 @@ export const ATTACK_UPGRADE_DEFS = {
         id: "execution_drain",
         name: "Execution Drain",
         rarity: "common",
-        category: "power",
+        category: "damage",
         description: "+20% damage to enemies below 35% health.",
         maxLevel: 3,
         buildSelectable: true
       },
 
-      // COMMON (tempo)
+      // COMMON (rhythm)
       {
         id: "energy_recycling",
         name: "Energy Recycling",
         rarity: "common",
-        category: "tempo",
+        category: "rhythm",
         description: "Spirit gains 1 charge per 260 px moved.",
         maxLevel: 3,
         buildSelectable: true
@@ -226,7 +222,7 @@ export const ATTACK_UPGRADE_DEFS = {
         id: "spiritual_conduit",
         name: "Spiritual Conduit",
         rarity: "common",
-        category: "tempo",
+        category: "rhythm",
         description: "+8% chance to charge the Spirit twice when siphoning.",
         maxLevel: 4,
         buildSelectable: true
@@ -235,7 +231,7 @@ export const ATTACK_UPGRADE_DEFS = {
         id: "rhythmic_siphon",
         name: "Rhythmic Siphon",
         rarity: "common",
-        category: "tempo",
+        category: "rhythm",
         description: "Soul Siphon attack speed +8%.",
         maxLevel: 5,
         buildSelectable: true
@@ -292,12 +288,12 @@ export const ATTACK_UPGRADE_DEFS = {
         buildSelectable: true
       },
 
-      // UNCOMMON (power)
+      // UNCOMMON (damage)
       {
         id: "soul_burst",
         name: "Soul Burst",
         rarity: "uncommon",
-        category: "power",
+        category: "damage",
         description: "Enemies killed by Soul Siphon explode for 25% attack damage.",
         maxLevel: 3,
         buildSelectable: true
@@ -306,7 +302,7 @@ export const ATTACK_UPGRADE_DEFS = {
         id: "focused_channel",
         name: "Focused Channel",
         rarity: "uncommon",
-        category: "power",
+        category: "damage",
         description: "Damage increases while channeling by +15% per second, up to +45%.",
         maxLevel: 3,
         buildSelectable: true
@@ -315,7 +311,7 @@ export const ATTACK_UPGRADE_DEFS = {
         id: "soul_rend",
         name: "Soul Rend",
         rarity: "uncommon",
-        category: "power",
+        category: "damage",
         description: "Also deals 0.8% of enemy max health as damage.",
         maxLevel: 3,
         buildSelectable: true
@@ -324,18 +320,18 @@ export const ATTACK_UPGRADE_DEFS = {
         id: "twin_fireball",
         name: "Twin Fireball",
         rarity: "uncommon",
-        category: "power",
+        category: "damage",
         description: "Spirit fires an additional fireball.",
         maxLevel: 1,
         buildSelectable: true
       },
 
-      // UNCOMMON (tempo)
+      // UNCOMMON (rhythm)
       {
         id: "fluid_channel",
         name: "Fluid Channel",
         rarity: "uncommon",
-        category: "tempo",
+        category: "rhythm",
         description: "Channeling reduces movement speed 20% less.",
         maxLevel: 3,
         buildSelectable: true
@@ -344,7 +340,7 @@ export const ATTACK_UPGRADE_DEFS = {
         id: "spirit_reflex",
         name: "Spirit Reflex",
         rarity: "uncommon",
-        category: "tempo",
+        category: "rhythm",
         description: "Spirit ability trigger reduces a random skill cooldown by 0.35 s.",
         maxLevel: 3,
         buildSelectable: true
@@ -426,12 +422,12 @@ export const ATTACK_UPGRADE_DEFS = {
         buildSelectable: true
       },
 
-      // RARE (power)
+      // RARE (damage)
       {
         id: "spirit_overload",
         name: "Spirit Overload",
         rarity: "rare",
-        category: "power",
+        category: "damage",
         description: "20% chance on beam hit to trigger Spirit's fireball.",
         maxLevel: 1,
         buildSelectable: true
@@ -440,18 +436,18 @@ export const ATTACK_UPGRADE_DEFS = {
         id: "devouring_beam",
         name: "Devouring Beam",
         rarity: "rare",
-        category: "power",
+        category: "damage",
         description: "Damage +0.5% per soul collected this run.",
         maxLevel: 1,
         buildSelectable: true
       },
 
-      // RARE (tempo)
+      // RARE (rhythm)
       {
         id: "echoing_beam",
         name: "Echoing Beam",
         rarity: "rare",
-        category: "tempo",
+        category: "rhythm",
         description: "20% chance for a second hit at 20% damage.",
         maxLevel: 1,
         buildSelectable: true
@@ -491,7 +487,7 @@ export const ATTACK_UPGRADE_DEFS = {
         id: "soul_mastery",
         name: "Soul Mastery",
         rarity: "rare",
-        category: "tempo",
+        category: "rhythm",
         description: "1% skill cooldown reduction per 8 souls.",
         maxLevel: 1,
         buildSelectable: true

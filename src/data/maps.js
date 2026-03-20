@@ -125,7 +125,7 @@ export const MAP_DEFS = [
     exits: [
       { x: MAP_WIDTH - WALL_THICKNESS - 80, y: MAP_HEIGHT / 2 - 60, w: 80, h: 120, targetMapId: 1, spawnSide: "left" }
     ],
-    enemyCount: 6,
+    enemyCount: 1.0,
     enemyScale: { hp: 1, attack: 1, speed: 1 },
     lootQuality: 0,
   },
@@ -140,7 +140,7 @@ export const MAP_DEFS = [
     exits: [
       { x: MAP_WIDTH - WALL_THICKNESS - 80, y: MAP_HEIGHT / 2 - 60, w: 80, h: 120, targetMapId: 2, spawnSide: "left" }
     ],
-    enemyCount: 8,
+    enemyCount: 1.2,
     enemyScale: { hp: 1.2, attack: 1.15, speed: 1.1 },
     lootQuality: 0.2,
   },
@@ -155,7 +155,7 @@ export const MAP_DEFS = [
     exits: [
       { x: MAP_WIDTH - WALL_THICKNESS - 80, y: MAP_HEIGHT / 2 - 60, w: 80, h: 120, targetMapId: 3, spawnSide: "left" }
     ],
-    enemyCount: 10,
+    enemyCount: 1.5,
     enemyScale: { hp: 1.5, attack: 1.3, speed: 1.2 },
     lootQuality: 0.4,
   },
@@ -170,7 +170,7 @@ export const MAP_DEFS = [
     exits: [
       { x: MAP_WIDTH - WALL_THICKNESS - 80, y: MAP_HEIGHT / 2 - 60, w: 80, h: 120, targetMapId: 4, spawnSide: "left" }
     ],
-    enemyCount: 12,
+    enemyCount: 1.8,
     enemyScale: { hp: 2, attack: 1.5, speed: 1.3 },
     lootQuality: 0.6,
   },
@@ -414,7 +414,9 @@ export function buildArchetypeGrid(world) {
       } else if (col === startCol && row === startRow) {
         r.push(BIOME_ARCHETYPE.START);
       } else if (col === exitCol && row === exitRow) {
-        r.push(BIOME_ARCHETYPE.EXIT);
+        // Route mode no longer uses a dedicated exit-room archetype.
+        // Keep this cell as a normal combat cell.
+        r.push(BIOME_ARCHETYPE.OPEN_SPACE);
       } else if (minibossPick && minibossPick.row === row && minibossPick.col === col) {
         r.push(BIOME_ARCHETYPE.MINIBOSS);
       } else if (corridorPick && corridorPick.row === row && corridorPick.col === col) {
@@ -451,7 +453,7 @@ export function buildForestBiomeTestArchetypeGrid(world) {
   return {
     grid: [
       Array.from({ length: cols }, (_, col) => topActiveCols.has(col) ? BIOME_ARCHETYPE.OPEN_SPACE : BIOME_ARCHETYPE.EMPTY),
-      [BIOME_ARCHETYPE.START, BIOME_ARCHETYPE.OPEN_SPACE, BIOME_ARCHETYPE.WOODS, BIOME_ARCHETYPE.RUINS, BIOME_ARCHETYPE.OPEN_SPACE, BIOME_ARCHETYPE.WOODS, BIOME_ARCHETYPE.CORRIDORS, BIOME_ARCHETYPE.EXIT],
+      [BIOME_ARCHETYPE.START, BIOME_ARCHETYPE.OPEN_SPACE, BIOME_ARCHETYPE.WOODS, BIOME_ARCHETYPE.RUINS, BIOME_ARCHETYPE.OPEN_SPACE, BIOME_ARCHETYPE.WOODS, BIOME_ARCHETYPE.CORRIDORS, BIOME_ARCHETYPE.OPEN_SPACE],
       [BIOME_ARCHETYPE.EMPTY, BIOME_ARCHETYPE.RUINS, BIOME_ARCHETYPE.VAULT, BIOME_ARCHETYPE.WOODS, BIOME_ARCHETYPE.OPEN_SPACE, BIOME_ARCHETYPE.RUINS, BIOME_ARCHETYPE.MINIBOSS, BIOME_ARCHETYPE.EMPTY],
       Array.from({ length: cols }, (_, col) => bottomActiveCols.has(col) ? BIOME_ARCHETYPE.OPEN_SPACE : BIOME_ARCHETYPE.EMPTY)
     ],

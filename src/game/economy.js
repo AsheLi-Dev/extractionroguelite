@@ -18,6 +18,7 @@ import {
   LOCAL_STAT_SCALE_ROLL_BY_DIFFICULTY,
   LOCAL_STAT_SCALE_MOD_IDS
 } from '../data/loot-data.js';
+import { advanceSkillTriggerProgress } from './skill-trigger-progress.js';
 
 // -------- Helpers --------
 
@@ -31,13 +32,25 @@ export function roundToNearest5(n) {
 
 export function addGold(game, amount, reason, context = {}) {
   if (amount <= 0) return;
+  const now = Number(game?.time) || 0;
+  const eqGoldMult = (game?.equipmentNewMapGoldXpBuffUntil || 0) > now
+    ? (Number(game?.equipmentNewMapGoldXpBuffMult) || 1)
+    : 1;
   const luckAttr = Math.max(
     0,
     Number(game?.runCharacterAttributes?.luck ?? game?.runConfig?.selectedCharacter?.attributes?.luck) || 0
   );
-  const adjustedAmount = Math.max(0, Math.round(Number(amount) * (1 + luckAttr * 0.01)) || 0);
+  const adjustedAmount = Math.max(0, Math.round(Number(amount) * eqGoldMult * (1 + luckAttr * 0.01)) || 0);
   if (adjustedAmount <= 0) return;
   game.gold = (game.gold ?? 0) + adjustedAmount;
+  advanceSkillTriggerProgress(game, 'gold_collected', { amount: adjustedAmount });
+  if (typeof game?.triggerEquipmentModifierEvent === "function") {
+    game.triggerEquipmentModifierEvent("gold_picked_up", {
+      amount: adjustedAmount,
+      reason,
+      context
+    });
+  }
 }
 
 export function getGold(game) {

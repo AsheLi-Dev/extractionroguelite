@@ -4,32 +4,32 @@
  * Evolution state (first/second) is resolved once; runtime reads only the composed profile.
  */
 
-export const SOUL_SIPHON_CATEGORIES = ["power", "tempo", "control", "spiritcraft"];
+export const SOUL_SIPHON_CATEGORIES = ["damage", "rhythm", "control", "spiritcraft"];
 
 export const SOUL_SIPHON_FIRST_EVOLUTION_NAMES = {
-  power: "Reaper Form",
-  tempo: "Wind Form",
+  damage: "Reaper Form",
+  rhythm: "Wind Form",
   control: "Earth Form",
   spiritcraft: "Ancestral Form"
 };
 
 export const SOUL_SIPHON_FIRST_EVOLUTION_DESCRIPTIONS = {
-  power: "Heavy delayed beam shots with stronger damage and a fireball-focused spirit.",
-  tempo: "A thinner, faster beam with speed-focused spirit support.",
+  damage: "Heavy delayed beam shots with stronger damage and a fireball-focused spirit.",
+  rhythm: "A thinner, faster beam with speed-focused spirit support.",
   control: "Cursor-area control pulses backed by a ground-slam spirit.",
   spiritcraft: "A spirit-forward form with faster charging and access to all spirit abilities."
 };
 
 export const SOUL_SIPHON_SECOND_EVOLUTION_NAMES = {
-  power: "Power Path",
-  tempo: "Tempo Path",
+  damage: "Damage Path",
+  rhythm: "Rhythm Path",
   control: "Control Path",
   spiritcraft: "Spiritcraft Path"
 };
 
 export const SOUL_SIPHON_SECOND_EVOLUTION_DESCRIPTIONS = {
-  power: "Push Soul Siphon further into raw beam damage and finishing power.",
-  tempo: "Lean into attack cadence, chaining, and faster spirit triggers.",
+  damage: "Push Soul Siphon further into raw beam damage and finishing power.",
+  rhythm: "Lean into attack cadence, chaining, and faster spirit triggers.",
   control: "Strengthen crowd control, debuffs, and field effects.",
   spiritcraft: "Double down on spirit commands, support, and companion synergy."
 };
@@ -77,7 +77,7 @@ export function getSoulSiphonSecondEvolutionOptions(firstCategory) {
 
 /**
  * Resolve first and second dominant categories from Soul Siphon upgrade category counts.
- * Only considers power, tempo, control, spiritcraft.
+ * Only considers damage, rhythm, control, spiritcraft.
  * Returns [first, second] where second may be null if only one category has picks.
  */
 export function resolveSoulSiphonDominantCategories(categoryCounts) {
@@ -113,7 +113,7 @@ function buildFormId(first, second) {
 // --- First evolution: beam mode + beamMods + spiritPool + spiritTrigger + links ---
 
 const FIRST_EVOLUTION = {
-  power: {
+  damage: {
     formId: "reaper",
     beamMode: "delayed_shot",
     beamMods: {
@@ -126,7 +126,7 @@ const FIRST_EVOLUTION = {
     spiritTrigger: { mode: "normal_random" },
     links: {}
   },
-  tempo: {
+  rhythm: {
     formId: "wind",
     beamMode: "channel",
     beamMods: {
@@ -167,44 +167,44 @@ const FIRST_EVOLUTION = {
 // --- Second evolution: overrides only (merged into first) ---
 
 const SECOND_EVOLUTION_OVERRIDES = {
-  power_power: {
+  damage_damage: {
     formId: "expanding_reaper",
     beamMods: { widerCoverage: true, edgeFalloff: true, windupSec: 0.4, baseDamageMult: 1.2 }
   },
-  power_tempo: {
+  damage_rhythm: {
     formId: "triple_reaper",
     beamMods: { tripleBeam: true, pulseDamageMult: 0.4, pulseIntervalSec: 0.08 }
   },
-  power_control: {
+  damage_control: {
     formId: "stunning_reaper",
     beamMods: { beamStun: true, stunSec: 0.2, widerCoverage: true, coverageMult: 1.3 }
   },
-  power_spiritcraft: {
+  damage_spiritcraft: {
     formId: "reaper_servitor",
     spiritTrigger: { mode: "auto_fireball_on_attack" },
     links: { autoSpiritSupportOnAttack: true }
   },
-  tempo_power: {
+  rhythm_damage: {
     formId: "burning_thread",
     beamMods: { channelDelaySec: 0.15, damageMult: 1.25 }
   },
-  tempo_tempo: {
+  rhythm_rhythm: {
     formId: "accelerating_thread",
     beamMods: { acceleratingProcRate: true, rampStartMult: 0.5, rampMaxMult: 2, rampSec: 3 }
   },
-  tempo_control: {
+  rhythm_control: {
     formId: "freezing_thread",
     beamMods: { freezeBuildUp: true }
   },
-  tempo_spiritcraft: {
+  rhythm_spiritcraft: {
     formId: "rally_thread",
     spiritTrigger: { mode: "stacking_speed_buff", maxStacks: 3 }
   },
-  control_power: {
+  control_damage: {
     formId: "execution_field",
     beamMods: { firstPulseMassive: true, firstTickDamageMult: 5, areaDelaySec: 0.2 }
   },
-  control_tempo: {
+  control_rhythm: {
     formId: "haste_field",
     links: { fieldHaste: true }
   },
@@ -216,13 +216,13 @@ const SECOND_EVOLUTION_OVERRIDES = {
     formId: "resonant_field",
     links: { beamAreaScalesSpiritSlam: true }
   },
-  spiritcraft_power: {
+  spiritcraft_damage: {
     formId: "war_spirit",
     spiritPool: "fireball_and_slam",
     spiritTrigger: { mode: "normal_random" },
     links: { fireballExplodes: true, slamDoubleSingleTarget: true }
   },
-  spiritcraft_tempo: {
+  spiritcraft_rhythm: {
     formId: "overclocked_spirit",
     spiritTrigger: { mode: "cast_all_three", chargeThreshold: 2 }
   },

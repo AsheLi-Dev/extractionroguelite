@@ -943,6 +943,12 @@ export function applyGameEventsMixin(Game) {
     },
 
     interactWithMapObject(obj) {
+      if (obj.type === "nodeExitPortal") {
+        this.nodeX = obj.targetNodeX;
+        this.nodeY = obj.targetNodeY;
+        this.enterNode?.();
+        return;
+      }
       if (obj?.type && String(obj.type).startsWith("npc")) {
         onRingNpcInteracted(this, obj);
       }

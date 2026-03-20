@@ -320,8 +320,8 @@ export function applyGameEnemyAttacksMixin(Game) {
       if (!this.pendingGuardedEffects?.length) return;
       const now = this.time;
       const es = this.enemySystem;
-      const largeTypes = ENEMY_TYPES.filter((t) => (t.size || 0) >= 90);
-      const pool = largeTypes.length > 0 ? largeTypes : ENEMY_TYPES;
+      const largeTypes = ENEMY_TYPES.filter((t) => (t.size || 0) >= 90 && t.spawnPool !== "special");
+      const pool = largeTypes.length > 0 ? largeTypes : ENEMY_TYPES.filter((t) => t.spawnPool !== "special");
       this.pendingGuardedEffects = this.pendingGuardedEffects.filter((p) => {
         if (now < p.startTime + 0.5) return true;
         const worldBounds = this.world ? { width: this.world.width, height: this.world.height } : { width: 3600, height: 900 };

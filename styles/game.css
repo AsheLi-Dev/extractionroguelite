@@ -96,6 +96,23 @@
   text-align: center;
 }
 
+.skill-charge-count {
+  position: absolute;
+  bottom: 2px;
+  right: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 0 2px #000, 0 1px 2px #000;
+  pointer-events: none;
+}
+
+.skill-slot.skill-no-charge .skill-icon,
+.skill-slot.skill-no-charge .skill-slot-icon-img {
+  filter: grayscale(1);
+  opacity: 0.65;
+}
+
 .skill-slot.skill-cascade-flash {
   box-shadow: 0 0 12px 2px #38bdf8;
   animation: skill-cascade-flash 0.3s ease-out;

@@ -423,8 +423,15 @@ export function drawHitboxProjectileVisuals(state, ctx, hitboxes) {
     if (!h?.id) continue;
     activeAttackLookup.set(h.id, h);
   }
-  const camX = state.camera?.position?.x ?? 0;
-  const camY = state.camera?.position?.y ?? 0;
+  let camX = state.camera?.position?.x ?? 0;
+  let camY = state.camera?.position?.y ?? 0;
+  if (camX === 0 && camY === 0 && typeof state.getScreenOffsetFallback === 'function') {
+    const fallback = state.getScreenOffsetFallback();
+    if (fallback) {
+      camX = fallback.x;
+      camY = fallback.y;
+    }
+  }
 
   for (const [attackId, visual] of state.projectileVisuals.entries()) {
     const hitbox = activeAttackLookup.get(attackId);

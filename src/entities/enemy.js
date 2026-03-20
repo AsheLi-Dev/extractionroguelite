@@ -245,7 +245,11 @@ export const AFFIX_DEFS = [
   { id: "auraBearer", name: "Aura Bearer", icon: "tile_0371_r23_c03", color: "#ec4899" },
   { id: "martyr", name: "Martyr", icon: "tile_0442_r27_c10", color: "#78716c" },
   { id: "undying", name: "Undying", icon: "tile_0365_r22_c13", color: "#7c3aed" },
-  { id: "weakening", name: "Weakening", icon: "tile_0175_r10_c15", color: "#ef4444" },
+  { id: "agile", name: "Agile", icon: "tile_0423_r26_c07", color: "#34d399" },
+  { id: "invisible", name: "Invisible", icon: "tile_0346_r21_c10", color: "#64748b" },
+  { id: "wall", name: "Wall", icon: "tile_0002_r00_c02", color: "#6b7280" },
+  { id: "boulder", name: "Boulder", icon: "tile_0002_r00_c02", color: "#a16207" },
+  { id: "inking", name: "Inking", icon: "tile_0002_r00_c02", color: "#111827" },
   { id: "orbiting", name: "Orbiting", icon: "tile_0049_r03_c01", color: "#f59e0b" },
   { id: "lasering", name: "Lasering", icon: "tile_0327_r20_c07", color: "#06b6d4" },
   { id: "phantom", name: "Phantom", icon: "tile_0346_r21_c10", color: "#94a3b8" },
@@ -2845,6 +2849,9 @@ export class Enemy {
     if (this.attackCtrl) {
       this.attackCtrl.draw(ctx, camera);
     }
+    if (hasAffix("invisible") && gameTime != null && (this._invisibleUntil || 0) > gameTime) {
+      return;
+    }
 
     const isMiniBoss = this.enemyTier === "miniBoss" || this.isMiniBoss;
     const isElite = this.enemyTier === "elite" || this.isElite;
@@ -3192,8 +3199,9 @@ export class Enemy {
     if (hasAffix("orbiting") && this._orbitingAngle != null) {
       const cx = sx + this.size / 2;
       const cy = sy + this.size / 2;
-      // Orbiting modifier: orbs orbit at 3x base radius (matches game.js logic)
-      const orbRadius = (this.size / 2 + 15) * 3;
+      // Orbiting modifier: orbs orbit at 1.5x base radius (matches game logic)
+      const orbRadius = (this.size / 2 + 15) * 1.5;
+      const orbVisualScale = 1.5;
       const vfx = this.vfxState.orbiting;
       
       // Aura ring: faint dashed ring with slow rotation
@@ -3226,7 +3234,7 @@ export class Enemy {
             ctx.globalAlpha = alpha;
             ctx.fillStyle = "#06b6d4";
             ctx.beginPath();
-            ctx.arc(trailSx, trailSy, 4, 0, Math.PI * 2);
+            ctx.arc(trailSx, trailSy, 4 * orbVisualScale, 0, Math.PI * 2);
             ctx.fill();
           }
           ctx.restore();
@@ -3239,12 +3247,12 @@ export class Enemy {
         // Outer cyan glow
         ctx.fillStyle = `rgba(6,182,212,${0.6 * glowBoost})`;
         ctx.beginPath();
-        ctx.arc(ox, oy, 8, 0, Math.PI * 2);
+        ctx.arc(ox, oy, 8 * orbVisualScale, 0, Math.PI * 2);
         ctx.fill();
         // Inner white core
         ctx.fillStyle = "#ffffff";
         ctx.beginPath();
-        ctx.arc(ox, oy, 4, 0, Math.PI * 2);
+        ctx.arc(ox, oy, 4 * orbVisualScale, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }

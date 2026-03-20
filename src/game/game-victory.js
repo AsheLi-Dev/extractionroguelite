@@ -77,7 +77,9 @@ export function applyGameVictoryMixin(Game) {
         item.rarity = upgradeToRare ? "rare" : "magic";
         item.modifiers = item.modifiers || [];
         const pool = getModifierPoolForType(item.type) || [];
-        for (let i = 0; i < 2; i++) {
+        const targetModifierCount = item.rarity === "magic" ? 1 : 2;
+        const needed = Math.max(0, targetModifierCount - item.modifiers.length);
+        for (let i = 0; i < needed; i++) {
           const available = pool.filter((p) => !item.modifiers.some((m) => m.id === p.id));
           if (available.length === 0) break;
           const mod = available[Math.floor(Math.random() * available.length)];
@@ -88,6 +90,7 @@ export function applyGameVictoryMixin(Game) {
             id: mod.id,
             label: mod.label,
             statKey: mod.statKey,
+            rarity: mod.rarity || "normal",
             value,
             addedAt: Date.now()
           });

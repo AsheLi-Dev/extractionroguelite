@@ -7,7 +7,8 @@ import {
   EQUIPMENT_BASE_STAT,
   EQUIPMENT_SECONDARY_BASE,
   NAME_PREFIXES,
-  NAME_SUFFIXES
+  NAME_SUFFIXES,
+  MODIFIER_RARITY
 } from '../data/loot-data.js';
 import { ANCESTOR_SPIRIT_DEFS } from '../data/ancestor-spirits-data.js';
 import { getRingDefById } from '../data/rings-data.js';
@@ -49,12 +50,83 @@ function formatModifierLine(mod) {
   }
   if (mod.id === "defenseStatScale") return `Defense of this item +${Math.round(mod.value * 100)}%`;
   if (mod.id === "maxHealthStatScale") return `Max Health of this item +${Math.round(mod.value * 100)}%`;
+  if (mod.id === "dashFireball") return "Dash spawns a fireball";
+  if (mod.id === "restoreHpOnNewMapFlat") return "Recover life on entering a new map";
+  if (mod.id === "healOnKillChance") return "Chance to recover life on kill";
+  if (mod.id === "restoreHpOnLevelUpFlat") return "Recover life on level up";
+  if (mod.id === "chanceToBleedOnHit") return "Basic attacks have a chance to inflict bleed";
+  if (mod.id === "chanceToBurnOnHit") return "Basic attacks have a chance to inflict burn";
+  if (mod.id === "chanceToSlowOnHit") return "Basic attacks have a chance to inflict slow";
+  if (mod.id === "projectilePierce") return `Projectiles pierce +${Math.round(Number(mod.value) || 0)} additional targets`;
+  if (mod.id === "orbitalArrows") return `Every 2s: fire ${Math.max(1, Math.round(Number(mod.value) || 0))} arrows around you (10% Attack Damage)`;
+  if (mod.id === "mapEntryGoldPercent") return `Enter new area: gain ${Math.round((Number(mod.value) || 0) * 100)}% of your Gold`;
+  if (mod.id === "repeatBasicAttackChance") return "Chance to repeat a basic attack hit";
+  if (mod.id === "goldPickupDamageBuff") return "Picking up gold grants a damage buff";
+  if (mod.id === "critLifesteal") return "Critical hits restore life";
+  if (mod.id === "chestCritChanceBuff") return "Opening a chest grants crit chance briefly";
+  if (mod.id === "basicAttackExplosion") return "Basic attacks can trigger an explosion";
+  if (mod.id === "newMapGoldXpBuff") return "Entering a map grants temporary Gold/XP bonus";
+  if (mod.id === "chestBonusXpFlat") return "Opening a chest grants bonus XP";
+  if (mod.id === "pickMagicItemMoveSpeedBuff") return "Picking up a magic item grants move speed briefly";
+  if (mod.id === "critAttackSpeedStacking") return "Critical hits grant stacking attack speed";
+  if (mod.id === "chestDamageStacking") return "Opening chests grants stacking damage";
+  if (mod.id === "dashChargeBonus") return "Gain +1 maximum dash charge";
+  if (mod.id === "reactiveKnockbackHeal") return "Taking damage knocks back nearby enemies and heals";
+  if (mod.id === "critSummonSpirit") return "Critical hits can summon a spirit projectile";
+  if (mod.id === "critLightningChance") return "Critical hits can trigger chain lightning";
+  if (mod.id === "newMapMoveSpeedBuff") return "Entering a map grants temporary move speed";
+  if (mod.id === "enterMapGoldFlat") return `Enter new area: gain ${Math.round(Number(mod.value) || 0)} Gold`;
+  if (mod.id === "minibossGoldFlat") return `Kill a mini-boss: gain ${Math.round(Number(mod.value) || 0)} Gold`;
+  if (mod.id === "fullHpMoveSpeed") return "At full Health: gain Move Speed";
+  if (mod.id === "burningEnemyAttackSpeed") return "Nearby burning enemies increase Attack Speed";
+  if (mod.id === "lowCritHighDamage") return "Tradeoff: +200% Critical Damage, Crit Chance capped at 30%";
+  if (mod.id === "critScalingDamage") return "Gain +1% Critical Damage per 2% Critical Chance";
+  if (mod.id === "levelUpBonusAttributeChance") return "Level up: chance to gain +1 Attribute Point";
+  if (mod.id === "levelUpAttackSpeedStack") return "Level up: permanently gain Attack Speed";
+  if (mod.id === "levelUpMaxHealthFlat") return "Level up: permanently gain Max Health";
+  if (mod.id === "levelUpAttackDamageStack") return "Level up: permanently gain Attack Damage";
+  if (mod.id === "attackDamageVsHealth") return "Tradeoff: Attack Damage up, Max Health down";
+  if (mod.id === "xpVsHealth") return "Tradeoff: XP Gained up, Max Health down";
+  if (mod.id === "attackSpeedVsHealth") return "Tradeoff: Attack Speed up, Max Health down";
+  if (mod.id === "healthVsMoveSpeed") return "Tradeoff: Max Health up, Move Speed down";
+  if (mod.id === "doubleDashHeavyCooldown") return "Tradeoff: +2 Dash Charges, much longer Dash cooldown";
+  if (mod.id === "moveSpeedChestOpenHybrid") {
+    const ms = Math.round((Number(mod?.statMods?.speedPercent) || 0) * 100);
+    const co = Math.round((Number(mod?.statMods?.chestOpenSpeedPercent) || 0) * 100);
+    return `+${ms}% Movement Speed and +${co}% Chest Open Speed`;
+  }
+  if (mod.id === "flatDefenseBonus") {
+    const def = Math.round(Number(mod?.statMods?.defense) || 0);
+    return `+${def} Defense`;
+  }
+  if (mod.id === "flatHpDefenseHybrid") {
+    const hp = Math.round(Number(mod?.statMods?.maxHealth) || 0);
+    const def = Math.round(Number(mod?.statMods?.defense) || 0);
+    return `+${hp} Max Health and +${def} Defense`;
+  }
+  if (mod.id === "flatHpMoveSpeedHybrid") {
+    const hp = Math.round(Number(mod?.statMods?.maxHealth) || 0);
+    const spd = Math.round(Number(mod?.statMods?.speed) || 0);
+    return `+${hp} Max Health and +${spd} Movement Speed`;
+  }
+  if (mod.id === "moveAttackSpeedHybrid") {
+    const ms = Math.round((Number(mod?.statMods?.speedPercent) || 0) * 100);
+    const as = Math.round((Number(mod?.statMods?.attackSpeedPercent) || 0) * 100);
+    return `+${ms}% Movement Speed and +${as}% Attack Speed`;
+  }
   if (mod.id === "ring_gambler_health_penalty") return `${Math.round(Math.abs(mod.value) * 100)}% decreased Max Health`;
   if (mod.id === "ring_gambler_damage") return `+${Math.round(mod.value * 100)}% increased damage`;
   if (mod.id === "meleeFlatDamage" || mod.statKey === "flatDamage") return `+${Math.round(mod.value)} ${mod.label}`;
   const pct = Math.round((mod.value || 0) * 100);
   const sign = pct >= 0 ? "+" : "";
   return `${sign}${pct}% ${mod.label}`;
+}
+
+function getModifierRarityColor(mod) {
+  const rarity = String(mod?.rarity || MODIFIER_RARITY.NORMAL).toLowerCase();
+  if (rarity === MODIFIER_RARITY.RARE) return RARITY_COLORS.rare;   // yellow
+  if (rarity === MODIFIER_RARITY.MAGIC) return RARITY_COLORS.magic; // blue
+  return RARITY_COLORS.common;                                      // white
 }
 
 export function formatItemStats(item) {
@@ -97,12 +169,84 @@ export function formatItemModifiers(item) {
   return item.modifiers.map((m) => formatModifierLine(m));
 }
 
+export function formatItemModifierEntries(item) {
+  if (!item?.modifiers || item.modifiers.length === 0) return [];
+  return item.modifiers.map((m) => ({
+    text: formatModifierLine(m),
+    color: getModifierRarityColor(m)
+  }));
+}
+
 export function getItemRarityColor(item) {
   if (!item) return "#e2e8f0";
   if (item.rarity === "legendary") return RARITY_COLORS.legendary;
   if (item.rarity === "magic") return RARITY_COLORS.magic;
   if (item.rarity === "rare") return RARITY_COLORS.rare;
   return RARITY_COLORS.common;
+}
+
+/** Shown next to a stat when comparing to equipped gear: `(+5)` / `(-3)` (empty if no difference). */
+function formatFlatStatDeltaHtml(current, eq, shouldCompare) {
+  if (!shouldCompare) return "";
+  const d = Math.round((Number(current) || 0) - (Number(eq) || 0));
+  if (d === 0) return "";
+  return ` <span class="tooltip-stat-delta">(${d >= 0 ? "+" : ""}${d})</span>`;
+}
+
+/** Attack speed stored as multiplier; delta shown in percentage points vs equipped. */
+function formatAttackSpeedDeltaHtml(current, eq, shouldCompare) {
+  if (!shouldCompare) return "";
+  const d = Math.round(((Number(current) || 0) - (Number(eq) || 0)) * 100);
+  if (d === 0) return "";
+  return ` <span class="tooltip-stat-delta">(${d >= 0 ? "+" : ""}${d})</span>`;
+}
+
+function formatModifierDeltaSuffix(mod, eqVal) {
+  const curRaw = mod?.value;
+  const cur = Number(curRaw);
+  const eq = Number(eqVal) || 0;
+  const curSafe = Number.isFinite(cur) ? cur : 0;
+  const d = curSafe - eq;
+  if (Math.abs(d) < 1e-9) return "";
+
+  const id = mod?.id;
+
+  if (
+    id === "projectilePierce" ||
+    id === "orbitalArrows" ||
+    id === "enterMapGoldFlat" ||
+    id === "minibossGoldFlat"
+  ) {
+    const di = Math.round(d);
+    if (di === 0) return "";
+    return ` <span class="tooltip-stat-delta">(${di >= 0 ? "+" : ""}${di})</span>`;
+  }
+
+  if (id === "meleeFlatDamage" || mod?.statKey === "flatDamage") {
+    const di = Math.round(d);
+    if (di === 0) return "";
+    return ` <span class="tooltip-stat-delta">(${di >= 0 ? "+" : ""}${di})</span>`;
+  }
+
+  if (id === "defenseStatScale" || id === "maxHealthStatScale") {
+    const dp = Math.round(d * 100);
+    if (dp === 0) return "";
+    return ` <span class="tooltip-stat-delta">(${dp >= 0 ? "+" : ""}${dp})</span>`;
+  }
+
+  if (
+    id === "moveSpeedChestOpenHybrid" ||
+    id === "flatDefenseBonus" ||
+    id === "flatHpDefenseHybrid" ||
+    id === "flatHpMoveSpeedHybrid" ||
+    id === "moveAttackSpeedHybrid"
+  ) {
+    return "";
+  }
+
+  const dp = Math.round(d * 100);
+  if (dp === 0) return "";
+  return ` <span class="tooltip-stat-delta">(${dp >= 0 ? "+" : ""}${dp})</span>`;
 }
 
 export function buildItemTooltipContent(item, game = null) {
@@ -127,16 +271,17 @@ export function buildItemTooltipContent(item, game = null) {
 
   const baseKey = EQUIPMENT_BASE_STAT[item.type];
   const equipped = game && item.type && item.type !== "Ring" ? game.equipment[item.type] : null;
+  const compareToEquipped = !!(equipped && equipped !== item);
   if (baseKey) {
     const baseVal = item.stats && item.stats[baseKey] ? item.stats[baseKey] : 0;
     const baseLabel = baseKey === "maxHealth" ? "Max Health" : baseKey === "attack" ? "Attack" : baseKey === "speed" ? "Speed" : "Defense";
     const eqBaseVal = equipped?.stats?.[baseKey] ?? 0;
     let baseCls = "tooltip-stats";
-    if (equipped && equipped !== item) {
+    if (compareToEquipped) {
       if (baseVal > eqBaseVal) baseCls += " tooltip-better";
       else if (baseVal < eqBaseVal) baseCls += " tooltip-worse";
     }
-    html += `<div class="${baseCls}">${baseLabel}: +${baseVal}</div>`;
+    html += `<div class="${baseCls}">${baseLabel}: +${baseVal}${formatFlatStatDeltaHtml(baseVal, eqBaseVal, compareToEquipped)}</div>`;
   } else if (item.type === "Ring") {
     html += `<div class="tooltip-stats">${desc || "Unique Effect"}</div>`;
     if (item.consumedOnTrigger) {
@@ -162,11 +307,11 @@ export function buildItemTooltipContent(item, game = null) {
     const secLabel = sec.statKey === "maxHealth" ? "Max Health" : sec.statKey === "defense" ? "Defense" : sec.statKey;
     const eqSecVal = equipped?.stats?.[sec.statKey] ?? 0;
     let secCls = "tooltip-stats";
-    if (equipped && equipped !== item) {
+    if (compareToEquipped) {
       if (secVal > eqSecVal) secCls += " tooltip-better";
       else if (secVal < eqSecVal) secCls += " tooltip-worse";
     }
-    html += `<div class="${secCls}">${secLabel}: +${secVal}</div>`;
+    html += `<div class="${secCls}">${secLabel}: +${secVal}${formatFlatStatDeltaHtml(secVal, eqSecVal, compareToEquipped)}</div>`;
     displayedBaseStatKeys.add(sec.statKey);
   }
 
@@ -178,7 +323,7 @@ export function buildItemTooltipContent(item, game = null) {
     if (!currentVal) continue;
     const eqVal = equipped?.stats?.[key] ?? 0;
     let extraCls = "tooltip-stats";
-    if (equipped && equipped !== item) {
+    if (compareToEquipped) {
       if (currentVal > eqVal) extraCls += " tooltip-better";
       else if (currentVal < eqVal) extraCls += " tooltip-worse";
     }
@@ -188,7 +333,11 @@ export function buildItemTooltipContent(item, game = null) {
       const sign = pct >= 0 ? "+" : "";
       valueText = `${sign}${pct}%`;
     }
-    html += `<div class="${extraCls}">${statLabel(key)}: ${valueText}</div>`;
+    const deltaHtml =
+      key === "attackSpeed"
+        ? formatAttackSpeedDeltaHtml(currentVal, eqVal, compareToEquipped)
+        : formatFlatStatDeltaHtml(currentVal, eqVal, compareToEquipped);
+    html += `<div class="${extraCls}">${statLabel(key)}: ${valueText}${deltaHtml}</div>`;
   }
 
   if (item.modifiers && item.modifiers.length > 0) {
@@ -197,9 +346,11 @@ export function buildItemTooltipContent(item, game = null) {
       const isLegendaryMod = LEGENDARY_MODIFIER_IDS.includes(m.id);
       const classes = ["tooltip-mod"];
       if (isLegendaryMod) classes.push("tooltip-legendary-mod");
-      if (!isLegendaryMod && equipped && equipped !== item) {
+      let eqModValForDelta = 0;
+      if (!isLegendaryMod && compareToEquipped) {
         const eqMod = eqModifiers.find((x) => x.id === m.id);
         const eqVal = eqMod ? eqMod.value : 0;
+        eqModValForDelta = eqVal;
         if (m.value > eqVal) classes.push("tooltip-better");
         else if (m.value < eqVal) classes.push("tooltip-worse");
       }
@@ -207,11 +358,13 @@ export function buildItemTooltipContent(item, game = null) {
       if (elapsed < 10000) classes.push("mod-crafted");
       const style = elapsed < 10000 ? ` style="animation-delay: -${elapsed / 1000}s"` : "";
       const text = formatModifierLine(m);
+      const color = getModifierRarityColor(m);
       const removedText = elapsed < 10000 && m.removedModifier ? formatModifierLine(m.removedModifier) : "";
       const removedHtml = removedText
         ? `<span class="tooltip-mod-removed mod-removed-fade"${style}>Removed: ${escapeHtml(removedText)}</span>`
         : "";
-      html += `<div class="${classes.join(" ")}"${style}><span>${escapeHtml(text)}</span>${removedHtml}</div>`;
+      const modDeltaHtml = !isLegendaryMod && compareToEquipped ? formatModifierDeltaSuffix(m, eqModValForDelta) : "";
+      html += `<div class="${classes.join(" ")}"${style}><span style="color:${color}">${escapeHtml(text)}</span>${modDeltaHtml}${removedHtml}</div>`;
     }
   }
 

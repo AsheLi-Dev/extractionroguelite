@@ -6,7 +6,16 @@ import {
   MODIFIER_CUBES, UPGRADE_CUBES, LEGENDARY_CUBES, rollModifierForTier, getModifierRollRangeForTier, getCubeDifficultyForTier
 } from '../data/cubes-data.js';
 import {
-  EQUIPMENT_BASE_STAT, EQUIPMENT_SECONDARY_BASE, MODIFIER_POOL, LOCAL_STAT_SCALE_MOD_IDS, NAME_PREFIXES, NAME_SUFFIXES, getModifierPoolForType, rollLocalStatScaleValueForDifficulty
+  EQUIPMENT_BASE_STAT,
+  EQUIPMENT_SECONDARY_BASE,
+  MODIFIER_POOL,
+  LOCAL_STAT_SCALE_MOD_IDS,
+  NAME_PREFIXES,
+  NAME_SUFFIXES,
+  getModifierPoolForType,
+  rollLocalStatScaleValueForDifficulty,
+  rollUniqueModifierDefsByRarity,
+  resolveModifierStatMods
 } from '../data/loot-data.js';
 import {
   SAVE_KEY, CONQUEROR_VAULT_KEY,
@@ -16,7 +25,7 @@ import {
 } from './save-system.js';
 import { getUpgradeCostForLevel, getCubeValueFromKey, getTotalCubeValue, MAX_WEAPON_UPGRADE_LEVEL } from '../data/weapon-upgrade-config.js';
 import { getAncestorSpiritDef } from '../data/ancestor-spirits-data.js';
-import { formatItemStats, formatItemModifiers, buildItemTooltipContent, getItemRarityColor } from './tooltips.js';
+import { formatItemStats, formatItemModifierEntries, buildItemTooltipContent, getItemRarityColor } from './tooltips.js';
 import { refreshMainMenuLP } from './main-menu.js';
 import { play as playSfx } from '../audio.js';
 
@@ -171,9 +180,9 @@ export function renderLegacyVault() {
         card.className = "legacy-vault-item";
         card.dataset.index = String(idx);
         const statsStr = formatItemStats(entry.item);
-        const mods = formatItemModifiers(entry.item);
+        const mods = formatItemModifierEntries(entry.item);
         const modsHtml = mods.length
-          ? `<ul class="legacy-item-mods">${mods.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`
+          ? `<ul class="legacy-item-mods">${mods.map((mod) => `<li style="color:${escapeHtml(mod.color)}">${escapeHtml(mod.text)}</li>`).join("")}</ul>`
           : "";
         card.innerHTML = `
           <div class="legacy-item-name">${escapeHtml(entry.item.name)}</div>
@@ -513,7 +522,7 @@ function updateLegacyCraftingPreview() {
           preview = "Modifier cubes can only be used on Magic or Rare items. Use a Magic Cube first.";
         } else {
           const existing = item.modifiers?.find((m) => m.id === modCube.modifierId);
-          const maxMods = item.rarity === "common" ? 0 : item.rarity === "magic" ? 2 : 4;
+          const maxMods = item.rarity === "common" ? 0 : item.rarity === "magic" ? 1 : 2;
           const currentCount = item.modifiers?.length || 0;
           const r = getModifierRollRangeForTier(tier, modCube.modifierId);
           const range = `${(r.min * 100).toFixed(0)}-${(r.max * 100).toFixed(0)}%`;
@@ -546,8 +555,8 @@ function updateLegacyCraftingPreview() {
             canCraft = true;
           }
         } else {
-          if (upgCube.id === "magicCube") preview = "Upgrades to Blue and adds 2 random modifiers.";
-          else if (upgCube.id === "rareCube") preview = "Upgrades to Yellow and adds 2 more modifiers.";
+          if (upgCube.id === "magicCube") preview = "Upgrades to Blue and adds 1 random modifier.";
+          else if (upgCube.id === "rareCube") preview = "Upgrades to Yellow and adds 1 more modifier.";
           else preview = "Rerolls all modifiers with new random values.";
           canCraft = true;
         }
@@ -647,12 +656,13 @@ function applyModifierCube(item, cubeDef, tier) {
     id: cubeDef.modifierId,
     label: cubeDef.modifierLabel,
     statKey: poolEntry?.statKey || cubeDef.modifierId.replace("Percent", ""),
+    rarity: poolEntry?.rarity || "normal",
     value,
     appliesTo: poolEntry?.appliesTo,
     addedAt: Date.now()
   };
   const existingIdx = item.modifiers.findIndex((m) => m.id === cubeDef.modifierId);
-  const maxMods = item.rarity === "magic" ? 2 : item.rarity === "rare" ? 4 : 0;
+  const maxMods = item.rarity === "magic" ? 1 : item.rarity === "rare" ? 2 : 0;
   if (existingIdx >= 0) {
     item.modifiers[existingIdx] = { ...modEntry };
   } else if (item.modifiers.length < maxMods) {
@@ -697,14 +707,12 @@ function applySocketCube(item) {
 function applyUpgradeCube(item, cubeDef, tier) {
   if (cubeDef.id === "magicCube") {
     item.rarity = "magic";
-    item.modifiers = item.modifiers || [];
     const pool = getModifierPoolForType(item.type);
-    for (let i = 0; i < 2; i++) {
-      if (pool.length === 0) break;
-      const idx = Math.floor(Math.random() * pool.length);
-      const m = pool.splice(idx, 1)[0];
+    item.modifiers = [];
+    const chosen = rollUniqueModifierDefsByRarity(pool, 1, new Set());
+    for (const m of chosen) {
       const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValueForDifficulty(getCubeDifficultyForTier(tier)) : rollModifierForTier(tier, m.id);
-      item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, appliesTo: m.appliesTo, addedAt: Date.now() });
+      item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, rarity: m.rarity || "normal", value: val, appliesTo: m.appliesTo, trigger: m.trigger, conditional: m.conditional, passiveStatKey: m.passiveStatKey, statMods: resolveModifierStatMods(m), data: m.data ? { ...m.data } : undefined, addedAt: Date.now() });
     }
     const hasPrefix = NAME_PREFIXES.some((p) => item.name.startsWith(`${p} `));
     const hasSuffix = NAME_SUFFIXES.some((s) => item.name.includes(` ${s}`));
@@ -715,14 +723,23 @@ function applyUpgradeCube(item, cubeDef, tier) {
   } else if (cubeDef.id === "rareCube") {
     item.rarity = "rare";
     item.modifiers = item.modifiers || [];
-    const pool = getModifierPoolForType(item.type).filter((p) => !item.modifiers.some((m) => m.id === p.id));
-    const extraMods = hasTalent("transmutation") && Math.random() < 0.05 ? 3 : 2;
-    for (let i = 0; i < extraMods; i++) {
-      if (pool.length === 0) break;
-      const idx = Math.floor(Math.random() * pool.length);
-      const m = pool.splice(idx, 1)[0];
-      const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValueForDifficulty(getCubeDifficultyForTier(tier)) : rollModifierForTier(tier, m.id);
-      item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, appliesTo: m.appliesTo, addedAt: Date.now() });
+    const pool = getModifierPoolForType(item.type);
+
+    const transmutationProc = hasTalent("transmutation") && Math.random() < 0.05;
+
+    // Rare items always target exactly 2 modifiers.
+    const targetModifierCount = 2;
+    const existingIds = new Set((item.modifiers || []).map((m) => m?.id).filter(Boolean));
+    const needed = Math.max(0, targetModifierCount - existingIds.size);
+
+    const chosen = rollUniqueModifierDefsByRarity(pool, needed, existingIds);
+    for (let i = 0; i < chosen.length; i++) {
+      const m = chosen[i];
+      const rolledTier = transmutationProc && i === 0 ? 1 : tier;
+      const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id)
+        ? rollLocalStatScaleValueForDifficulty(getCubeDifficultyForTier(rolledTier))
+        : rollModifierForTier(rolledTier, m.id);
+      item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, rarity: m.rarity || "normal", value: val, appliesTo: m.appliesTo, trigger: m.trigger, conditional: m.conditional, passiveStatKey: m.passiveStatKey, statMods: resolveModifierStatMods(m), data: m.data ? { ...m.data } : undefined, addedAt: Date.now() });
     }
     const hasPrefix = NAME_PREFIXES.some((p) => item.name.startsWith(`${p} `));
     const hasSuffix = NAME_SUFFIXES.some((s) => item.name.includes(` ${s}`));
@@ -731,13 +748,11 @@ function applyUpgradeCube(item, cubeDef, tier) {
   } else if (cubeDef.id === "reforgeCube") {
     item.modifiers = [];
     const pool = getModifierPoolForType(item.type);
-    const count = item.rarity === "magic" ? 2 : 4;
-    for (let i = 0; i < count; i++) {
-      if (pool.length === 0) break;
-      const idx = Math.floor(Math.random() * pool.length);
-      const m = pool.splice(idx, 1)[0];
+    const count = item.rarity === "magic" ? 1 : item.rarity === "rare" ? 2 : 0;
+    const chosen = rollUniqueModifierDefsByRarity(pool, count, new Set());
+    for (const m of chosen) {
       const val = LOCAL_STAT_SCALE_MOD_IDS.includes(m.id) ? rollLocalStatScaleValueForDifficulty(getCubeDifficultyForTier(tier)) : rollModifierForTier(tier, m.id);
-      item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, value: val, appliesTo: m.appliesTo, addedAt: Date.now() });
+      item.modifiers.push({ id: m.id, label: m.label, statKey: m.statKey, rarity: m.rarity || "normal", value: val, appliesTo: m.appliesTo, trigger: m.trigger, conditional: m.conditional, passiveStatKey: m.passiveStatKey, statMods: resolveModifierStatMods(m), data: m.data ? { ...m.data } : undefined, addedAt: Date.now() });
     }
   }
   rebuildItemStats(item);
@@ -760,6 +775,27 @@ function rebuildItemStats(item) {
       stats.attackSpeed = (stats.attackSpeed || 1) * (1 + m.value);
     } else if (m.statKey === "cooldownRecovery") {
       stats.cooldownRecovery = (stats.cooldownRecovery || 1) * (1 - m.value);
+    } else if (!m.statKey) {
+      if (m.statMods && typeof m.statMods === "object") {
+        for (const [statKey, statValueRaw] of Object.entries(m.statMods)) {
+          const statValue = Number(statValueRaw);
+          if (!Number.isFinite(statValue)) continue;
+          if (statKey === "attackSpeedPercent") {
+            stats.attackSpeed = (stats.attackSpeed || 1) * (1 + statValue);
+            continue;
+          }
+          if (statKey === "cooldownReductionPercent") {
+            stats.cooldownRecovery = (stats.cooldownRecovery || 1) * (1 - statValue);
+            continue;
+          }
+          if (statKey === "maxHealthFlat") {
+            stats.maxHealth = (stats.maxHealth || 0) + statValue;
+            continue;
+          }
+          stats[statKey] = (stats[statKey] || 0) + statValue;
+        }
+      }
+      continue;
     } else {
       const key = ["attack", "maxHealth", "defense", "speed"].includes(m.statKey) ? `${m.statKey}Percent` : m.statKey;
       stats[key] = (stats[key] || 0) + m.value;

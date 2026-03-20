@@ -36,10 +36,10 @@
         <canvas id="game-canvas"></canvas>
         <canvas id="minimap-canvas" class="minimap-canvas"></canvas>
         <div id="skill-bar" class="skill-bar">
-          <div class="skill-slot" data-slot="0"><span class="skill-key">1</span><div class="skill-icon" id="skill-icon-0">-</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-0">Empty</div><div class="skill-cd-ring" id="skill-cd-0"></div></div>
-          <div class="skill-slot" data-slot="1"><span class="skill-key">2</span><div class="skill-icon" id="skill-icon-1">-</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-1">Empty</div><div class="skill-cd-ring" id="skill-cd-1"></div></div>
-          <div class="skill-slot" data-slot="2"><span class="skill-key">3</span><div class="skill-icon" id="skill-icon-2">-</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-2">Empty</div><div class="skill-cd-ring" id="skill-cd-2"></div></div>
-          <div class="skill-slot" data-slot="3"><span class="skill-key">4</span><div class="skill-icon" id="skill-icon-3">-</div><span class="skill-empower-stacks"></span><div class="skill-name" id="skill-name-3">Empty</div><div class="skill-cd-ring" id="skill-cd-3"></div></div>
+          <div class="skill-slot" data-slot="0"><span class="skill-key">1</span><div class="skill-icon" id="skill-icon-0">-</div><span class="skill-empower-stacks"></span><span class="skill-charge-count"></span><div class="skill-name" id="skill-name-0">Empty</div><div class="skill-cd-ring" id="skill-cd-0"></div></div>
+          <div class="skill-slot" data-slot="1"><span class="skill-key">2</span><div class="skill-icon" id="skill-icon-1">-</div><span class="skill-empower-stacks"></span><span class="skill-charge-count"></span><div class="skill-name" id="skill-name-1">Empty</div><div class="skill-cd-ring" id="skill-cd-1"></div></div>
+          <div class="skill-slot" data-slot="2"><span class="skill-key">3</span><div class="skill-icon" id="skill-icon-2">-</div><span class="skill-empower-stacks"></span><span class="skill-charge-count"></span><div class="skill-name" id="skill-name-2">Empty</div><div class="skill-cd-ring" id="skill-cd-2"></div></div>
+          <div class="skill-slot" data-slot="3"><span class="skill-key">4</span><div class="skill-icon" id="skill-icon-3">-</div><span class="skill-empower-stacks"></span><span class="skill-charge-count"></span><div class="skill-name" id="skill-name-3">Empty</div><div class="skill-cd-ring" id="skill-cd-3"></div></div>
         </div>
         <div id="blessings-bar" class="blessings-bar hidden"></div>
       </div>
@@ -618,6 +618,28 @@
           <button id="dev-random-item" class="dev-button">Random Item (Magic/Rare)</button>
           <button id="dev-level-up" class="dev-button">Level Up</button>
           <button id="dev-teleport-boss" class="dev-button">Teleport to Boss</button>
+        </div>
+        <div class="dev-panel-section">
+          <h3>Spawn Item by Modifier</h3>
+          <p class="dev-mod-hint">Generate an item and force a specific modifier ID onto it.</p>
+          <div class="dev-spawn-elite-row">
+            <select id="dev-modifier-id-input" class="dev-affix-select">
+              <option value="">Select modifier id</option>
+            </select>
+            <select id="dev-modifier-rarity-select" class="dev-affix-select">
+              <option value="">Auto rarity</option>
+              <option value="magic">Magic</option>
+              <option value="rare">Rare</option>
+            </select>
+            <select id="dev-modifier-type-select" class="dev-affix-select">
+              <option value="">Auto slot</option>
+              <option value="Weapon">Weapon</option>
+              <option value="Helmet">Helmet</option>
+              <option value="Body Armour">Body Armour</option>
+              <option value="Boots">Boots</option>
+            </select>
+            <button id="dev-spawn-modifier-item" class="dev-button">Spawn</button>
+          </div>
         </div>
         <div class="dev-panel-section">
           <h3>Stats</h3>
