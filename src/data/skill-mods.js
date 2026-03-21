@@ -1,8 +1,8 @@
-// -------- Skill modification cards (in-run drops) --------
-// Defines mod definitions with rarity and compatibility tags for smart-loot and equipping.
+// -------- Skill modification cards (definitions for skill library / combat mods) --------
 
 import { MODIFICATION_CARD_DEFS } from './skills.js';
 import { SKILL_DEFS, getSkillById } from './skills.js';
+import { getSkillModSockets } from './constants.js';
 
 /** Rarity tiers for mod drops. */
 export const MOD_RARITIES = ['common', 'rare', 'epic', 'legendary'];
@@ -68,15 +68,15 @@ export function getEquippedSkillIds(game) {
 
 /**
  * Get mod counts per equipped skill for weighting (under-served skills get higher weight).
- * @param {object} game - Game instance with .runSkillMods and .skills.
+ * @param {object} game - Game instance with .skills.
  * @returns {Record<string, number>} skillId -> number of mods equipped.
  */
 export function getModCountsByEquippedSkill(game) {
-  const runSkillMods = game?.runSkillMods || {};
+  const sockets = getSkillModSockets();
   const equipped = getEquippedSkillIds(game);
   const counts = {};
   for (const skillId of equipped) {
-    const slots = runSkillMods[skillId];
+    const slots = sockets[skillId];
     counts[skillId] = Array.isArray(slots) ? slots.filter(Boolean).length : 0;
   }
   return counts;

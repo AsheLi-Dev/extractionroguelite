@@ -2,10 +2,21 @@
 
 import { escapeHtml } from '../utils.js';
 import {
-  TALENT_TREE, canPurchaseTalent, getPurchasedTalents, getTalentCrystalId, purchaseTalent,
-  canRefundTalent, refundTalent, refundBranch
+  TALENT_TREE,
+  canPurchaseTalent,
+  canRefundTalent,
+  canSupportPurchasedTalents,
+  getPurchasedTalents,
+  getTalentAttributeRequirements,
+  getTalentPointBalance,
+  getTalentRequirementFailures,
+  getTalentRequirementSupportFailures,
+  purchaseTalent,
+  refundTalent,
+  refundBranch
 } from '../data/talents.js';
-import { getGlobalTalentCrystals } from '../data/crystals.js';
+import { META_ATTRIBUTES } from '../data/character-attributes.js';
+import { loadGlobalPlayerProfile, saveGlobalPlayerProfile } from './save-system.js';
 import { refreshMainMenuLP } from './main-menu.js';
 
 const DETAILS_PLACEHOLDER_HTML = '<div class="talent-tree-details-placeholder">Hover over a talent to see details.</div>';
@@ -23,6 +34,23 @@ function isHubActive() {
   return document.body.classList.contains("home-base-active");
 }
 
+function formatAttributeName(attributeId) {
+  return META_ATTRIBUTES.find((entry) => entry.id === attributeId)?.name || attributeId;
+}
+
+function formatTalentRequirements(requirements) {
+  const parts = Object.entries(requirements || {})
+    .filter(([, value]) => Number(value) > 0)
+    .map(([attributeId, value]) => `${value} ${formatAttributeName(attributeId)}`);
+  return parts.length > 0 ? parts.join(" | ") : "No attribute requirement";
+}
+
+function getTalentMetaLine(node, isPurchased) {
+  const cost = Math.max(0, Number(node?.cost) || 0);
+  const reqLine = formatTalentRequirements(getTalentAttributeRequirements(node?.id));
+  return isPurchased ? `Purchased | ${reqLine}` : `${cost} TP | ${reqLine}`;
+}
+
 export function openTalentTree() {
   renderTalentTree();
   const overlay = document.getElementById("talent-tree-overlay");
@@ -30,7 +58,7 @@ export function openTalentTree() {
   if (overlay) overlay.classList.remove("hidden");
   if (mainMenu) mainMenu.classList.add("hidden");
   const titleEl = document.querySelector("#talent-tree-overlay .talent-tree-title");
-  if (titleEl) titleEl.textContent = "Talent Tree";
+  if (titleEl) titleEl.textContent = "Talents";
 }
 
 export function closeTalentTree() {
@@ -38,7 +66,7 @@ export function closeTalentTree() {
   if (overlay) overlay.classList.add("hidden");
   const mainMenu = document.getElementById("main-menu");
   const titleEl = document.querySelector("#talent-tree-overlay .talent-tree-title");
-  if (titleEl) titleEl.textContent = "Talent Tree";
+  if (titleEl) titleEl.textContent = "Talents";
   if (isHubActive()) {
     if (mainMenu) mainMenu.classList.add("hidden");
     document.querySelector(".game-root")?.classList.remove("hidden");
@@ -50,10 +78,11 @@ export function closeTalentTree() {
 
 export function renderTalentTree() {
   const content = document.getElementById("talent-tree-content");
-  const crystalsEl = document.getElementById("talent-tree-crystals");
+  const pointsContainerEl = document.getElementById("talent-tree-crystals");
   if (!content) return;
   const purchased = getPurchasedTalents();
-  const crystals = getGlobalTalentCrystals();
+  const profile = loadGlobalPlayerProfile();
+  const talentPoints = getTalentPointBalance(profile);
 
   // Flat map of talent id -> { name, desc, cost } for details panel
   const talentMap = {};
@@ -61,15 +90,35 @@ export function renderTalentTree() {
     for (const n of nodes) talentMap[n.id] = { id: n.id, name: n.name, desc: n.desc ?? "", cost: n.cost };
   }
 
-  if (crystalsEl) {
-    crystalsEl.classList.remove("hidden");
-    for (const crystalId of ["orange", "green", "red", "yellow"]) {
-      const span = document.getElementById(`talent-tree-crystal-${crystalId}`);
-      if (span) span.textContent = String(Math.max(0, Number(crystals?.[crystalId]) || 0));
-    }
+  if (pointsContainerEl) {
+    pointsContainerEl.className = "talent-tree-lp";
+    pointsContainerEl.setAttribute("aria-label", "Unspent talent points");
+    pointsContainerEl.innerHTML = `Talent Points: <span id="talent-tree-points-value">${talentPoints}</span>`;
   }
 
-  let branchesHtml = '<div class="talent-tree-branches">';
+  let branchesHtml = `
+    <div class="talent-tree-attributes-panel">
+      <div class="talent-tree-attributes-header">
+        <div class="talent-tree-attributes-title">Global Attributes</div>
+        <div class="talent-tree-attributes-meta">Level ${Math.max(1, Number(profile.level) || 1)} | Unspent AP <span class="talent-tree-attributes-points">${Math.max(0, Number(profile.unspentAttributePoints) || 0)}</span></div>
+      </div>
+      <div class="talent-tree-attributes-grid">
+        ${META_ATTRIBUTES.map((meta) => {
+          const value = Math.max(0, Number(profile.attributes?.[meta.id]) || 0);
+          return `<div class="talent-tree-attribute-row" data-attribute-id="${escapeHtml(meta.id)}">
+            <div class="talent-tree-attribute-name">${escapeHtml(meta.name)}</div>
+            <div class="talent-tree-attribute-value">${value}</div>
+            <button type="button" class="talent-tree-attribute-btn" data-action="allocate" data-attribute-id="${escapeHtml(meta.id)}">+1</button>
+            <button type="button" class="talent-tree-attribute-btn talent-tree-attribute-btn-refund" data-action="refund" data-attribute-id="${escapeHtml(meta.id)}">-1</button>
+          </div>`;
+        }).join("")}
+      </div>
+      <div class="talent-tree-attributes-actions">
+        <button type="button" class="talent-tree-branch-refund-btn" id="talent-tree-refund-all-attributes">Refund all attributes</button>
+      </div>
+    </div>
+    <div class="talent-tree-branches">
+  `;
   for (const [branchName, nodes] of Object.entries(TALENT_TREE)) {
     if (branchName === "Brutality") {
       branchesHtml += renderBrutalityIconTree(nodes, purchased);
@@ -86,17 +135,15 @@ export function renderTalentTree() {
         const node = nodes[i];
         const isPurchased = purchased.includes(node.id);
         const prevPurchased = i === 0 || purchased.includes(nodes[i - 1].id);
-        const isAvailable = !isPurchased && prevPurchased && canPurchaseTalent(node.id);
+        const isAvailable = !isPurchased && prevPurchased && canPurchaseTalent(node.id, profile, purchased);
         const state = isPurchased ? "purchased" : isAvailable ? "available" : "locked";
         const canRefund = isPurchased && canRefundTalent(node.id, purchased);
         const tooltip = node.desc || "";
-        const crystalId = getTalentCrystalId(node.id) || "";
-        const affordable = canPurchaseTalent(node.id);
-        const title = tooltip + (canRefund ? " Click to refund." : (!affordable && !isPurchased ? " Not enough crystals." : ""));
-        branchesHtml += `<div class="talent-tree-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" data-crystal-id="${escapeHtml(crystalId)}" title="${escapeHtml(title)}"${canRefund ? ' data-refundable="true"' : ""}>
+        const title = tooltip + (canRefund ? " Click to refund." : (!canPurchaseTalent(node.id, profile, purchased) && !isPurchased ? " Requirements not met." : ""));
+        branchesHtml += `<div class="talent-tree-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" title="${escapeHtml(title)}"${canRefund ? ' data-refundable="true"' : ""}>
           <div class="talent-tree-node-name">${escapeHtml(node.name)}</div>
           <div class="talent-tree-node-desc">${escapeHtml(node.desc)}</div>
-          <div class="talent-tree-node-cost">${isPurchased ? "\u2713 Purchased" : `${node.cost} ${crystalId || "crystal"}`}</div>
+          <div class="talent-tree-node-cost">${escapeHtml(getTalentMetaLine(node, isPurchased))}</div>
         </div>`;
       }
       branchesHtml += `</div></div><div class="talent-tree-details-panel">${DETAILS_PLACEHOLDER_HTML}</div></div></div>`;
@@ -107,8 +154,8 @@ export function renderTalentTree() {
 
   function setDetails(panelEl, talent) {
     if (!panelEl) return;
-    const crystalId = getTalentCrystalId(talent.id) || "crystal";
-    panelEl.innerHTML = `<div class="talent-tree-details-content"><div class="talent-tree-details-name">${escapeHtml(talent.name)}</div><div class="talent-tree-details-desc">${escapeHtml(talent.desc)}</div><div class="talent-tree-details-cost">Cost: ${escapeHtml(String(talent.cost))} ${escapeHtml(crystalId)}</div></div>`;
+    const reqs = getTalentAttributeRequirements(talent.id);
+    panelEl.innerHTML = `<div class="talent-tree-details-content"><div class="talent-tree-details-name">${escapeHtml(talent.name)}</div><div class="talent-tree-details-desc">${escapeHtml(talent.desc)}</div><div class="talent-tree-details-cost">Cost: ${escapeHtml(String(talent.cost))} TP</div><div class="talent-tree-details-cost">Requires: ${escapeHtml(formatTalentRequirements(reqs))}</div></div>`;
   }
   function setDetailsPlaceholder(panelEl) {
     if (!panelEl) return;
@@ -123,6 +170,70 @@ export function renderTalentTree() {
     const t = talentMap[node.dataset.talentId];
     if (t && panelEl) setDetails(panelEl, t);
   };
+
+  content.querySelectorAll(".talent-tree-attribute-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const action = btn.dataset.action;
+      const attributeId = btn.dataset.attributeId;
+      if (!attributeId || !META_ATTRIBUTES.some((entry) => entry.id === attributeId)) return;
+      const current = loadGlobalPlayerProfile();
+      const next = {
+        ...current,
+        attributes: { ...(current.attributes || {}) }
+      };
+      if (action === "allocate") {
+        const unspent = Math.max(0, Number(next.unspentAttributePoints) || 0);
+        if (unspent <= 0) return;
+        next.unspentAttributePoints = unspent - 1;
+        next.attributes[attributeId] = Math.max(0, Number(next.attributes[attributeId]) || 0) + 1;
+        saveGlobalPlayerProfile(next);
+        renderTalentTree();
+        return;
+      }
+      if (action === "refund") {
+        const currentValue = Math.max(0, Number(next.attributes[attributeId]) || 0);
+        if (currentValue <= 0) return;
+        next.attributes[attributeId] = currentValue - 1;
+        const failures = getTalentRequirementSupportFailures(next.attributes, purchased);
+        if (failures.length > 0) {
+          const first = failures[0];
+          const detail = first.failures.map((entry) => `${entry.required} ${formatAttributeName(entry.attributeId)}`).join(", ");
+          if (typeof window.alert === "function") {
+            window.alert(`Cannot refund ${formatAttributeName(attributeId)}. ${first.talentName} requires ${detail}.`);
+          }
+          return;
+        }
+        next.unspentAttributePoints = Math.max(0, Number(next.unspentAttributePoints) || 0) + 1;
+        saveGlobalPlayerProfile(next);
+        renderTalentTree();
+      }
+    });
+  });
+
+  const refundAllAttributesBtn = document.getElementById("talent-tree-refund-all-attributes");
+  if (refundAllAttributesBtn) {
+    refundAllAttributesBtn.addEventListener("click", () => {
+      const current = loadGlobalPlayerProfile();
+      const attrs = current.attributes || {};
+      const total = META_ATTRIBUTES.reduce((sum, meta) => sum + Math.max(0, Number(attrs[meta.id]) || 0), 0);
+      if (total <= 0) return;
+      if (!confirm(`Refund all ${total} allocated attribute point(s)?`)) return;
+      if (!canSupportPurchasedTalents({ brutality: 0, agility: 0, vitality: 0, luck: 0 }, purchased)) {
+        const failures = getTalentRequirementSupportFailures({ brutality: 0, agility: 0, vitality: 0, luck: 0 }, purchased);
+        const first = failures[0];
+        if (typeof window.alert === "function") {
+          window.alert(`Refund talents first. ${first.talentName} still requires ${formatTalentRequirements(getTalentAttributeRequirements(first.talentId))}.`);
+        }
+        return;
+      }
+      saveGlobalPlayerProfile({
+        ...current,
+        unspentAttributePoints: Math.max(0, Number(current.unspentAttributePoints) || 0) + total,
+        attributes: { brutality: 0, agility: 0, vitality: 0, luck: 0 }
+      });
+      renderTalentTree();
+    });
+  }
   content.onmouseout = (e) => {
     const node = e.target.closest(".talent-tree-node");
     if (!node || !node.dataset.talentId) return;
@@ -169,6 +280,7 @@ export function renderTalentTree() {
 function renderBranchGrid(branchName, cssClass, position, nodes, purchased) {
   const nodeById = {};
   for (const n of nodes) nodeById[n.id] = n;
+  const profile = loadGlobalPlayerProfile();
 
   let gridHtml = "";
   for (const node of nodes) {
@@ -179,12 +291,11 @@ function renderBranchGrid(branchName, cssClass, position, nodes, purchased) {
     const parentsAny = node.parentsAny || [];
     const hasAll = parentsAll.length === 0 || parentsAll.every((p) => purchased.includes(p));
     const hasAny = parentsAny.length === 0 || parentsAny.some((p) => purchased.includes(p));
-    const canUnlock = !isPurchased && hasAll && hasAny && canPurchaseTalent(node.id);
+    const canUnlock = !isPurchased && hasAll && hasAny && canPurchaseTalent(node.id, profile, purchased);
     const state = isPurchased ? "purchased" : canUnlock ? "available" : "locked";
     const canRefund = isPurchased && canRefundTalent(node.id, purchased);
     const tooltip = node.desc || "";
-    const crystalId = getTalentCrystalId(node.id) || "";
-    const title = tooltip + (canRefund ? " Click to refund." : (!canPurchaseTalent(node.id) && !isPurchased ? " Not enough crystals." : ""));
+    const title = tooltip + (canRefund ? " Click to refund." : (!canPurchaseTalent(node.id, profile, purchased) && !isPurchased ? " Requirements not met." : ""));
     
     // Add sprite sheet data attributes for branches that use icon grid (agility, vitality)
     let spriteAttrs = "";
@@ -194,11 +305,11 @@ function renderBranchGrid(branchName, cssClass, position, nodes, purchased) {
     
     const iconUrl = normalizeTalentIconUrl(node.icon);
     const iconHtml = iconUrl ? `<img class="talent-tree-node-icon" src="${escapeHtml(iconUrl)}" alt="" loading="lazy" decoding="async" />` : "";
-    gridHtml += `<div class="talent-tree-node ${cssClass}-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" data-crystal-id="${escapeHtml(crystalId)}" title="${escapeHtml(title)}"${canRefund ? ' data-refundable="true"' : ""}${spriteAttrs} style="grid-row:${pos.row};grid-column:${pos.col};">
+    gridHtml += `<div class="talent-tree-node ${cssClass}-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" title="${escapeHtml(title)}"${canRefund ? ' data-refundable="true"' : ""}${spriteAttrs} style="grid-row:${pos.row};grid-column:${pos.col};">
       ${iconHtml}
       <div class="talent-tree-node-name">${escapeHtml(node.name)}</div>
       <div class="talent-tree-node-desc">${escapeHtml(node.desc)}</div>
-      <div class="talent-tree-node-cost">${isPurchased ? "\u2713 Purchased" : `${node.cost} ${crystalId || "crystal"}`}</div>
+      <div class="talent-tree-node-cost">${escapeHtml(getTalentMetaLine(node, isPurchased))}</div>
     </div>`;
   }
 
@@ -452,6 +563,7 @@ function renderBrutalityIconTree(nodes, purchased) {
 }
 
 function renderIconTreeBranch({ branchName, cssBranchClass, nodes, purchased, position, viewBoxSize }) {
+  const profile = loadGlobalPlayerProfile();
   const edges = [];
   for (const node of nodes) {
     const parents = [...(node.parentsAll || []), ...(node.parentsAny || [])];
@@ -482,16 +594,20 @@ function renderIconTreeBranch({ branchName, cssBranchClass, nodes, purchased, po
     const parentsAny = node.parentsAny || [];
     const hasAll = parentsAll.length === 0 || parentsAll.every((p) => purchased.includes(p));
     const hasAny = parentsAny.length === 0 || parentsAny.some((p) => purchased.includes(p));
-    const canUnlock = !isPurchased && hasAll && hasAny && canPurchaseTalent(node.id);
+    const canUnlock = !isPurchased && hasAll && hasAny && canPurchaseTalent(node.id, profile, purchased);
     const state = isPurchased ? "purchased" : canUnlock ? "available" : "locked";
     const canRefund = isPurchased && canRefundTalent(node.id, purchased);
-    const crystalId = getTalentCrystalId(node.id) || "";
-    const costLine = isPurchased ? "\u2713 Purchased" : `${node.cost} ${crystalId || "crystal"}`;
-    const refundHint = canRefund ? "Click to refund." : (!canPurchaseTalent(node.id) && !isPurchased ? "Not enough crystals." : "");
+    const costLine = getTalentMetaLine(node, isPurchased);
+    const missing = getTalentRequirementFailures(node.id, profile.attributes);
+    const refundHint = canRefund
+      ? "Click to refund."
+      : (!canPurchaseTalent(node.id, profile, purchased) && !isPurchased
+        ? (missing.length > 0 ? `Missing: ${formatTalentRequirements(getTalentAttributeRequirements(node.id))}` : "Not enough talent points.")
+        : "");
     const iconUrl = normalizeTalentIconUrl(node.icon);
     const iconHtml = iconUrl ? `<img class="talent-tree-node-icon" src="${escapeHtml(iconUrl)}" alt="" loading="lazy" decoding="async" />` : "";
 
-    nodesHtml += `<div class="talent-tree-node ${cssBranchClass}-node ${cssBranchClass}-icon-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" data-crystal-id="${escapeHtml(crystalId)}" data-sprite-row="${pos.spriteRow}" data-sprite-col="${pos.spriteCol}"${canRefund ? ' data-refundable="true"' : ""} style="grid-row:${pos.row + 1};grid-column:${pos.col + 1};">
+    nodesHtml += `<div class="talent-tree-node ${cssBranchClass}-node ${cssBranchClass}-icon-node ${state}" data-talent-id="${escapeHtml(node.id)}" data-cost="${node.cost}" data-sprite-row="${pos.spriteRow}" data-sprite-col="${pos.spriteCol}"${canRefund ? ' data-refundable="true"' : ""} style="grid-row:${pos.row + 1};grid-column:${pos.col + 1};">
       ${iconHtml}
       <div class="${cssBranchClass}-icon-tooltip talent-icon-tooltip" role="tooltip">
         <div class="talent-icon-tooltip-name">${escapeHtml(node.name)}</div>

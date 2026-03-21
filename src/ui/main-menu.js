@@ -1,7 +1,42 @@
 // -------- Main Menu helpers --------
 
-import { restoreEternalItemsFromDefeat, loadSavedCharacters, updateSavedCharacter } from './save-system.js';
-import { CRYSTAL_TYPES } from '../data/crystals.js';
+import { DEMO_BUILD, DEMO_VERSION_LABEL } from "../data/constants.js";
+import { loadGlobalPlayerProfile, restoreEternalItemsFromDefeat, saveGlobalPlayerProfile } from './save-system.js';
+
+const DEMO_MAIN_MENU_HIDE_IDS = [
+  "main-menu-select-hero",
+  "main-menu-tutorial",
+  "main-menu-instructions",
+  "main-menu-options",
+  "main-menu-pillars",
+  "main-menu-friends",
+  "main-menu-return-hub"
+];
+
+/**
+ * Demo builds: only New Game, Legacy Vault, Talents, Weapon Arts, Skill Library + Demo version label.
+ */
+export function applyDemoMainMenuLayout() {
+  if (!DEMO_BUILD) return;
+  const inner = document.querySelector("#main-menu .main-menu-inner");
+  const root = document.getElementById("main-menu");
+  if (inner) inner.classList.add("main-menu-inner--demo");
+  if (root) root.classList.add("main-menu--demo");
+
+  const badge = document.getElementById("main-menu-demo-badge");
+  if (badge) {
+    badge.textContent = DEMO_VERSION_LABEL;
+    badge.classList.remove("hidden");
+    badge.setAttribute("aria-hidden", "false");
+  }
+
+  for (const id of DEMO_MAIN_MENU_HIDE_IDS) {
+    document.getElementById(id)?.classList.add("hidden");
+  }
+
+  const weaponArts = document.getElementById("main-menu-basic-attack-tree");
+  if (weaponArts) weaponArts.textContent = "Weapon Arts";
+}
 
 const RESOLUTION_STORAGE_KEY = "game_resolution_preset";
 const RESOLUTION_PRESETS = {
@@ -78,13 +113,12 @@ export function closeInstructions() {
   if (mainMenu) mainMenu.classList.remove("hidden");
 }
 
-/** Dev: set crystals override to 999 for all crystal types on every saved character. */
+/** Dev: set unspent talent points override to 999 for the global profile. */
 export function giveAllCharacters999Crystals() {
-  const saved = loadSavedCharacters();
-  const crystals = Object.fromEntries(CRYSTAL_TYPES.map((c) => [c.id, 999]));
-  let updated = 0;
-  for (let i = 0; i < saved.length; i++) {
-    if (updateSavedCharacter(i, { crystals: { ...crystals } })) updated++;
-  }
-  return { total: saved.length, updated };
+  const profile = loadGlobalPlayerProfile();
+  saveGlobalPlayerProfile({
+    ...profile,
+    unspentTalentPoints: 999
+  });
+  return { total: 1, updated: 1 };
 }

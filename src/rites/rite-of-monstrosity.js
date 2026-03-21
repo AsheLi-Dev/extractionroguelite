@@ -169,7 +169,7 @@ export function installRiteOfMonstrosity(game, options = {}) {
     if (game.hazardSystem) {
       game.hazardSystem.patches = [];
     }
-    game.player.position.set(spawn.x - game.player.size * 0.5, spawn.y - game.player.size * 0.5);
+    game.placeEntityAtWithCollision?.(game.player, spawn.x - game.player.size * 0.5, spawn.y - game.player.size * 0.5);
     game.camera.snapTo(game.player, game.world.width, game.world.height);
   }
 
@@ -290,8 +290,7 @@ export function installRiteOfMonstrosity(game, options = {}) {
       const dx = target.x - beast.position.x;
       const dy = target.y - beast.position.y;
       const len = Math.hypot(dx, dy) || 1;
-      beast.position.x += (dx / len) * 120;
-      beast.position.y += (dy / len) * 120;
+      game.moveEntityByWithCollision?.(beast, (dx / len) * 120, (dy / len) * 120);
       if (Math.hypot(target.x - beast.position.x, target.y - beast.position.y) < 75) {
         game.onPlayerDamaged?.(10, true, { sourceType: 'rite_monstrosity_nemean_leap' });
       }
@@ -539,8 +538,7 @@ export function installRiteOfMonstrosity(game, options = {}) {
       }
       if (stage.chargeDuration > 0) {
         stage.chargeDuration -= dt;
-        cerb.position.x += stage.chargeDir.x * 520 * dt;
-        cerb.position.y += stage.chargeDir.y * 520 * dt;
+        game.moveEntityByWithCollision?.(cerb, stage.chargeDir.x * 520 * dt, stage.chargeDir.y * 520 * dt);
         for (const pillar of stage.pillars) {
           if (pillar.broken) continue;
           const cerbRect = createRect(cerb.position.x, cerb.position.y, cerb.size, cerb.size);

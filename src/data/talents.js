@@ -1,9 +1,7 @@
-import { TALENTS_KEY } from './constants.js';
-import { addGlobalTalentCrystal, getGlobalTalentCrystals, spendGlobalTalentCrystal } from './crystals.js';
+import { GLOBAL_PLAYER_PROFILE_KEY, TALENTS_KEY } from "./constants.js";
 
 export const TALENT_TREE = {
   Brutality: [
-    // No prerequisites: any talent can be allocated. Crystal costs can be added later.
     { id: "fierce", icon: "assets/images/Talent Tree/mighty-force.png", cost: 1, name: "Fierce", tier: 1, desc: "Gain +2% attack damage when you hit an enemy, stacking up to 10 times.", parentsAll: [], parentsAny: [] },
     { id: "rapid", icon: "assets/images/Talent Tree/double-shot.png", cost: 1, name: "Rapid", tier: 1, desc: "Gain +10% attack speed after dashing for a short duration.", parentsAll: [], parentsAny: [] },
     { id: "heavyHit", icon: "assets/images/Talent Tree/high-punch.png", cost: 2, name: "Heavy Hit", tier: 1, desc: "Gain +40% attack damage, but every 4th attack consumes one dash charge.", parentsAll: [], parentsAny: [] },
@@ -22,7 +20,6 @@ export const TALENT_TREE = {
     { id: "relentless", icon: "assets/images/Talent Tree/master-of-arms.png", cost: 3, name: "Relentless", tier: 1, desc: "Killing an enemy reduces dash cooldown by 0.5 seconds.", parentsAll: [], parentsAny: [] }
   ],
   Agility: [
-    // No prerequisites: any talent can be allocated. Crystal costs can be added later.
     { id: "nimble", icon: "assets/images/Talent Tree/running-ninja.png", cost: 1, name: "Nimble", tier: 1, desc: "Gain +5% movement speed.", parentsAll: [], parentsAny: [] },
     { id: "reflexes", icon: "assets/images/Talent Tree/acrobatic.png", cost: 1, name: "Reflexes", tier: 1, desc: "Reduce dash cooldown by 0.15 seconds.", parentsAll: [], parentsAny: [] },
     { id: "fleetFooted", icon: "assets/images/Talent Tree/sprint.png", cost: 1, name: "Fleet Footed", tier: 1, desc: "When health is below 50%, gain +15% movement speed.", parentsAll: [], parentsAny: [] },
@@ -41,7 +38,6 @@ export const TALENT_TREE = {
     { id: "perfectFlow", icon: "assets/images/Talent Tree/infinity.png", cost: 3, name: "Perfect Flow", tier: 1, desc: "Dashing two times in a row grants +10% attack speed for 2 seconds.", parentsAll: [], parentsAny: [] }
   ],
   Vitality: [
-    // Red crystal attribute. No prerequisites; any talent can be allocated.
     { id: "fortitude", icon: "assets/images/Talent Tree/armor-blueprint.png", cost: 1, name: "Fortitude", tier: 1, desc: "Gain +15% max health.", parentsAll: [], parentsAny: [] },
     { id: "bulwark", icon: "assets/images/Talent Tree/bell-shield.png", cost: 1, name: "Bulwark", tier: 1, desc: "Gain +15% defense.", parentsAll: [], parentsAny: [] },
     { id: "thickSkin", icon: "assets/images/Talent Tree/gauntlet.png", cost: 1, name: "Thick Skin", tier: 1, desc: "Gain +10% max health and +10% defense.", parentsAll: [], parentsAny: [] },
@@ -60,7 +56,6 @@ export const TALENT_TREE = {
     { id: "guardianPulse", icon: "assets/images/Talent Tree/aura.png", cost: 2, name: "Guardian Pulse", tier: 1, desc: "When your shield breaks, release a shockwave dealing 100% attack damage and stunning nearby enemies for 0.5 seconds.", parentsAll: [], parentsAny: [] }
   ],
   Luck: [
-    // Yellow crystal attribute. No prerequisites; any talent can be allocated.
     { id: "arcaneEye", icon: "assets/images/Talent Tree/all-seeing-eye.png", cost: 2, name: "Arcane Eye", tier: 1, desc: "Get 20% more loot from searchable objects.", parentsAll: [], parentsAny: [] },
     { id: "keenEye", icon: "assets/images/Talent Tree/one-eyed.png", cost: 1, name: "Keen Eye", tier: 1, desc: "Equipment drop chance increases by 15% of its base value.", parentsAll: [], parentsAny: [] },
     { id: "treasureSense", icon: "assets/images/Talent Tree/treasure-map.png", cost: 1, name: "Treasure Sense", tier: 1, desc: "Faint arrows point toward nearby searchable objects.", parentsAll: [], parentsAny: [] },
@@ -80,14 +75,106 @@ export const TALENT_TREE = {
   ]
 };
 
+const PRIMARY_ATTRIBUTE_BY_BRANCH = Object.freeze({
+  Brutality: "brutality",
+  Agility: "agility",
+  Vitality: "vitality",
+  Luck: "luck"
+});
+
+const DEFAULT_REQUIREMENT_BY_COST = Object.freeze({
+  1: 2,
+  2: 5,
+  3: 8
+});
+
+const TALENT_REQUIREMENT_OVERRIDES = Object.freeze({
+  bloodthirst: { brutality: 7, vitality: 3 },
+  executioner: { brutality: 5, luck: 3 },
+  luckyShot: { brutality: 6, luck: 6 },
+  relentless: { brutality: 5, agility: 3 },
+  dashingAttack: { brutality: 5, agility: 4 },
+  shadowStep: { agility: 5, luck: 3 },
+  quickRecovery: { agility: 6, vitality: 2 },
+  danceOfBlades: { agility: 5, brutality: 3 },
+  blinkAssault: { agility: 5, brutality: 4 },
+  untouchable: { agility: 7, vitality: 4 },
+  bloodRitual: { vitality: 5, brutality: 3 },
+  endurance: { vitality: 5, agility: 3 },
+  undyingResolve: { vitality: 5, brutality: 3 },
+  immortal: { vitality: 8, luck: 4 },
+  guardianPulse: { vitality: 6, brutality: 3 },
+  cardSurge: { luck: 5, agility: 3 },
+  transmutation: { luck: 5, vitality: 3 },
+  livingItem: { luck: 8, vitality: 4 },
+  philosophersStone: { luck: 6, brutality: 3 }
+});
+
 let _cachedTalentIdSet = null;
 let _cachedTalentNodeMap = null;
-const BRANCH_TO_CRYSTAL = Object.freeze({
-  Brutality: "orange",
-  Agility: "green",
-  Vitality: "red",
-  Luck: "yellow"
-});
+
+function loadTalentProfile() {
+  try {
+    const raw = localStorage.getItem(GLOBAL_PLAYER_PROFILE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveTalentProfile(nextProfile) {
+  const current = loadTalentProfile();
+  const currentAttributes = current?.attributes && typeof current.attributes === "object" ? current.attributes : {};
+  const sourceAttributes = nextProfile?.attributes && typeof nextProfile.attributes === "object"
+    ? nextProfile.attributes
+    : currentAttributes;
+  const sanitized = {
+    ...current,
+    ...nextProfile,
+    level: Math.max(1, Math.floor(Number(nextProfile?.level ?? current?.level ?? 1) || 1)),
+    xp: Math.max(0, Math.floor(Number(nextProfile?.xp ?? current?.xp ?? 0) || 0)),
+    unspentAttributePoints: Math.max(
+      0,
+      Math.floor(Number(nextProfile?.unspentAttributePoints ?? current?.unspentAttributePoints ?? 0) || 0)
+    ),
+    unspentTalentPoints: Math.max(
+      0,
+      Math.floor(Number(nextProfile?.unspentTalentPoints ?? current?.unspentTalentPoints ?? 0) || 0)
+    ),
+    attributes: {
+      brutality: Math.max(0, Math.floor(Number(sourceAttributes.brutality) || 0)),
+      agility: Math.max(0, Math.floor(Number(sourceAttributes.agility) || 0)),
+      vitality: Math.max(0, Math.floor(Number(sourceAttributes.vitality) || 0)),
+      luck: Math.max(0, Math.floor(Number(sourceAttributes.luck) || 0))
+    }
+  };
+  localStorage.setItem(GLOBAL_PLAYER_PROFILE_KEY, JSON.stringify(sanitized));
+  return sanitized;
+}
+
+function synthesizeAttributeRequirements(node, branchName) {
+  const explicit = TALENT_REQUIREMENT_OVERRIDES[node.id];
+  if (explicit) return { ...explicit };
+  const primary = PRIMARY_ATTRIBUTE_BY_BRANCH[branchName];
+  const requirement = DEFAULT_REQUIREMENT_BY_COST[Math.max(1, Math.min(3, Number(node.cost) || 1))] || 0;
+  return primary ? { [primary]: requirement } : {};
+}
+
+function getProfileAttributes(profile = null) {
+  const source = profile || loadTalentProfile();
+  const attrs = source?.attributes && typeof source.attributes === "object" ? source.attributes : {};
+  return {
+    brutality: Math.max(0, Math.floor(Number(attrs.brutality) || 0)),
+    agility: Math.max(0, Math.floor(Number(attrs.agility) || 0)),
+    vitality: Math.max(0, Math.floor(Number(attrs.vitality) || 0)),
+    luck: Math.max(0, Math.floor(Number(attrs.luck) || 0))
+  };
+}
+
+export function getTalentPointBalance(profile = null) {
+  const source = profile || loadTalentProfile();
+  return Math.max(0, Math.floor(Number(source?.unspentTalentPoints) || 0));
+}
 
 export function getAllTalentIdSet() {
   if (_cachedTalentIdSet) return _cachedTalentIdSet;
@@ -104,34 +191,56 @@ export function getTalentNodeById(talentId) {
   const map = new Map();
   for (const [branchName, nodes] of Object.entries(TALENT_TREE)) {
     for (const node of nodes) {
-      map.set(node.id, { ...node, branchName });
+      map.set(node.id, {
+        ...node,
+        branchName,
+        attributeRequirements: { ...synthesizeAttributeRequirements(node, branchName) }
+      });
     }
   }
   _cachedTalentNodeMap = map;
   return _cachedTalentNodeMap.get(talentId) || null;
 }
 
-export function getTalentCrystalId(talentId) {
-  const node = getTalentNodeById(talentId);
-  return node ? (BRANCH_TO_CRYSTAL[node.branchName] || null) : null;
-}
-
 export function getTalentBranchName(talentId) {
   return getTalentNodeById(talentId)?.branchName || null;
 }
 
-export function canPurchaseTalent(id) {
-  const purchased = getPurchasedTalents();
+export function getTalentAttributeRequirements(talentId) {
+  return { ...(getTalentNodeById(talentId)?.attributeRequirements || {}) };
+}
+
+export function getTalentRequirementFailures(talentId, attributes = null) {
+  const reqs = getTalentAttributeRequirements(talentId);
+  const attrs = attributes ? getProfileAttributes({ attributes }) : getProfileAttributes();
+  const out = [];
+  for (const [attributeId, requiredValue] of Object.entries(reqs)) {
+    const have = Math.max(0, Number(attrs[attributeId]) || 0);
+    const need = Math.max(0, Number(requiredValue) || 0);
+    if (have < need) {
+      out.push({ attributeId, required: need, current: have });
+    }
+  }
+  return out;
+}
+
+export function meetsTalentAttributeRequirements(talentId, attributes = null) {
+  return getTalentRequirementFailures(talentId, attributes).length === 0;
+}
+
+export function canPurchaseTalent(id, profile = null, purchasedOverride = null) {
+  const purchased = purchasedOverride || getPurchasedTalents();
   if (purchased.includes(id)) return false;
   const node = getTalentNodeById(id);
   if (!node) return false;
-  const crystalId = getTalentCrystalId(id);
-  if (!crystalId) return false;
-  const crystals = getGlobalTalentCrystals();
-  return (crystals[crystalId] || 0) >= Math.max(0, Number(node.cost) || 0);
+  const talentPoints = getTalentPointBalance(profile);
+  if (talentPoints < Math.max(0, Number(node.cost) || 0)) return false;
+  if (!meetsTalentAttributeRequirements(id, profile?.attributes)) return false;
+  const hasAll = (node.parentsAll || []).every((parentId) => purchased.includes(parentId));
+  const hasAny = (node.parentsAny || []).length === 0 || (node.parentsAny || []).some((parentId) => purchased.includes(parentId));
+  return hasAll && hasAny;
 }
 
-/** Global talent tree: returns purchased talent ids from localStorage (single key, not per-character). */
 export function getPurchasedTalents() {
   try {
     const raw = localStorage.getItem(TALENTS_KEY);
@@ -144,11 +253,14 @@ export function getPurchasedTalents() {
 export function purchaseTalent(id, cost) {
   const purchased = getPurchasedTalents();
   if (purchased.includes(id)) return false;
-  const crystalId = getTalentCrystalId(id);
   const node = getTalentNodeById(id);
   const finalCost = Math.max(0, Number(cost ?? node?.cost) || 0);
-  if (!crystalId) return false;
-  if (!spendGlobalTalentCrystal(crystalId, finalCost)) return false;
+  const profile = loadTalentProfile();
+  if (!canPurchaseTalent(id, profile, purchased)) return false;
+  saveTalentProfile({
+    ...profile,
+    unspentTalentPoints: Math.max(0, getTalentPointBalance(profile) - finalCost)
+  });
   purchased.push(id);
   localStorage.setItem(TALENTS_KEY, JSON.stringify(purchased));
   return true;
@@ -161,7 +273,7 @@ export function hasTalent(id, purchased) {
 
 export function canRefundTalent(talentId, purchased) {
   if (!purchased.includes(talentId)) return false;
-  for (const [branchName, nodes] of Object.entries(TALENT_TREE)) {
+  for (const nodes of Object.values(TALENT_TREE)) {
     const idx = nodes.findIndex((n) => n.id === talentId);
     if (idx === -1) continue;
     const isBranching = nodes.length > 0 && (nodes[0].parentsAll !== undefined || nodes[0].parentsAny !== undefined);
@@ -174,7 +286,7 @@ export function canRefundTalent(talentId, purchased) {
       }
       return true;
     }
-    for (let j = idx + 1; j < nodes.length; j++) {
+    for (let j = idx + 1; j < nodes.length; j += 1) {
       if (purchased.includes(nodes[j].id)) return false;
     }
     return true;
@@ -187,12 +299,14 @@ export function refundTalent(talentId) {
   if (!purchased.includes(talentId)) return false;
   const node = getTalentNodeById(talentId);
   const cost = Math.max(0, Number(node?.cost) || 0);
-  if (cost === 0) return false;
   if (!canRefundTalent(talentId, purchased)) return false;
   const next = purchased.filter((id) => id !== talentId);
   localStorage.setItem(TALENTS_KEY, JSON.stringify(next));
-  const crystalId = getTalentCrystalId(talentId);
-  if (crystalId) addGlobalTalentCrystal(crystalId, cost);
+  const profile = loadTalentProfile();
+  saveTalentProfile({
+    ...profile,
+    unspentTalentPoints: getTalentPointBalance(profile) + cost
+  });
   return true;
 }
 
@@ -210,7 +324,7 @@ export function refundBranch(branchName) {
         refundTalent(id);
         purchased = getPurchasedTalents();
         inBranch = purchased.filter((pid) => branchIds.has(pid));
-        count++;
+        count += 1;
         refundedOne = true;
         break;
       }
@@ -218,4 +332,24 @@ export function refundBranch(branchName) {
     if (!refundedOne) break;
   }
   return count;
+}
+
+export function getTalentRequirementSupportFailures(attributes, purchasedTalents = null) {
+  const purchased = purchasedTalents || getPurchasedTalents();
+  const out = [];
+  for (const talentId of purchased) {
+    const failures = getTalentRequirementFailures(talentId, attributes);
+    if (failures.length > 0) {
+      out.push({
+        talentId,
+        talentName: getTalentNodeById(talentId)?.name || talentId,
+        failures
+      });
+    }
+  }
+  return out;
+}
+
+export function canSupportPurchasedTalents(attributes, purchasedTalents = null) {
+  return getTalentRequirementSupportFailures(attributes, purchasedTalents).length === 0;
 }

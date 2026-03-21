@@ -5,7 +5,11 @@ import {
   DIFFICULTY_CONDITION_COUNTS,
   DIFFICULTY_STAT_MULTIPLIER,
   SHOW_DEV_CONTROLS,
-  getSelectedRunSkills
+  getSelectedRunSkills,
+  DEMO_BUILD,
+  DEMO_DEFAULT_PLAYABLE_CHARACTER_ID,
+  DEMO_DEFAULT_ATTACK_TYPE,
+  DEMO_DEFAULT_RUN_SKILLS
 } from '../data/constants.js';
 import { pickRandomConditions, ATTACK_TYPES } from '../data/conditions.js';
 import {
@@ -24,13 +28,13 @@ import { loadPillarProgressState } from '../systems/pillar-progress.js';
 import { getFriendsState, canSelectCompanion, setSelectedCompanion, saveFriendsState } from '../systems/friends-system.js';
 import { FRIENDS_CATALOG, FRIEND_IDS } from '../data/friends-data.js';
 import { getFriendSpriteHtml } from './friends-ui.js';
-import { loadSavedCharacters } from './save-system.js';
 import { SNACK_TYPES, getSnackById } from '../data/snack.js';
 import { PLAYABLE_CHARACTERS, getPlayableCharacterOrDefault, DEFAULT_PLAYABLE_CHARACTER_ID, DEFAULT_STAT_BASELINE } from '../data/playable-characters.js';
 import { getSkillById } from '../data/skills.js';
+import { hasPendingWeaponArtChoices } from '../data/basic-attack-progression.js';
+import { openWeaponArtDraftOverlay } from './weapon-art-draft-ui.js';
 
 let preRunDifficulty = 1;
-let pendingCharacterIndex = null;
 let pendingPlayableCharacterId = DEFAULT_PLAYABLE_CHARACTER_ID;
 let preRunConditions = [];
 let preRunRerollUsed = 0;
@@ -201,6 +205,34 @@ export function setStartGameCallback(fn) {
   _onStartGame = fn;
 }
 
+/**
+ * Demo: skip Prepare for Run and Weapon Art (skill-select) overlays; Reaper + Elemental Shot + default skills.
+ */
+export function startDemoQuickRun(legacyItems = [], options = {}) {
+  if (!DEMO_BUILD) return;
+  const friendsState = getFriendsState();
+  const stashItems = friendsState.stash || [];
+  pendingLegacyItems = [...legacyItems, ...stashItems];
+  friendsState.stash = [];
+  saveFriendsState(friendsState);
+
+  preRunDifficulty = 1;
+  preRunRerollUsed = 0;
+  setPendingPlayableCharacterId(DEMO_DEFAULT_PLAYABLE_CHARACTER_ID);
+  preRunRerollMax = 1;
+  rollPreRunConditions();
+  pendingCompanionId = friendsState.selectedCompanionId;
+  pendingSelectedLureIds = normalizeLureIds(options?.selectedLureIds);
+  pendingSnackId = null;
+  pendingAttackType = DEMO_DEFAULT_ATTACK_TYPE;
+  pendingSecondaryAttackType = getDefaultSecondaryAttackType(pendingAttackType);
+  pendingSelectedUpgradeIds = [];
+  dualTechniqueActiveForRun = false;
+  saveAttackSelectionPrefs(pendingAttackType, pendingAttackType);
+
+  confirmSkillSelectAndStart({ ignorePendingWeaponArt: true, useDemoSkillDefaults: true });
+}
+
 export function showPreRunScreen(legacyItems = [], options = {}) {
   // Merge friends stash into legacy items
   const friendsState = getFriendsState();
@@ -212,7 +244,6 @@ export function showPreRunScreen(legacyItems = [], options = {}) {
   
   preRunDifficulty = 1;
   preRunRerollUsed = 0;
-  pendingCharacterIndex = null;
   pendingPlayableCharacterId = options?.playableCharacterId ?? getSelectedPlayableCharacterIdFromStorage();
   preRunRerollMax = 1;
   rollPreRunConditions();
@@ -235,41 +266,7 @@ export function rollPreRunConditions() {
 }
 
 export function renderPreRunScreen() {
-  const saved = loadSavedCharacters();
-  const preRunChar = pendingCharacterIndex != null ? saved[pendingCharacterIndex] : null;
   preRunRerollMax = 1;
-
-  const charListEl = document.getElementById("pre-run-character-list");
-  if (charListEl) {
-    charListEl.innerHTML = "";
-    const newBtn = document.createElement("button");
-    newBtn.type = "button";
-    newBtn.className = "pre-run-character-btn" + (pendingCharacterIndex === null ? " selected" : "");
-    newBtn.textContent = "New character";
-    newBtn.addEventListener("click", () => {
-      pendingCharacterIndex = null;
-      renderPreRunScreen();
-    });
-    charListEl.appendChild(newBtn);
-    for (let i = 0; i < saved.length; i++) {
-      const char = saved[i];
-      if (char.dead) continue;
-      const name = char.name || "Unnamed";
-      const level = char.level ?? 1;
-      const diff = char.difficulty ?? 1;
-      const wounds = Math.max(0, Number(char.wounds) || 0);
-      const woundLabel = wounds > 0 ? ` · ${wounds} Wound${wounds !== 1 ? "s" : ""}` : "";
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "pre-run-character-btn" + (pendingCharacterIndex === i ? " selected" : "");
-      btn.textContent = `${name} (Lv.${level}, Diff.${diff})${woundLabel}`;
-      btn.addEventListener("click", () => {
-        pendingCharacterIndex = i;
-        renderPreRunScreen();
-      });
-      charListEl.appendChild(btn);
-    }
-  }
 
   const heroListEl = document.getElementById("pre-run-hero-list");
   if (heroListEl) {
@@ -464,64 +461,24 @@ export function showSkillSelectScreen() {
   pendingSkillsForRun = [null, null, null, null];
   const prefs = loadAttackSelectionPrefs();
   pendingAttackType = sanitizeAttackType(prefs.primary, getDefaultAttackType());
-  pendingSecondaryAttackType = sanitizeAttackType(
-    prefs.secondary,
-    getDefaultSecondaryAttackType(pendingAttackType)
-  );
-  pendingSelectedUpgradeIds = loadBuildSelectionPrefs(pendingAttackType);
-  dualTechniqueActiveForRun = hasDualTechniqueAllocated();
-  if (!dualTechniqueActiveForRun) {
-    pendingSecondaryAttackType = pendingAttackType;
-  } else if (pendingSecondaryAttackType === pendingAttackType) {
-    pendingSecondaryAttackType = getDefaultSecondaryAttackType(pendingAttackType);
-  }
+  pendingSecondaryAttackType = pendingAttackType;
+  pendingSelectedUpgradeIds = [];
+  dualTechniqueActiveForRun = false;
   renderSkillSelectScreen();
 }
 
 export function renderSkillSelectScreen() {
   const attackTypeEl = document.getElementById("skill-select-attack-type");
-  const upgradeSlotsEl = document.getElementById("skill-select-upgrade-slots");
-  const upgradePoolEl = document.getElementById("skill-select-upgrade-pool");
-  const upgradeHelpEl = document.getElementById("skill-select-upgrade-help");
   const confirmBtn = document.getElementById("skill-select-confirm");
-  const clearUpgradesBtn = document.getElementById("skill-select-clear-upgrades");
   if (!attackTypeEl) return;
   const subtitle = document.querySelector("#skill-select-overlay .skill-select-subtitle");
   if (subtitle) {
-    subtitle.textContent = dualTechniqueActiveForRun
-      ? "Choose your primary and secondary basic attacks."
-      : "Choose your basic attack.";
+    subtitle.textContent = "Choose your Weapon Art.";
   }
 
   const section = attackTypeEl.closest(".skill-select-attack-type-section");
   if (!section) return;
-
-  let secondaryLabel = document.getElementById("skill-select-attack-label-secondary");
-  let secondaryContainer = document.getElementById("skill-select-attack-type-secondary");
-  if (!secondaryLabel || !secondaryContainer) {
-    secondaryLabel = document.createElement("label");
-    secondaryLabel.id = "skill-select-attack-label-secondary";
-    secondaryLabel.className = "skill-select-attack-label";
-    secondaryLabel.textContent = "Secondary Basic Attack";
-    secondaryContainer = document.createElement("div");
-    secondaryContainer.id = "skill-select-attack-type-secondary";
-    secondaryContainer.className = "skill-select-attack-type";
-    section.appendChild(secondaryLabel);
-    section.appendChild(secondaryContainer);
-  }
-
-  secondaryLabel.classList.toggle("hidden", !dualTechniqueActiveForRun);
-  secondaryContainer.classList.toggle("hidden", !dualTechniqueActiveForRun);
   attackTypeEl.innerHTML = "";
-  secondaryContainer.innerHTML = "";
-  if (upgradeSlotsEl) upgradeSlotsEl.innerHTML = "";
-  if (upgradePoolEl) upgradePoolEl.innerHTML = "";
-
-  pendingSelectedUpgradeIds = sanitizeBuildUpgradeIds(pendingSelectedUpgradeIds, pendingAttackType);
-
-  if (clearUpgradesBtn) {
-    clearUpgradesBtn.disabled = pendingSelectedUpgradeIds.length === 0;
-  }
 
   const renderAttackButton = (atk, selectedId, onSelect, options = {}) => {
     const btn = document.createElement("button");
@@ -542,189 +499,27 @@ export function renderSkillSelectScreen() {
   for (const atk of ATTACK_TYPES) {
     attackTypeEl.appendChild(renderAttackButton(atk, pendingAttackType, () => {
       pendingAttackType = atk.id;
-      pendingSelectedUpgradeIds = loadBuildSelectionPrefs(pendingAttackType);
-      if (dualTechniqueActiveForRun && pendingSecondaryAttackType === pendingAttackType) {
-        pendingSecondaryAttackType = getDefaultSecondaryAttackType(pendingAttackType);
-      }
       renderSkillSelectScreen();
     }));
   }
-
-  if (dualTechniqueActiveForRun) {
-    for (const atk of ATTACK_TYPES) {
-      secondaryContainer.appendChild(renderAttackButton(atk, pendingSecondaryAttackType, () => {
-        if (atk.id === pendingAttackType) return;
-        pendingSecondaryAttackType = atk.id;
-        renderSkillSelectScreen();
-      }, { disabled: atk.id === pendingAttackType }));
-    }
-  }
-
-  const buildPool = getBuildUpgradePoolForAttackType(pendingAttackType);
-  const selectedUpgrades = getPendingSelectedUpgrades();
-  const quota = getBuildUpgradeQuotaForAttack(pendingAttackType);
-  const totalRequired = getBuildUpgradeQuotaTotalForAttack(pendingAttackType);
-  if (upgradeHelpEl) {
-    if (quota.uncommon > 0 || quota.rare > 0) {
-      upgradeHelpEl.textContent =
-        `Choose ${totalRequired} upgrades for this run` +
-        ` (${selectedUpgrades.length}/${totalRequired} selected).` +
-        ` Requires ${quota.common} Common, ${quota.uncommon} Uncommon, ${quota.rare} Rare.`;
-    } else {
-      upgradeHelpEl.textContent =
-        `Choose ${totalRequired} upgrades for this run (${selectedUpgrades.length}/${totalRequired} selected). Each level-up randomly improves one of your picks.`;
-    }
-  }
-  if (upgradeSlotsEl) {
-    const slotRarities = [];
-    for (let i = 0; i < (quota.common || 0); i++) slotRarities.push("common");
-    for (let i = 0; i < (quota.uncommon || 0); i++) slotRarities.push("uncommon");
-    for (let i = 0; i < (quota.rare || 0); i++) slotRarities.push("rare");
-    const idList = sanitizeBuildUpgradeIds(pendingSelectedUpgradeIds, pendingAttackType);
-    const byRarity = { common: [], uncommon: [], rare: [] };
-    for (const id of idList) {
-      const rarity = getBuildUpgradeRarity(pendingAttackType, id);
-      byRarity[rarity].push(id);
-    }
-
-    for (let i = 0; i < slotRarities.length; i++) {
-      const slotBtn = document.createElement("button");
-      slotBtn.type = "button";
-      const rarity = slotRarities[i] || "common";
-      const sourceList = byRarity[rarity] || [];
-      const upgradeId = sourceList.shift() || null;
-      const selected = upgradeId
-        ? createSelectedUpgradeState(getAttackUpgradeDefById(pendingAttackType, upgradeId))
-        : null;
-      slotBtn.className = "skill-select-upgrade-slot" + (selected ? " filled" : "");
-      if (selected) {
-        const def = getAttackUpgradeDefById(pendingAttackType, selected.id);
-        const rarityLabel = String(def?.rarity || "Common");
-        slotBtn.innerHTML = `
-          <span class="skill-select-upgrade-slot-label">Slot ${i + 1}</span>
-          <span class="skill-select-upgrade-slot-name">${escapeHtml(selected.name)}</span>
-          <span class="skill-select-upgrade-slot-cat">${escapeHtml(rarityLabel)}</span>
-        `;
-        slotBtn.addEventListener("click", () => {
-          const idx = pendingSelectedUpgradeIds.indexOf(selected.id);
-          if (idx >= 0) pendingSelectedUpgradeIds.splice(idx, 1);
-          renderSkillSelectScreen();
-        });
-      } else {
-        slotBtn.innerHTML = `
-          <span class="skill-select-upgrade-slot-label">Slot ${i + 1}</span>
-          <span class="skill-select-upgrade-slot-name">Empty</span>
-          <span class="skill-select-upgrade-slot-cat">${rarity.charAt(0).toUpperCase() + rarity.slice(1)} slot</span>
-        `;
-      }
-      upgradeSlotsEl.appendChild(slotBtn);
-    }
-  }
-  if (upgradePoolEl) {
-    const categoryLabel = (cat) => ({
-      damage: "Damage",
-      rhythm: "Rhythm",
-      control: "Control",
-      onhit: "On Hit",
-      power: "Power",
-      tempo: "Tempo",
-      spiritcraft: "Spiritcraft"
-    }[cat] || cat);
-    const byCategory = {};
-    for (const u of buildPool) {
-      const c = u.category || "damage";
-      if (!byCategory[c]) byCategory[c] = [];
-      byCategory[c].push(u);
-    }
-    const orderedCategories = [...UPGRADE_CATEGORIES].filter((c) => byCategory[c]?.length);
-
-    const renderCategoryGroup = (cat) => {
-      const group = document.createElement("div");
-      group.className = "skill-select-upgrade-category";
-      const heading = document.createElement("div");
-      heading.className = "skill-select-upgrade-category-heading";
-      heading.textContent = categoryLabel(cat);
-      group.appendChild(heading);
-      const currentIds = sanitizeBuildUpgradeIds(pendingSelectedUpgradeIds, pendingAttackType);
-      const currentCounts = { common: 0, uncommon: 0, rare: 0 };
-      for (const id of currentIds) {
-        const r = getBuildUpgradeRarity(pendingAttackType, id);
-        currentCounts[r] = (currentCounts[r] || 0) + 1;
-      }
-
-      for (const upgrade of byCategory[cat]) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        const selectedCount = currentIds.filter((id) => id === upgrade.id).length;
-        const rarityKey = String(upgrade.rarity || "").toLowerCase();
-        let className = "skill-select-upgrade-btn";
-        if (selectedCount > 0) className += " selected";
-        if (rarityKey) className += ` rarity-${rarityKey}`;
-        btn.className = className;
-        const rarity = getBuildUpgradeRarity(pendingAttackType, upgrade.id);
-        const maxForRarity = quota[rarity] || 0;
-        const canPickMoreOfRarity = maxForRarity === 0 ? false : (currentCounts[rarity] || 0) < maxForRarity;
-        const totalSelected = currentIds.length;
-        const canPickAny = totalSelected < totalRequired;
-        btn.disabled = !canPickAny || !canPickMoreOfRarity;
-        const rarityLabel = upgrade.rarity
-          ? String(upgrade.rarity).charAt(0).toUpperCase() + String(upgrade.rarity).slice(1)
-          : "";
-        btn.innerHTML = `
-          <span class="skill-select-upgrade-name">${escapeHtml(upgrade.name)}</span>
-          ${rarityLabel ? `<span class="skill-select-upgrade-meta">${escapeHtml(rarityLabel)}</span>` : ""}
-          <span class="skill-select-upgrade-desc">${escapeHtml(upgrade.description || "")}</span>
-        `;
-        btn.addEventListener("click", () => {
-          if (btn.disabled) return;
-          pendingSelectedUpgradeIds.push(upgrade.id);
-          renderSkillSelectScreen();
-        });
-        group.appendChild(btn);
-      }
-      return group;
-    };
-
-    upgradePoolEl.innerHTML = "";
-
-    // For four-category builds (e.g. Soul Siphon), use a 2x2 grid layout.
-    if (orderedCategories.length === 4) {
-      upgradePoolEl.className = "skill-select-upgrade-pool skill-select-upgrade-pool-grid-2x2";
-      for (const cat of orderedCategories) {
-        upgradePoolEl.appendChild(renderCategoryGroup(cat));
-      }
-    } else {
-      const mid = Math.ceil(orderedCategories.length / 2);
-      const leftColCats = orderedCategories.slice(0, mid);
-      const rightColCats = orderedCategories.slice(mid);
-      upgradePoolEl.className = "skill-select-upgrade-pool skill-select-upgrade-pool-two-col";
-
-      const renderColumn = (categories) => {
-        const col = document.createElement("div");
-        col.className = "skill-select-upgrade-pool-col";
-        for (const cat of categories) {
-          col.appendChild(renderCategoryGroup(cat));
-        }
-        return col;
-      };
-
-      if (leftColCats.length) upgradePoolEl.appendChild(renderColumn(leftColCats));
-      if (rightColCats.length) upgradePoolEl.appendChild(renderColumn(rightColCats));
-    }
-  }
   if (confirmBtn) {
-    confirmBtn.disabled = selectedUpgrades.length !== totalRequired;
+    confirmBtn.disabled = false;
   }
 }
 
 export function clearSkillSelectUpgrades() {
   pendingSelectedUpgradeIds = [];
-  renderSkillSelectScreen();
 }
 
-export function confirmSkillSelectAndStart() {
-  const selectedUpgrades = getPendingSelectedUpgrades();
-  if (selectedUpgrades.length !== getBuildUpgradeQuotaTotalForAttack(pendingAttackType)) return;
+export function confirmSkillSelectAndStart(options = {}) {
+  if (!options?.ignorePendingWeaponArt && hasPendingWeaponArtChoices()) {
+    openWeaponArtDraftOverlay({
+      preferredAttackType: pendingAttackType,
+      onComplete: () => confirmSkillSelectAndStart({ ignorePendingWeaponArt: true })
+    });
+    return;
+  }
+
   const vaultLocked = preRunConditions.some((c) => c.id === "vaultLocked");
   const legacyItems = vaultLocked ? [] : pendingLegacyItems;
 
@@ -735,7 +530,6 @@ export function confirmSkillSelectAndStart() {
   if (mainMenu) mainMenu.classList.add("hidden");
   if (gameRoot) gameRoot.classList.remove("hidden");
   document.getElementById("pause-toggle")?.classList.remove("hidden");
-  document.getElementById("mod-screen-button")?.classList.remove("hidden");
   if (SHOW_DEV_CONTROLS) {
     document.getElementById("dev-toggle")?.classList.remove("hidden");
   }
@@ -746,7 +540,7 @@ export function confirmSkillSelectAndStart() {
   setSelectedCompanion(friendsState, pendingCompanionId);
   saveFriendsState(friendsState);
 
-  let skills = getSelectedRunSkills();
+  let skills = options?.useDemoSkillDefaults ? [...DEMO_DEFAULT_RUN_SKILLS] : getSelectedRunSkills();
   const hero = getPlayableCharacterOrDefault(pendingPlayableCharacterId);
   if (hero?.uniqueSkill) {
     skills = [...skills];
@@ -754,13 +548,8 @@ export function confirmSkillSelectAndStart() {
   }
   saveAttackSelectionPrefs(
     pendingAttackType,
-    dualTechniqueActiveForRun ? pendingSecondaryAttackType : pendingAttackType
+    pendingAttackType
   );
-  saveBuildSelectionPrefs(pendingAttackType, pendingSelectedUpgradeIds);
-  const saved = loadSavedCharacters();
-  const selectedCharacter = pendingCharacterIndex != null && saved[pendingCharacterIndex] != null
-    ? saved[pendingCharacterIndex]
-    : null;
   const selectedSnack = getSnackById(pendingSnackId);
 
   if (_onStartGame) {
@@ -769,13 +558,9 @@ export function confirmSkillSelectAndStart() {
       conditions: preRunConditions,
       skills,
       attackType: pendingAttackType,
-      secondaryAttackType: dualTechniqueActiveForRun ? pendingSecondaryAttackType : pendingAttackType,
-      selectedUpgrades,
       companionId: pendingCompanionId,
       snackId: selectedSnack?.id || null,
       selectedLureIds: pendingSelectedLureIds.slice(),
-      selectedCharacterIndex: pendingCharacterIndex,
-      selectedCharacter,
       playableCharacterId: pendingPlayableCharacterId || DEFAULT_PLAYABLE_CHARACTER_ID
     };
     if (_pendingDevMode) {
@@ -807,7 +592,6 @@ export function setPreRunStateForDevMode() {
   preRunDifficulty = 1;
   preRunConditions = [];
   pendingLegacyItems = [];
-  pendingCharacterIndex = 0;
   pendingCompanionId = null;
   pendingSelectedLureIds = [];
 }

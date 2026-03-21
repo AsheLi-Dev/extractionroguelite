@@ -8,6 +8,16 @@
  * - Shared rendering logic should go into helpers/modules (avoid copy/paste).
  */
 
+let loyalDragonIdleImage = null;
+
+function getLoyalDragonIdleImage() {
+  if (loyalDragonIdleImage) return loyalDragonIdleImage;
+  const img = new Image();
+  img.src = "assets/Enemies/sprDragon.png";
+  loyalDragonIdleImage = img;
+  return loyalDragonIdleImage;
+}
+
 function drawAssimilativeOrb(game, ctx, eff, ox, oy) {
   const sx = eff.x + ox;
   const sy = eff.y + oy;
@@ -41,15 +51,43 @@ function drawSpiritBanner(game, ctx, eff, ox, oy) {
 
 function drawLoyalDragons(game, ctx, eff, ox, oy) {
   if (!eff.dragon1 || !eff.dragon2) return;
-  const s1x = eff.dragon1.x + ox;
-  const s1y = eff.dragon1.y + oy;
-  const s2x = eff.dragon2.x + ox;
-  const s2y = eff.dragon2.y + oy;
-  ctx.fillStyle = "rgba(251, 146, 60, 0.9)";
-  ctx.beginPath();
-  ctx.arc(s1x, s1y, 14, 0, Math.PI * 2);
-  ctx.arc(s2x, s2y, 14, 0, Math.PI * 2);
-  ctx.fill();
+  const sprite = getLoyalDragonIdleImage();
+  if (!sprite || !sprite.complete || !sprite.naturalWidth || !sprite.naturalHeight) {
+    // Keep an obvious fallback while the sprite is still loading.
+    const s1x = eff.dragon1.x + ox;
+    const s1y = eff.dragon1.y + oy;
+    const s2x = eff.dragon2.x + ox;
+    const s2y = eff.dragon2.y + oy;
+    ctx.fillStyle = "rgba(251, 146, 60, 0.9)";
+    ctx.beginPath();
+    ctx.arc(s1x, s1y, 14, 0, Math.PI * 2);
+    ctx.arc(s2x, s2y, 14, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+
+  const frames = 6;
+  const fps = 10;
+  const frame = Math.floor((game.time * fps) % frames);
+  const frameW = sprite.naturalWidth / frames;
+  const frameH = sprite.naturalHeight;
+  const drawW = 48;
+  const drawH = 48;
+  for (const dragon of [eff.dragon1, eff.dragon2]) {
+    const sx = dragon.x + ox - drawW / 2;
+    const sy = dragon.y + oy - drawH / 2;
+    ctx.drawImage(
+      sprite,
+      frame * frameW,
+      0,
+      frameW,
+      frameH,
+      sx,
+      sy,
+      drawW,
+      drawH
+    );
+  }
 }
 
 function drawHunterShot(game, ctx, eff, ox, oy) {

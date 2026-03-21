@@ -39,8 +39,11 @@ export function applyGameMapMixin(Game) {
       return numericMapId !== bossMapId;
     },
 
-    buildBiomeWorldForMap(mapDef, seed) {
-      const { world } = createProceduralWorld(PRESET_BIOME, seed, mapDef);
+    buildBiomeWorldForMap(mapDef, seed, options = {}) {
+      const biomeMapDef = (options.disableExits === true || this.enableRunRouteGraph)
+        ? { ...mapDef, exits: [] }
+        : mapDef;
+      const { world } = createProceduralWorld(PRESET_BIOME, seed, biomeMapDef);
       world.archetypeGrid = buildArchetypeGrid(world);
       buildAllSubareaGrids(world, world.archetypeGrid, mulberry32(seed ^ 0x7a3f));
       buildSubareaZonesForWorld(world, world.archetypeGrid, mulberry32(seed ^ 0xc4d2), { chancePerCell: 0.5, totemWeight: 0.4, ambushWeight: 0.4 });
@@ -382,6 +385,7 @@ export function applyGameMapMixin(Game) {
     },
 
     checkExits() {
+      if (this.enableRunRouteGraph) return;
       if (this.exitTransitionCooldown > 0) return;
       const exits = this.world.proceduralExitZones || this.currentMap.exits;
       if (!exits || exits.length === 0) return;
@@ -1605,7 +1609,6 @@ export function applyGameMapMixin(Game) {
       this.currentMap = useNodeRoute && !isRestRoom
         ? { ...targetMap, exits: [] }
         : targetMap;
-      this.runModDropsThisRoom = 0;
 
       if (this.useProceduralMap) {
         const seed = (this.proceduralSeed ?? Date.now()) + Number(targetMapId) * 1000;
@@ -1721,38 +1724,41 @@ export function applyGameMapMixin(Game) {
       // Spawn shrine based on interval
       this.shrineSpawnCounter++;
       if (!isRestRoom && !isBossRoom && this.shrineSpawnCounter >= this.shrineSpawnInterval) {
-        const shrineDef = SHRINE_DEFS[Math.floor(Math.random() * SHRINE_DEFS.length)];
-        const margin = this.world.wallThickness + 80;
-        
-        let valid = false;
-        let sx, sy;
-        let attempts = 0;
-        while (!valid && attempts < 50) {
-          sx = margin + Math.random() * (this.world.width - 2 * margin - 64);
-          sy = margin + Math.random() * (this.world.height - 2 * margin - 64);
-          valid = true;
-          attempts++;
-        }
-        
-        if (valid) {
-          this.mapInteractables.push({
-            type: "shrine",
-            shrineId: shrineDef.id,
-            shrineName: shrineDef.name,
-            shrineDescription: shrineDef.description,
-            shrineIcon: shrineDef.icon,
-            shrineColor: shrineDef.color,
-            shrineAuraColor: shrineDef.auraColor,
-            x: sx,
-            y: sy,
-            w: 64,
-            h: 64,
-            used: false
-          });
-          this.shrineSpawnCounter = 0;
-          this.shrineSpawnInterval = 2 + Math.floor(Math.random() * 3); // New interval 2-4
-        } else {
-          this.shrineSpawnCounter++;
+        const activeShrines = SHRINE_DEFS.filter((entry) => entry?.disabled !== true);
+        const shrineDef = activeShrines[Math.floor(Math.random() * activeShrines.length)];
+        if (shrineDef) {
+          const margin = this.world.wallThickness + 80;
+
+          let valid = false;
+          let sx, sy;
+          let attempts = 0;
+          while (!valid && attempts < 50) {
+            sx = margin + Math.random() * (this.world.width - 2 * margin - 64);
+            sy = margin + Math.random() * (this.world.height - 2 * margin - 64);
+            valid = true;
+            attempts++;
+          }
+
+          if (valid) {
+            this.mapInteractables.push({
+              type: "shrine",
+              shrineId: shrineDef.id,
+              shrineName: shrineDef.name,
+              shrineDescription: shrineDef.description,
+              shrineIcon: shrineDef.icon,
+              shrineColor: shrineDef.color,
+              shrineAuraColor: shrineDef.auraColor,
+              x: sx,
+              y: sy,
+              w: 64,
+              h: 64,
+              used: false
+            });
+            this.shrineSpawnCounter = 0;
+            this.shrineSpawnInterval = 2 + Math.floor(Math.random() * 3); // New interval 2-4
+          } else {
+            this.shrineSpawnCounter++;
+          }
         }
       } else {
         this.shrineSpawnCounter++;

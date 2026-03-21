@@ -195,6 +195,34 @@ export const ENEMY_ATTACK_KITS = {
     ]
   },
 
+  "Goblin Mage": {
+    base: [
+      {
+        id: "goblin_mage_dark_orb_burst",
+        kind: "projectile",
+        telegraph: { shape: "circle", windup: 0.4, color: "magic" },
+        execute: {
+          damage: 0.75,
+          speed: 220,
+          count: 1,
+          burstCount: 3,
+          burstInterval: 0.2,
+          retargetOnBurst: true,
+          color: "#1b102c",
+          size: 16,
+          animatedSprite: { preset: "ghostOrb" },
+          useHitbox: true
+        },
+        recover: 0.2,
+        cooldown: 5,
+        minRange: 80,
+        maxRange: 420,
+        weight: 1,
+        flags: { magic: true }
+      }
+    ]
+  },
+
   Troll: {
     base: [
       {
@@ -1152,6 +1180,34 @@ export const ENEMY_ATTACK_KITS = {
         maxRange: 140,
         weight: 1,
         flags: { heavy: true }
+      }
+    ]
+  },
+
+  Cultist: {
+    base: [
+      {
+        id: "cultist_dark_orb_burst",
+        kind: "projectile",
+        telegraph: { shape: "circle", windup: 0.45, color: "magic" },
+        execute: {
+          damage: 0.7,
+          speed: 210,
+          count: 1,
+          burstCount: 5,
+          burstInterval: 0.2,
+          retargetOnBurst: true,
+          color: "#120a22",
+          size: 14,
+          animatedSprite: { preset: "ghostOrb" },
+          useHitbox: true
+        },
+        recover: 0.2,
+        cooldown: 7,
+        minRange: 80,
+        maxRange: 420,
+        weight: 1,
+        flags: { magic: true }
       }
     ]
   },

@@ -127,7 +127,6 @@ export function applyGameCoreMixin(Game) {
       document.getElementById("main-menu")?.classList.remove("hidden");
       document.querySelector(".game-root")?.classList.add("hidden");
       document.getElementById("pause-toggle")?.classList.add("hidden");
-      document.getElementById("mod-screen-button")?.classList.add("hidden");
       document.getElementById("dev-toggle")?.classList.add("hidden");
       document.getElementById("inventory-button")?.classList.add("hidden");
       

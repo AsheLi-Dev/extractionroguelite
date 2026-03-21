@@ -7,6 +7,15 @@ import { PLAYER_WALL_COLLISION_INSET, PLAYER_HITBOX_SCALE } from '../data/consta
 
 export function applyGameCollisionMixin(Game) {
   Object.assign(Game.prototype, {
+    rectsOverlap(a, b) {
+      return (
+        a.x < b.x + b.w &&
+        a.x + a.w > b.x &&
+        a.y < b.y + b.h &&
+        a.y + a.h > b.y
+      );
+    },
+
     getPlayerCollisionRectAt(x, y) {
       const player = this.player;
       if (!player) return null;
@@ -19,15 +28,174 @@ export function applyGameCollisionMixin(Game) {
       return { x: x + pxo, y: y + pyo, w: pw, h: ph };
     },
 
+    clampEntityPosition(entity, x, y) {
+      if (!entity) return { x, y };
+      const size = Number(entity.size) || 0;
+      const margin = this.world?.wallCollisionThickness ?? this.world?.wallThickness ?? 0;
+      const maxX = (this.world?.width ?? (x + size)) - margin - size;
+      const maxY = (this.world?.height ?? (y + size)) - margin - size;
+      return {
+        x: Math.max(margin, Math.min(x, maxX)),
+        y: Math.max(margin, Math.min(y, maxY))
+      };
+    },
+
+    setEntityPosition(entity, x, y) {
+      if (!entity?.position) return false;
+      if (typeof entity.position.set === 'function') {
+        entity.position.set(x, y);
+      } else {
+        entity.position.x = x;
+        entity.position.y = y;
+      }
+      return true;
+    },
+
+    getEntityCollisionRectAt(entity, x, y, options = {}) {
+      if (!entity) return null;
+      if (entity === this.player || entity?.id === 'player') {
+        return this.getPlayerCollisionRectAt(x, y);
+      }
+
+      const size = Number(entity.size);
+      if (size > 0) {
+        if (options.forWalls) return { x, y, w: size, h: size };
+        if (typeof this.enemySystem?.getSpawnCollisionRect === 'function') {
+          return this.enemySystem.getSpawnCollisionRect(x, y, size);
+        }
+        return { x, y, w: size, h: size };
+      }
+
+      const width = Number(entity.width) || 0;
+      const height = Number(entity.height) || 0;
+      return { x, y, w: width, h: height };
+    },
+
+    entityPositionHasBlockingCollision(entity, x, y) {
+      const blockerRect = this.getEntityCollisionRectAt(entity, x, y);
+      const wallRect = this.getEntityCollisionRectAt(entity, x, y, { forWalls: true }) || blockerRect;
+      if (!blockerRect || !wallRect) return false;
+
+      for (const obstacle of this.obstacles || []) {
+        if (obstacle.destroyed || !obstacle.blocksMovement) continue;
+        if (obstacleIntersectsRect(obstacle, blockerRect)) return true;
+      }
+
+      for (const ob of this.getVaultEntranceBlocking?.() || []) {
+        if (obstacleIntersectsRect(ob, blockerRect)) return true;
+      }
+
+      for (const obj of this.mapInteractables || []) {
+        if (!obj?.collisionRect) continue;
+        const objRect = {
+          x: obj.x + (obj.collisionRect.x || 0),
+          y: obj.y + (obj.collisionRect.y || 0),
+          w: obj.collisionRect.w || 0,
+          h: obj.collisionRect.h || 0
+        };
+        if (this.rectsOverlap(blockerRect, objRect)) return true;
+      }
+
+      for (const wall of this.world?.tileWallRects || []) {
+        const tileWallRect = getWallCollisionRect(wall);
+        if (this.rectsOverlap(wallRect, tileWallRect)) return true;
+      }
+
+      return false;
+    },
+
+    trySetEntityPositionIfClear(entity, x, y) {
+      if (!entity?.position) return false;
+      const clamped = this.clampEntityPosition(entity, x, y);
+      if (this.entityPositionHasBlockingCollision(entity, clamped.x, clamped.y)) return false;
+      return this.setEntityPosition(entity, clamped.x, clamped.y);
+    },
+
+    placeEntityAtWithCollision(entity, x, y, options = {}) {
+      if (!entity?.position) return false;
+
+      if (this.trySetEntityPositionIfClear(entity, x, y)) {
+        if (entity === this.player || entity?.id === 'player') this.ensurePlayerNotStuck?.();
+        return true;
+      }
+
+      const maxSearchRadius = Math.max(0, Number(options.maxSearchRadius) || Math.max(48, (Number(entity.size) || 32) * 1.5));
+      const searchStep = Math.max(4, Number(options.searchStep) || 8);
+      const angleCount = Math.max(8, Number(options.angleCount) || 16);
+      if (maxSearchRadius <= 0) return false;
+
+      const clampedTarget = this.clampEntityPosition(entity, x, y);
+      if (entity !== this.player && entity?.id !== 'player' && Number(entity.size) > 0 && typeof this.enemySystem?.pushOutOfBlockers === 'function') {
+        const pushed = this.enemySystem.pushOutOfBlockers(clampedTarget.x, clampedTarget.y, entity.size, this);
+        if (this.trySetEntityPositionIfClear(entity, pushed.x, pushed.y)) return true;
+      }
+
+      for (let radius = searchStep; radius <= maxSearchRadius; radius += searchStep) {
+        for (let index = 0; index < angleCount; index++) {
+          const angle = (index / angleCount) * Math.PI * 2;
+          const candidateX = clampedTarget.x + Math.cos(angle) * radius;
+          const candidateY = clampedTarget.y + Math.sin(angle) * radius;
+          if (this.trySetEntityPositionIfClear(entity, candidateX, candidateY)) {
+            if (entity === this.player || entity?.id === 'player') this.ensurePlayerNotStuck?.();
+            return true;
+          }
+        }
+      }
+
+      return false;
+    },
+
+    moveEntityByWithCollision(entity, deltaX, deltaY, options = {}) {
+      if (!entity?.position) return false;
+      if (entity === this.player || entity?.id === 'player') {
+        this.movePlayerByWithCollision(deltaX, deltaY);
+        return true;
+      }
+
+      const distance = Math.max(Math.abs(deltaX), Math.abs(deltaY));
+      const stepSize = Math.max(4, Number(options.stepSize) || 8);
+      const steps = Math.max(1, Math.ceil(distance / stepSize));
+      const stepX = deltaX / steps;
+      const stepY = deltaY / steps;
+      let moved = false;
+
+      for (let i = 0; i < steps; i++) {
+        const startX = entity.position.x;
+        const startY = entity.position.y;
+        if (this.trySetEntityPositionIfClear(entity, startX + stepX, startY + stepY)) {
+          moved = true;
+          continue;
+        }
+
+        const preferX = Math.abs(stepX) >= Math.abs(stepY);
+        const axisCandidates = preferX
+          ? [
+              [startX + stepX, startY],
+              [startX, startY + stepY]
+            ]
+          : [
+              [startX, startY + stepY],
+              [startX + stepX, startY]
+            ];
+
+        let stepMoved = false;
+        for (const [nextX, nextY] of axisCandidates) {
+          if (this.trySetEntityPositionIfClear(entity, nextX, nextY)) {
+            moved = true;
+            stepMoved = true;
+            break;
+          }
+        }
+
+        if (!stepMoved) break;
+      }
+
+      return moved;
+    },
+
     playerPositionHasBlockingCollision(x, y) {
       const rect = this.getPlayerCollisionRectAt(x, y);
       if (!rect) return false;
-      const overlapsRect = (a, b) => (
-        a.x < b.x + b.w &&
-        a.x + a.w > b.x &&
-        a.y < b.y + b.h &&
-        a.y + a.h > b.y
-      );
 
       for (const obstacle of this.obstacles || []) {
         if (obstacle.destroyed || !obstacle.blocksMovement) continue;
@@ -46,12 +214,12 @@ export function applyGameCollisionMixin(Game) {
           w: obj.collisionRect.w || 0,
           h: obj.collisionRect.h || 0
         };
-        if (overlapsRect(rect, objRect)) return true;
+        if (this.rectsOverlap(rect, objRect)) return true;
       }
 
       for (const wall of this.world?.tileWallRects || []) {
         const wallRect = getWallCollisionRect(wall);
-        if (overlapsRect(rect, wallRect)) return true;
+        if (this.rectsOverlap(rect, wallRect)) return true;
       }
 
       return false;

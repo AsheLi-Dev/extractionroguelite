@@ -6,14 +6,12 @@ import { Player } from '../player.js';
 import {
   DIFFICULTY_CONDITION_COUNTS, DIFFICULTY_STAT_MULTIPLIER,
   TALENTS_KEY, SKILL_UNLOCKS_KEY, SKILL_LEVELS_KEY,
-  SKILL_MOD_SOCKETS_KEY, MOD_CARDS_INVENTORY_KEY,
   SKILL_XP_CURVE, SKILL_MAX_LEVEL, SKILL_SLOT_UNLOCK, DEV_MODE_ENABLED,
   PLAYER_WALL_COLLISION_INSET,
   PLAYER_HITBOX_SCALE,
   getXpForSkillLevel, getSkillLevels, setSkillLevels, getSkillLevel, getSkillXp,
   markSkillEncountered, addSkillXp, getModSlotsForSkillLevel,
   getSkillModSockets, setSkillModSockets,
-  getModCardInventory, addModCardToInventory, removeModCardFromInventoryAtIndex,
   getSkillUnlocks, setSkillUnlock,
   getHighestCompletedDifficulty, markDifficultyCompleted, getAvailableSkillSlots
 } from '../data/constants.js';
@@ -28,7 +26,7 @@ import {
   SKILL_CATEGORIES, SKILL_DEFS, MODIFICATION_CARD_DEFS, MODIFICATION_CARD_CATEGORIES,
   DELIVERY_TRIGGER_MOD_IDS,
   getModsForSkillSlot, getModEffectMult, applyElementDebuffsFromMods,
-  isSkillUnlocked, getUnlockedSkills, getSkillById, getSkillStatScalingMult
+  isSkillUnlocked, getUnlockedSkills, getSkillById, getSkillDamageScalingMult, getSkillHealScalingMult
 } from '../data/skills.js';
 import { RUN_CONDITIONS, ATTACK_TYPES, pickRandomConditions, enforceConditionLimits } from '../data/conditions.js';
 import { MAP_WIDTH, MAP_HEIGHT, WALL_THICKNESS, MAP_DEFS, World, createProceduralWorld, PRESET_MEDIUM, PRESET_BIOME, PRESET_FOREST_BIOME_TEST, BIOME_MAP_DEF, FOREST_BIOME_TEST_MAP_DEF, buildArchetypeGrid, buildForestBiomeTestArchetypeGrid, buildAllSubareaGrids, buildSubareaZonesForWorld, BIOME_ARCHETYPE, getBiomeCellBounds, getBiomeGridDimensions, BIOME_GRID_COLS, BIOME_GRID_ROWS, applyCorridorCellLayouts, applyBiomeTopBottomWalls, buildCobblestonePath, applyLostCampCellLayouts, applyVaultCellLayouts, applyVaultTreasureDecorations, applyMinibossCellDecorations } from '../data/maps.js';
@@ -43,6 +41,10 @@ import {
   getBuildUpgradeQuotaTotalForAttack, resolveAttackUpgradePoolType,
   getElementalShotUpgradeCategoryCounts, getElementalShotDominantCategories
 } from '../data/level-up-data.js';
+import {
+  buildRunAttackStateFromProgress,
+  getBasicAttackProgress
+} from '../data/basic-attack-progression.js';
 import { getElementalShotEvolutionState, getElementalShotProfile } from '../data/elemental-shot-evolution.js';
 import {
   EQUIPMENT_BASE_STAT, EQUIPMENT_BASE_NAMES, EQUIPMENT_BASE_RANGES,
@@ -89,6 +91,7 @@ import { tryInteractProjectileWithOrbs } from './projectile-interactions.js';
 import { GRID_SIZE, NODE_TYPES, NODE_TAGS, generateRunMap } from './run-route-grid.js';
 import { REST_ROOM_MAP_ID } from '../data/rest-room.js';
 import { LootItem, LootSystem } from '../entities/loot.js';
+import { SearchableProp } from '../entities/searchable-prop.js';
 import { play as playSfx, stopBgm, startBgm, preloadSound, getBgmMuted, setBgmMuted } from '../audio.js';
 import {
   spawnFanStrikeVfx,
@@ -109,8 +112,8 @@ import {
 import { createHitbox, clearHitboxes, updateHitboxes, getActiveHitboxes, drawHitboxDebug } from '../combat/index.js';
 import { PLAYER_FAN_CONE_DEF, DEATH_KNIGHT_CONE_DEF, PLAYER_THRUST_RECT_DEF, HUMAN_LANCER_THRUST_RECT_DEF, PLAYER_PULSE_CIRCLE_DEF, PLAYER_PROJECTILE_CIRCLE_DEF, PLAYER_ELEMENTAL_WIND_RECT_DEF, thrustRectFromDirection, SOUL_SIPHON_BEAM_RECT_DEF } from '../combat/hitbox-examples.js';
 import { refreshMainMenuLP } from '../ui/main-menu.js';
-import { consumeLegacyCubeStash, loadSavedCharacters, addConquerorBonusItem, addToLegacyCubeStash, SAVE_KEY, updateSavedCharacter } from '../ui/save-system.js';
-import { getDefaultAttributes, getWoundMultipliers } from '../data/character-attributes.js';
+import { consumeLegacyCubeStash, loadGlobalPlayerProfile, loadSavedCharacters, addConquerorBonusItem, addToLegacyCubeStash, SAVE_KEY, updateSavedCharacter } from '../ui/save-system.js';
+import { getDefaultAttributes } from '../data/character-attributes.js';
 import { getPlayableCharacterOrDefault, getDashSpeedCurve, DEFAULT_PLAYABLE_CHARACTER_ID } from '../data/playable-characters.js';
 import { getAttackEvolutionById } from '../data/attack-evolutions.js';
 import { getSnackById } from '../data/snack.js';
@@ -154,7 +157,6 @@ import { applyGameUIMixin, getSkillChargeDisplay } from './game-ui.js';
 import { applyGameLevelUpMixin } from './game-levelup.js';
 import { applyGameInputMixin } from './game-input.js';
 import { applyGameLootMixin } from './game-loot.js';
-import { applyGameModLootMixin } from './game-mod-loot.js';
 import { applyGameCollisionMixin } from './game-collision.js';
 import { getWallCollisionRect } from '../utils.js';
 import { applyGameMapMixin } from './game-map.js';
@@ -230,19 +232,14 @@ export class Game {
     this.snackUsesRemaining = Math.max(0, Number(getSnackById(this.runSnackId)?.maxUses) || 0);
     this.snackEspressoUntil = 0;
     this.snackHerbalTeaUntil = 0;
-    this.runAttributePoints = Math.max(0, Number(runConfig.runAttributePoints) || 0);
+    this.runAttributePoints = 0;
+    this.runAttackXpEarned = 0;
+    this._basicAttackXpPersisted = false;
     const knownAttackTypes = new Set((ATTACK_TYPES || []).map((entry) => String(entry?.id || "")));
     const defaultAttackType = ATTACK_TYPES?.[0]?.id || "projectile";
     const requestedPrimaryAttackType = String(runConfig.attackType || defaultAttackType);
     this.attackType = knownAttackTypes.has(requestedPrimaryAttackType) ? requestedPrimaryAttackType : defaultAttackType;
-    const requestedSecondaryAttackType = String(runConfig.secondaryAttackType || this.attackType);
-    const firstDifferentAttackType = (ATTACK_TYPES || []).find((entry) => entry?.id && entry.id !== this.attackType)?.id || this.attackType;
-    this.secondaryAttackType = knownAttackTypes.has(requestedSecondaryAttackType)
-      ? requestedSecondaryAttackType
-      : firstDifferentAttackType;
-    if (this.secondaryAttackType === this.attackType) {
-      this.secondaryAttackType = firstDifferentAttackType;
-    }
+    this.secondaryAttackType = this.attackType;
     (this.skills || []).forEach((id) => { if (id) markSkillEncountered(id); });
     this.skillCooldowns = [0, 0, 0, 0];
     this.skillMaxCharges = [1, 1, 1, 1];
@@ -290,20 +287,6 @@ export class Game {
     this.statusManager = new StatusManager(STATUS_DEFS);
     this.skillCascadeFlashUntil = {};
     this.devModOverrides = { 0: [], 1: [], 2: [], 3: [] };
-    // In-run skill mod system: Mod Pack inventory, shards, and equipped mods per skill
-    this.runModInventory = Array.isArray(runConfig.runModInventory) ? runConfig.runModInventory.slice() : [];
-    this.runModShardCurrency = Math.max(0, Number(runConfig.runModShardCurrency) || 0);
-    this.runSkillMods = (runConfig.runSkillMods && typeof runConfig.runSkillMods === 'object')
-      ? JSON.parse(JSON.stringify(runConfig.runSkillMods))
-      : {};
-    if (Object.keys(this.runSkillMods).length === 0 && Array.isArray(this.skills)) {
-      this.skills.forEach((skillId) => {
-        if (skillId) this.runSkillMods[skillId] = [];
-      });
-    }
-    this.runModDropsThisRoom = 0;
-    this.runModDropsThisMinute = 0;
-    this.runModDropsMinuteResetAt = 0;
     this.activeAuras = new Set();
     this.whirlwindActive = false;
     this.bladeDashActive = false;
@@ -393,6 +376,7 @@ export class Game {
       if (firstCommon) firstCommon.livingItem = true;
     }
     const selectedChar = runConfig.selectedCharacter;
+    const globalProfile = loadGlobalPlayerProfile();
     this.playableCharacterId = runConfig.playableCharacterId || DEFAULT_PLAYABLE_CHARACTER_ID;
     this.playableCharacterDef = getPlayableCharacterOrDefault(this.playableCharacterId);
     if (selectedChar && selectedChar.cubeInventory) {
@@ -494,10 +478,11 @@ export class Game {
     };
     normalizeAllEquipmentVessels(this);
 
-    this.level = 1;
+    this.level = Math.max(1, Number(globalProfile.level) || 1);
     this.enemiesKilled = 0;
-    this.xp = 0;
+    this.xp = Math.max(0, Number(globalProfile.xp) || 0);
     this.gold = 0;
+    this.runAttributePoints = Math.max(0, Number(globalProfile.unspentAttributePoints) || 0);
 
     if (selectedChar) {
       const char = selectedChar;
@@ -515,8 +500,6 @@ export class Game {
           return clone;
         });
       }
-      this.level = Math.max(1, Number(char.level) || 1);
-      this.xp = getXpForLevel(this.level);
       for (const item of Object.values(this.equipment)) {
         if (item && typeof this.rebuildItemStats === "function") this.rebuildItemStats(item);
       }
@@ -524,37 +507,20 @@ export class Game {
         if (item && typeof this.rebuildItemStats === "function") this.rebuildItemStats(item);
       }
       normalizeAllEquipmentVessels(this);
-      const woundStacks = Math.max(0, Number(char.wounds) || 0);
-      if (woundStacks > 0) {
-        const mult = getWoundMultipliers(woundStacks);
-        this.baseStats.speed = Math.max(1, Math.round(this.baseStats.speed * mult.speed));
-        this.baseStats.attack = Math.max(1, Math.round(this.baseStats.attack * mult.attack));
-        this.baseStats.maxHealth = Math.max(1, Math.round(this.baseStats.maxHealth * mult.maxHealth));
-        this.currentStats = { ...this.baseStats };
-        this.currentHealth = this.baseStats.maxHealth;
-      }
-      this.runCharacterAttributes = {
-        brutality: Math.max(0, Number(char?.attributes?.brutality) || 0),
-        agility: Math.max(0, Number(char?.attributes?.agility) || 0),
-        vitality: Math.max(0, Number(char?.attributes?.vitality) || 0),
-        luck: Math.max(0, Number(char?.attributes?.luck) || 0)
-      };
-      const attrs = this.runCharacterAttributes;
-      const brutality = Math.max(0, Number(attrs.brutality) || 0);
-      const agility = Math.max(0, Number(attrs.agility) || 0);
-      const vitality = Math.max(0, Number(attrs.vitality) || 0);
-      this.baseStats.attack += brutality;
-      this.baseStats.speed += agility * 10;
-      this.baseStats.maxHealth += vitality * 5;
-    } else {
-      const attrs = runConfig?.selectedCharacter?.attributes || {};
-      this.runCharacterAttributes = {
-        brutality: Math.max(0, Number(attrs.brutality) || 0),
-        agility: Math.max(0, Number(attrs.agility) || 0),
-        vitality: Math.max(0, Number(attrs.vitality) || 0),
-        luck: Math.max(0, Number(attrs.luck) || 0)
-      };
     }
+    const attrs = globalProfile.attributes || {};
+    this.runCharacterAttributes = {
+      brutality: Math.max(0, Number(attrs.brutality) || 0),
+      agility: Math.max(0, Number(attrs.agility) || 0),
+      vitality: Math.max(0, Number(attrs.vitality) || 0),
+      luck: Math.max(0, Number(attrs.luck) || 0)
+    };
+    const brutality = Math.max(0, Number(this.runCharacterAttributes.brutality) || 0);
+    const agility = Math.max(0, Number(this.runCharacterAttributes.agility) || 0);
+    const vitality = Math.max(0, Number(this.runCharacterAttributes.vitality) || 0);
+    this.baseStats.attack += brutality;
+    this.baseStats.speed += agility * 10;
+    this.baseStats.maxHealth += vitality * 5;
 
     this.shopRerollCountByShopId = {};
     this.itemServiceRerollCountByItemId = {};
@@ -563,23 +529,7 @@ export class Game {
     this.levelUpChoiceContext = null;
     this.runAttackUpgrades = [];
     this.runAttackPenalties = [];
-    const requestedSelectedUpgrades = Array.isArray(runConfig.selectedUpgrades)
-      ? runConfig.selectedUpgrades
-      : [];
-    const fallbackBuildPool = getBuildUpgradePoolForAttackType(this.attackType);
-    const maxSelected = getBuildUpgradeQuotaTotalForAttack(this.attackType);
-    const normalizedSelectedUpgrades = requestedSelectedUpgrades
-      .map((entry) => {
-        const def = getAttackUpgradeDefById(this.attackType, entry?.id);
-        return createSelectedUpgradeState(def || entry, entry);
-      })
-      .filter(Boolean)
-      .slice(0, maxSelected);
-    while (normalizedSelectedUpgrades.length < maxSelected && fallbackBuildPool.length > 0) {
-      const randomDef = fallbackBuildPool[Math.floor(Math.random() * fallbackBuildPool.length)];
-      normalizedSelectedUpgrades.push(createSelectedUpgradeState(randomDef));
-    }
-    this.selectedUpgrades = normalizedSelectedUpgrades;
+    this.selectedUpgrades = [];
     this.upgradeHistory = [];
     this.categoryCounts = createEmptyCategoryCounts();
     this.upgradeOnlyStats = { attackDamagePct: 0, projectileRangePct: 0, attackSpeedPct: 0 };
@@ -618,6 +568,30 @@ export class Game {
     this.equipmentCooldownRecovery = 1;
     this.equipmentXpGainedMult = 1;
     this.equipmentSkillDamageMult = 1;
+    const attackProgress = getBasicAttackProgress(this.attackType);
+    this.attackProgressLevel = attackProgress.level;
+    this.attackProgressXp = attackProgress.xp;
+    this.attackProgressPendingPicks = attackProgress.pendingPickCount;
+    const hydratedAttackState = buildRunAttackStateFromProgress(this.attackType, attackProgress);
+    this.runAttackUpgrades = hydratedAttackState.runAttackUpgrades;
+    this.categoryCounts = {
+      ...this.categoryCounts,
+      ...(hydratedAttackState.categoryCounts || {})
+    };
+    this.elementalShotEvolutionFirst = hydratedAttackState.elementalShotEvolutionFirst;
+    this.elementalShotEvolutionSecond = hydratedAttackState.elementalShotEvolutionSecond;
+    this.soulSiphonEvolutionFirst = hydratedAttackState.soulSiphonEvolutionFirst;
+    this.soulSiphonEvolutionSecond = hydratedAttackState.soulSiphonEvolutionSecond;
+    this.bladeBlastTier1EvolutionId = hydratedAttackState.bladeBlastTier1EvolutionId;
+    this.bladeBlastTier2EvolutionId = hydratedAttackState.bladeBlastTier2EvolutionId;
+    this.weaponEvolutionState = {
+      ...this.weaponEvolutionState,
+      ...(hydratedAttackState.weaponEvolutionState || {})
+    };
+    this.weaponEvolutions = {
+      ...this.weaponEvolutions,
+      ...(hydratedAttackState.weaponEvolutions || {})
+    };
     this.equipmentSpeedMult = 1;
     this.equipmentDashCooldownMult = 1;
 
@@ -650,7 +624,9 @@ export class Game {
         const { world } = createProceduralWorld(PRESET_FOREST_BIOME_TEST, seed, mapDef);
         this.world = world;
       } else if (useBiome) {
-        this.world = this.buildBiomeWorldForMap(mapDef, seed);
+        this.world = this.buildBiomeWorldForMap(mapDef, seed, {
+          disableExits: !tutorialMode && !isForestBiomeTestMap
+        });
       } else {
         const { world } = createProceduralWorld(PRESET_MEDIUM, seed, mapDef);
         this.world = world;
@@ -850,6 +826,9 @@ export class Game {
     this.xpBarFillEl = document.getElementById("xp-bar-fill");
     this.xpLabelEl = document.getElementById("xp-label");
     this.playerLevelEl = document.getElementById("player-level");
+    this.weaponArtLevelEl = document.getElementById("weapon-art-level");
+    this.weaponArtXpBarFillEl = document.getElementById("weapon-art-xp-fill");
+    this.weaponArtXpLabelEl = document.getElementById("weapon-art-xp-label");
 
     // Player projectile state
     this.playerProjectiles = [];
@@ -1029,18 +1008,6 @@ export class Game {
       this.addManagedListener(this.pauseToggleEl, "click", () => this.togglePause());
     }
 
-    const modScreenBtn = document.getElementById("mod-screen-button");
-    if (modScreenBtn) {
-      this.addManagedListener(modScreenBtn, "click", () => {
-        if (this.modScreenOpen) this.hideModScreen();
-        else this.showModScreen();
-      });
-    }
-    const modScreenClose = document.getElementById("mod-screen-close");
-    if (modScreenClose) {
-      this.addManagedListener(modScreenClose, "click", () => this.hideModScreen());
-    }
-
     const inventoryBtn = document.getElementById("inventory-button");
     if (inventoryBtn) {
       this.addManagedListener(inventoryBtn, "click", () => {
@@ -1095,24 +1062,13 @@ export class Game {
         return;
       }
       if (e.key === "Escape") {
-        if (this.modScreenOpen) {
-          this.hideModScreen();
-        } else {
-          this.togglePause();
-        }
+        this.togglePause();
         return;
       }
       if (e.key === "Tab") {
         if (this.enableRunRouteGraph && !e.repeat && !this.gameOver && !this.levelUpChoices && !this.currentEvent) {
           e.preventDefault();
           this.runRouteOverlayVisible = !this.runRouteOverlayVisible;
-        }
-        return;
-      }
-      if (e.key === "m" || e.key === "M") {
-        if (!e.repeat && !this.gameOver && !this.levelUpChoices && !this.currentEvent) {
-          if (this.modScreenOpen) this.hideModScreen();
-          else this.showModScreen();
         }
         return;
       }
@@ -1329,14 +1285,6 @@ export class Game {
       pauseToggle.style.transformOrigin = "top center";
       pauseToggle.style.transform = "translateX(-50%)";
     }
-    const modScreenBtn = document.getElementById("mod-screen-button");
-    if (modScreenBtn) {
-      modScreenBtn.style.left = `${Math.round(canvasLeft + (DESIGN_WIDTH / 2) * scale) + 52}px`;
-      modScreenBtn.style.top = `${Math.round(canvasTop + 20 * scale)}px`;
-      modScreenBtn.style.transformOrigin = "top left";
-      modScreenBtn.style.transform = "translateX(-50%)";
-    }
-
     const pauseEnemyPanel = document.getElementById("pause-enemy-panel");
     if (pauseEnemyPanel) {
       pauseEnemyPanel.style.left = `${Math.round(canvasLeft + DESIGN_WIDTH * scale - 16)}px`;
@@ -1403,6 +1351,17 @@ export class Game {
       blessingsBar.style.position = "fixed";
       blessingsBar.style.transformOrigin = "top left";
       blessingsBar.style.transform = "none";
+    }
+
+    const lootPickupFeed = document.getElementById("loot-pickup-feed");
+    if (lootPickupFeed) {
+      lootPickupFeed.style.position = "fixed";
+      lootPickupFeed.style.left = `${Math.round(canvasLeft + 12 * scale)}px`;
+      lootPickupFeed.style.top = `${Math.round(canvasTop + (DESIGN_HEIGHT * scale) / 2)}px`;
+      lootPickupFeed.style.transformOrigin = "left center";
+      lootPickupFeed.style.transform = "translateY(-50%)";
+      lootPickupFeed.style.maxWidth = `${Math.round(220 * scale)}px`;
+      lootPickupFeed.style.zIndex = "56";
     }
 
     // Minimap pinned to top-right of game viewport
@@ -1667,7 +1626,8 @@ export class Game {
     const devSpawnShrine = document.getElementById("dev-spawn-shrine");
     if (devShrineSelect && devSpawnShrine) {
       devShrineSelect.innerHTML = '<option value="">-- Select shrine --</option>';
-      for (const shrine of SHRINE_DEFS) {
+      const activeShrines = SHRINE_DEFS.filter((shrine) => shrine?.disabled !== true);
+      for (const shrine of activeShrines) {
         const opt = document.createElement("option");
         opt.value = shrine.id;
         opt.textContent = shrine.name;
@@ -1676,7 +1636,7 @@ export class Game {
       devSpawnShrine.addEventListener("click", () => {
         const shrineId = devShrineSelect.value;
         if (!shrineId) return;
-        const shrineDef = SHRINE_DEFS.find(s => s.id === shrineId);
+        const shrineDef = activeShrines.find((s) => s.id === shrineId);
         if (!shrineDef) return;
         
         // Spawn shrine near player (offset by 100 pixels)
@@ -1803,7 +1763,6 @@ export class Game {
     document.getElementById("main-menu").classList.remove("hidden");
     document.querySelector(".game-root").classList.add("hidden");
     document.getElementById("pause-toggle").classList.add("hidden");
-    document.getElementById("mod-screen-button")?.classList.add("hidden");
     document.getElementById("dev-toggle")?.classList.add("hidden");
     document.getElementById("inventory-button")?.classList.add("hidden");
     
@@ -1821,10 +1780,6 @@ export class Game {
 
   togglePause() {
     if (this.gameOver) return;
-    if (this.modScreenOpen) {
-      this.hideModScreen();
-      return;
-    }
     if (this.inventoryOverlayOpen) {
       this.closeInventoryOverlay();
       return;
@@ -2509,7 +2464,6 @@ export class Game {
     document.querySelector(".game-root").classList.add("hidden");
     refreshMainMenuLP();
     document.getElementById("pause-toggle").classList.add("hidden");
-    document.getElementById("mod-screen-button")?.classList.add("hidden");
     document.getElementById("dev-toggle").classList.add("hidden");
     renderHallOfChampions();
   }
@@ -3394,8 +3348,7 @@ export class Game {
       this.movePlayerByWithCollision?.(knockbackX, knockbackY);
       return;
     }
-    entity.position.x += knockbackX;
-    entity.position.y += knockbackY;
+    this.moveEntityByWithCollision?.(entity, knockbackX, knockbackY);
   }
 
   getOwnerPosition(ownerId) {
@@ -3758,10 +3711,6 @@ export class Game {
     }
     this.time += dt;
     tickEquipmentModifierIntervals(this, dt);
-    if (this.time - (this.runModDropsMinuteResetAt || 0) >= 60) {
-      this.runModDropsMinuteResetAt = this.time;
-      this.runModDropsThisMinute = 0;
-    }
     tickAncestorSystem(this, dt);
     this.captureLegacyStatusCompatibility();
     if (this.statusManager) {
@@ -4557,6 +4506,9 @@ export class Game {
           : (Number(this.searchingProp?.def?.searchTime) || 0);
         if (this.searchingProp.searchProgress >= requiredSearchTime) {
           this.searchingProp.finishSearch(this);
+          if (this.tutorialMode && this.tutorialSystem) {
+            this.tutorialSystem.onSearchableSearched();
+          }
           handleAncestorOnChestOpened(this);
           this.triggerEquipmentModifierEvent?.("chest_opened", {
             prop: this.searchingProp,
@@ -5324,39 +5276,42 @@ export class Game {
     // Spawn shrine based on interval
     this.shrineSpawnCounter++;
     if (this.shrineSpawnCounter >= this.shrineSpawnInterval) {
-      const shrineDef = SHRINE_DEFS[Math.floor(Math.random() * SHRINE_DEFS.length)];
-      const margin = this.world.wallThickness + 80;
-      
-      // Try to find valid position (not inside sub-areas)
-      let valid = false;
-      let sx, sy;
-      let attempts = 0;
-      while (!valid && attempts < 50) {
-        sx = margin + Math.random() * (this.world.width - 2 * margin - 64);
-        sy = margin + Math.random() * (this.world.height - 2 * margin - 64);
-        valid = true;
-        attempts++;
-      }
-      
-      if (valid) {
-        this.mapInteractables.push({
-          type: "shrine",
-          shrineId: shrineDef.id,
-          shrineName: shrineDef.name,
-          shrineDescription: shrineDef.description,
-          shrineIcon: shrineDef.icon,
-          shrineColor: shrineDef.color,
-          shrineAuraColor: shrineDef.auraColor,
-          x: sx,
-          y: sy,
-          w: 64,
-          h: 64,
-          used: false
-        });
-        this.shrineSpawnCounter = 0;
-        this.shrineSpawnInterval = 2 + Math.floor(Math.random() * 3); // New interval 2-4
-      } else {
-        this.shrineSpawnCounter++;
+      const activeShrines = SHRINE_DEFS.filter((entry) => entry?.disabled !== true);
+      const shrineDef = activeShrines[Math.floor(Math.random() * activeShrines.length)];
+      if (shrineDef) {
+        const margin = this.world.wallThickness + 80;
+
+        // Try to find valid position (not inside sub-areas)
+        let valid = false;
+        let sx, sy;
+        let attempts = 0;
+        while (!valid && attempts < 50) {
+          sx = margin + Math.random() * (this.world.width - 2 * margin - 64);
+          sy = margin + Math.random() * (this.world.height - 2 * margin - 64);
+          valid = true;
+          attempts++;
+        }
+
+        if (valid) {
+          this.mapInteractables.push({
+            type: "shrine",
+            shrineId: shrineDef.id,
+            shrineName: shrineDef.name,
+            shrineDescription: shrineDef.description,
+            shrineIcon: shrineDef.icon,
+            shrineColor: shrineDef.color,
+            shrineAuraColor: shrineDef.auraColor,
+            x: sx,
+            y: sy,
+            w: 64,
+            h: 64,
+            used: false
+          });
+          this.shrineSpawnCounter = 0;
+          this.shrineSpawnInterval = 2 + Math.floor(Math.random() * 3); // New interval 2-4
+        } else {
+          this.shrineSpawnCounter++;
+        }
       }
     } else {
       this.shrineSpawnCounter++;
@@ -5369,26 +5324,26 @@ export class Game {
     if (ag?.startCell != null && ag?.exitCell != null) {
       if (spawnSide === "left") {
         const bounds = getBiomeCellBounds(this.world, ag.startCell.col, ag.startCell.row);
-        this.player.position.set(
+        this.placeEntityAtWithCollision?.(this.player,
           bounds.x + bounds.w / 2 - this.player.size / 2,
           bounds.y + bounds.h / 2 - this.player.size / 2
         );
       } else if (spawnSide === "right") {
         const bounds = getBiomeCellBounds(this.world, ag.exitCell.col, ag.exitCell.row);
-        this.player.position.set(
+        this.placeEntityAtWithCollision?.(this.player,
           bounds.x + bounds.w / 2 - this.player.size / 2,
           bounds.y + bounds.h / 2 - this.player.size / 2
         );
       } else {
-        this.player.position.set(this.world.width / 2 - this.player.size / 2, centerY);
+        this.placeEntityAtWithCollision?.(this.player, this.world.width / 2 - this.player.size / 2, centerY);
       }
     } else {
       if (spawnSide === "left") {
-        this.player.position.set(margin, centerY);
+        this.placeEntityAtWithCollision?.(this.player, margin, centerY);
       } else if (spawnSide === "right") {
-        this.player.position.set(this.world.width - margin - this.player.size, centerY);
+        this.placeEntityAtWithCollision?.(this.player, this.world.width - margin - this.player.size, centerY);
       } else {
-        this.player.position.set(this.world.width / 2 - this.player.size / 2, centerY);
+        this.placeEntityAtWithCollision?.(this.player, this.world.width / 2 - this.player.size / 2, centerY);
       }
     }
 
@@ -5696,6 +5651,7 @@ export class Game {
     }
     const rounded = Math.round(amount * mult);
     this.xp += rounded;
+    this.runAttackXpEarned = Math.max(0, Number(this.runAttackXpEarned) || 0) + rounded;
     this.updateXpUI();
     this.checkLevelUp();
     for (let i = 0; i < (this.skills?.length || 0); i++) {
@@ -9561,7 +9517,7 @@ export class Game {
     const skillMults = opts.skillMults || this.getSkillMultipliersFor(skillId);
     const baseSkillMult = this.equipmentSkillDamageMult ?? 1;
     const flatBonus = getSkillFlatDamageBonus(this, skillId);
-    const scalingMult = skillDef ? getSkillStatScalingMult(this, skillDef) : 1;
+    const scalingMult = skillDef ? getSkillDamageScalingMult(this, skillDef) : 1;
     let dmg = Math.round((this.currentStats.attack + flatBonus) * multiplier * baseSkillMult * (skillMults.damageMult || 1) * scalingMult);
     const mods = slot != null ? getModsForSkillSlot(this, slot) : [];
     const mult = getModEffectMult(this);
@@ -11537,7 +11493,7 @@ export class Game {
       }
     } else if (skillId === "healPulse") {
       const healDef = getSkillById("healPulse");
-      const healScaling = healDef ? getSkillStatScalingMult(this, healDef) : 1;
+      const healScaling = healDef ? getSkillHealScalingMult(this, healDef) : 1;
       const heal = Math.max(15, Math.round(this.currentStats.maxHealth * 0.15 * effectPowerMult * healScaling));
       this.currentHealth = Math.min(this.currentStats.maxHealth, this.currentHealth + heal);
       const hpx = this.player.position.x + this.player.size / 2;
@@ -11671,7 +11627,7 @@ export class Game {
       this.damageSkillsUsedThisRun.add("escapePlan");
       this.skillEffects.push({
         type: "escapePlan",
-        t: 0, maxTeleports: 8, teleportIndex: 0, safeRadius: 60,
+        t: 0, teleportDelay: 0.2, teleportRadius: 50, maxTeleports: 8, teleportIndex: 0, safeRadius: 60,
         slot, modList: mods, sacrificeMult, skillId, skillMults
       });
     } else if (skillId === "hauntingGhostCharges") {
@@ -12997,8 +12953,7 @@ export class Game {
             mirrorAncestorDebuffToPlayer(this, "stun");
             const dx = e.position.x + e.size / 2 - eff.x; const dy = e.position.y + e.size / 2 - eff.y;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-            e.position.x += (dx / dist) * eff.knockback;
-            e.position.y += (dy / dist) * eff.knockback;
+            this.moveEntityByWithCollision?.(e, (dx / dist) * eff.knockback, (dy / dist) * eff.knockback);
           }
           continue;
         }
@@ -13067,8 +13022,7 @@ export class Game {
           const dx = eff.x - ex; const dy = eff.y - ey;
           const dist = Math.sqrt(dx * dx + dy * dy) || 1;
           const pull = 80 * dt;
-          e.position.x += (dx / dist) * pull;
-          e.position.y += (dy / dist) * pull;
+          this.moveEntityByWithCollision?.(e, (dx / dist) * pull, (dy / dist) * pull);
         }
         surviving.push(eff);
       } else if (eff.type === "phoenixStrike") {
@@ -13143,8 +13097,7 @@ export class Game {
             const dx = e.position.x + e.size / 2 - eff.x;
             const dy = e.position.y + e.size / 2 - eff.y;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-            e.position.x += (dx / dist) * (eff.knockback ?? 100);
-            e.position.y += (dy / dist) * (eff.knockback ?? 100);
+            this.moveEntityByWithCollision?.(e, (dx / dist) * (eff.knockback ?? 100), (dy / dist) * (eff.knockback ?? 100));
           }
           continue;
         }
@@ -13163,8 +13116,7 @@ export class Game {
             const dx = e.position.x + e.size / 2 - eff.x;
             const dy = e.position.y + e.size / 2 - eff.y;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-            e.position.x += (dx / dist) * eff.knockback;
-            e.position.y += (dy / dist) * eff.knockback;
+            this.moveEntityByWithCollision?.(e, (dx / dist) * eff.knockback, (dy / dist) * eff.knockback);
             if (eff.slowDuration > 0 && eff.slowMult != null) {
               this.applyStatusToEntity(e.id, 'slow', {
                 duration: eff.slowDuration,
@@ -13303,7 +13255,11 @@ export class Game {
             eff.hitIds.add(e.id);
             const dmg = this.computeSkillDamage(e, eff.mult ?? 1, eff.slot, { sacrificeMult: eff.sacrificeMult, skillId: eff.skillId, skillMults: eff.skillMults });
             this.dealDamageToEnemy(e, dmg, { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
-            if (eff.lifestealPct) this.healPlayer?.(Math.round(dmg * eff.lifestealPct));
+            if (eff.lifestealPct) {
+              const scyDef = getSkillById("spinningScythe");
+              const healMult = scyDef ? getSkillHealScalingMult(this, scyDef) : 1;
+              this.healPlayer?.(Math.round(dmg * eff.lifestealPct * healMult));
+            }
           }
         }
         surviving.push(eff);
@@ -13344,6 +13300,12 @@ export class Game {
         surviving.push(eff);
       } else if (eff.type === "escapePlan") {
         if (eff.teleportIndex >= (eff.maxTeleports ?? 8)) continue;
+        eff.t += dt;
+        if (eff.t < (eff.teleportDelay ?? 0.2)) {
+          surviving.push(eff);
+          continue;
+        }
+        eff.t = 0;
         const margin = this.world?.wallCollisionThickness ?? this.world?.wallThickness ?? 20;
         const wx = this.world?.width ?? 640;
         const wy = this.world?.height ?? 360;
@@ -13351,15 +13313,18 @@ export class Game {
         const maxPy = wy - margin - this.player.size;
         let destCx = this.player.position.x + this.player.size / 2;
         let destCy = this.player.position.y + this.player.size / 2;
+        const originCx = destCx;
+        const originCy = destCy;
+        const teleportRadius = eff.teleportRadius ?? 50;
         const maxAttempts = 25;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          const nx = margin + Math.random() * Math.max(0, wx - 2 * margin);
-          const ny = margin + Math.random() * Math.max(0, wy - 2 * margin);
+          const angle = Math.random() * Math.PI * 2;
+          const distance = Math.random() * teleportRadius;
+          const nx = originCx + Math.cos(angle) * distance;
+          const ny = originCy + Math.sin(angle) * distance;
           const candPx = Math.max(margin, Math.min(nx - this.player.size / 2, maxPx));
           const candPy = Math.max(margin, Math.min(ny - this.player.size / 2, maxPy));
-          if (typeof this.playerPositionHasBlockingCollision === "function" && this.playerPositionHasBlockingCollision(candPx, candPy)) continue;
-          this.player.position.x = candPx;
-          this.player.position.y = candPy;
+          if (!this.placeEntityAtWithCollision?.(this.player, candPx, candPy, { maxSearchRadius: 0 })) continue;
           destCx = this.player.position.x + this.player.size / 2;
           destCy = this.player.position.y + this.player.size / 2;
           break;
@@ -13427,16 +13392,14 @@ export class Game {
           const dx = cx - ex;
           const dy = cy - ey;
           const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          e.position.x += (dx / dist) * strength;
-          e.position.y += (dy / dist) * strength;
+          this.moveEntityByWithCollision?.(e, (dx / dist) * strength, (dy / dist) * strength);
         }
         const px = this.player.position.x + this.player.size / 2;
         const py = this.player.position.y + this.player.size / 2;
         const pdx = cx - px;
         const pdy = cy - py;
         const pdist = Math.sqrt(pdx * pdx + pdy * pdy) || 1;
-        this.player.position.x += (pdx / pdist) * strength * 0.5;
-        this.player.position.y += (pdy / pdist) * strength * 0.5;
+        this.movePlayerByWithCollision?.((pdx / pdist) * strength * 0.5, (pdy / pdist) * strength * 0.5);
         if (eff.t - (eff.lastTick ?? 0) >= 0.4) {
           eff.lastTick = eff.t;
           const hit = this.enemiesInRadius(cx, cy, r);
@@ -13468,7 +13431,9 @@ export class Game {
         const nowSec = Math.floor(eff.t);
         if (nowSec > prevHealSec) {
           eff.lastHealSec = nowSec;
-          this.healPlayer?.(Math.round((this.currentStats?.maxHealth ?? 100) * (eff.healPct ?? 0.05)));
+          const waveDef = getSkillById("waveShield");
+          const healMult = waveDef ? getSkillHealScalingMult(this, waveDef) : 1;
+          this.healPlayer?.(Math.round((this.currentStats?.maxHealth ?? 100) * (eff.healPct ?? 0.05) * healMult));
         }
         surviving.push(eff);
       } else if (eff.type === "magicHand") {
@@ -13479,8 +13444,9 @@ export class Game {
           if (!v.enemy || v.enemy.isDead) continue;
           const tx = eff.targetX ?? eff.originX;
           const ty = eff.targetY ?? eff.originY;
-          v.enemy.position.x = (v.startX - v.enemy.size / 2) + (tx - v.startX) * ease;
-          v.enemy.position.y = (v.startY - v.enemy.size / 2) + (ty - v.startY) * ease;
+          const nextX = (v.startX - v.enemy.size / 2) + (tx - v.startX) * ease;
+          const nextY = (v.startY - v.enemy.size / 2) + (ty - v.startY) * ease;
+          this.moveEntityByWithCollision?.(v.enemy, nextX - v.enemy.position.x, nextY - v.enemy.position.y);
         }
         if (eff.t >= eff.duration) continue;
         surviving.push(eff);
@@ -13508,7 +13474,14 @@ export class Game {
           }
         }
         if (eff.t >= eff.duration) {
-          const heal = Math.min((this.currentStats?.maxHealth ?? 100) * (eff.healCapPct ?? 0.4), Math.round(eff.damageDealt * (eff.healPctOfDamage ?? 0.5)));
+          const pfDef = getSkillById("purifyingFire");
+          const healMult = pfDef ? getSkillHealScalingMult(this, pfDef) : 1;
+          const heal = Math.round(
+            Math.min(
+              (this.currentStats?.maxHealth ?? 100) * (eff.healCapPct ?? 0.4),
+              eff.damageDealt * (eff.healPctOfDamage ?? 0.5)
+            ) * healMult
+          );
           this.healPlayer?.(heal);
           this.activeAuras?.delete("purifyingFire");
           this.updateSkillUI?.();
@@ -14631,11 +14604,7 @@ export class Game {
 
     // Charge attack
     if (boss.chargeActive) {
-      boss.position.x += boss.chargeDir.x * boss.chargeSpeed * dt * globalSlow;
-      boss.position.y += boss.chargeDir.y * boss.chargeSpeed * dt * globalSlow;
-      const margin = this.world.wallCollisionThickness ?? this.world.wallThickness;
-      boss.position.x = Math.max(margin, Math.min(boss.position.x, this.world.width - margin - boss.size));
-      boss.position.y = Math.max(margin, Math.min(boss.position.y, this.world.height - margin - boss.size));
+      this.moveEntityByWithCollision?.(boss, boss.chargeDir.x * boss.chargeSpeed * dt * globalSlow, boss.chargeDir.y * boss.chargeSpeed * dt * globalSlow);
       boss.chargeTimer -= dt;
       if (boss.chargeTimer <= 0) boss.chargeActive = false;
       if (boss.intersects(player)) {
@@ -14665,11 +14634,7 @@ export class Game {
         boss.minionTimer = boss.minionCooldown;
       } else {
         const moveSpeed = boss.speed * dt * globalSlow;
-        boss.position.x += (dx / dist) * moveSpeed;
-        boss.position.y += (dy / dist) * moveSpeed;
-        const margin = this.world.wallCollisionThickness ?? this.world.wallThickness;
-        boss.position.x = Math.max(margin, Math.min(boss.position.x, this.world.width - margin - boss.size));
-        boss.position.y = Math.max(margin, Math.min(boss.position.y, this.world.height - margin - boss.size));
+        this.moveEntityByWithCollision?.(boss, (dx / dist) * moveSpeed, (dy / dist) * moveSpeed);
 
         if (boss.intersects(player) && boss.attackTimer <= 0) {
           boss.attackTimer = boss.attackCooldown;
@@ -14897,6 +14862,27 @@ export class Game {
     const cancelBtn = document.getElementById("shrine-cancel");
 
     if (!overlay || !titleEl || !descEl) return;
+
+    const shrineDef = SHRINE_DEFS.find((entry) => entry?.id === shrineObj?.shrineId) || null;
+    if (shrineDef?.disabled) {
+      titleEl.textContent = shrineObj.shrineName || shrineDef.name;
+      descEl.textContent = shrineDef.description || "This shrine is disabled.";
+      overlay.classList.remove("hidden");
+      upgradeSelect.classList.add("hidden");
+      penaltySelect.classList.add("hidden");
+      upgradeList.innerHTML = "";
+      penaltyList.innerHTML = "";
+      confirmBtn.disabled = true;
+      const handleClose = () => {
+        overlay.classList.add("hidden");
+        this.currentShrine = null;
+        this.selectedUpgradeId = null;
+        this.selectedPenaltyId = null;
+        cancelBtn.removeEventListener("click", handleClose);
+      };
+      cancelBtn.addEventListener("click", handleClose);
+      return;
+    }
 
     titleEl.textContent = shrineObj.shrineName;
     descEl.textContent = shrineObj.shrineDescription;
@@ -15243,6 +15229,9 @@ export class Game {
   }
 
   openExtractionInventory() {
+    if (this.tutorialMode && this.tutorialSystem) {
+      this.tutorialSystem.onExtractionInventoryOpened();
+    }
     this.extractionSelectionMode = true;
     this.extractionSelectedIds = new Set();
     this.showInventoryOverlay();
@@ -17723,6 +17712,7 @@ export class Game {
     // We'll add more enemies after first kill if needed
     this.tutorialEnemiesKilled = 0;
     this.tutorialFirstEnemyKilled = false; // Track if first tutorial enemy has been killed
+    this.tutorialChestPlaced = false;
     
     // Start tutorial after a short delay
     setTimeout(() => {
@@ -17732,6 +17722,36 @@ export class Game {
     }, 500);
   }
   
+  spawnTutorialChestNearPlayer(count = 3) {
+    if (!this.tutorialMode || this.tutorialChestPlaced || !this.player || !this.searchableProps) return;
+    this.tutorialChestPlaced = true;
+
+    const safeCount = Math.max(1, Math.floor(Number(count) || 3));
+    const margin = this.world.wallThickness + 48;
+    const px = this.player.position.x + this.player.size / 2;
+    const py = this.player.position.y + this.player.size / 2;
+    const dist = 220;
+    const defW = 32;
+    const defH = 32;
+
+    const baseAngle = -Math.PI / 2;
+    let nextId = this.searchablePropNextId ?? 1;
+    for (let i = 0; i < safeCount; i++) {
+      const angle = baseAngle + (i / safeCount) * Math.PI * 2;
+      let x = px + Math.cos(angle) * dist - defW / 2;
+      let y = py + Math.sin(angle) * dist - defH / 2;
+      x = Math.max(margin, Math.min(x, this.world.width - margin - defW));
+      y = Math.max(margin, Math.min(y, this.world.height - margin - defH));
+
+      const prop = new SearchableProp(nextId, x, y, "chest");
+      prop.searchTimeOverride = 0.65;
+      prop.isMiniBossLootChest = true;
+      this.searchableProps.push(prop);
+      nextId++;
+    }
+    this.searchablePropNextId = nextId;
+  }
+
   // Spawn additional tutorial enemies after first kill (for level up step)
   spawnTutorialEnemyForLevelUp() {
     if (!this.tutorialMode) return;
@@ -17774,7 +17794,6 @@ applyGameUIMixin(Game);
 applyGameLevelUpMixin(Game);
 applyGameInputMixin(Game);
 applyGameLootMixin(Game);
-applyGameModLootMixin(Game);
 applyGameCollisionMixin(Game);
 applyGameMapMixin(Game);
 applyRunRouteNodeTagMixin(Game);

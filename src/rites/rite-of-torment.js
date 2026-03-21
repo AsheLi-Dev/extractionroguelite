@@ -147,7 +147,7 @@ export function installRiteOfTorment(game, options = {}) {
       game.hazardSystem.patches = [];
       game.hazardSystem.movingBoulders = [];
     }
-    game.player.position.set(spawn.x - game.player.size * 0.5, spawn.y - game.player.size * 0.5);
+    game.placeEntityAtWithCollision?.(game.player, spawn.x - game.player.size * 0.5, spawn.y - game.player.size * 0.5);
     game.camera.snapTo(game.player, game.world.width, game.world.height);
   }
 

@@ -3031,21 +3031,13 @@ export function installPillarRuntime(game) {
   };
 
   game.getPillarDualBasicAttackConfig = function getPillarDualBasicAttackConfig(context = {}) {
-    const payload = game.runPillarEvent('resolveDualBasicAttackConfig', {
+    return {
       enabled: false,
       damageMultiplier: 1,
       primaryAttackType: String(context?.primaryAttackType || game.attackType || 'projectile'),
-      secondaryAttackType: String(context?.secondaryAttackType || game.secondaryAttackType || game.attackType || 'projectile'),
-      context,
-      time: game.time
-    });
-    return {
-      enabled: payload?.enabled === true,
-      damageMultiplier: Math.max(0, toFiniteNumber(payload?.damageMultiplier, 1)),
-      primaryAttackType: String(payload?.primaryAttackType || context?.primaryAttackType || game.attackType || 'projectile'),
-      secondaryAttackType: String(payload?.secondaryAttackType || context?.secondaryAttackType || game.secondaryAttackType || game.attackType || 'projectile'),
-      effectKey: payload?.effectKey || null,
-      reason: payload?.reason || null
+      secondaryAttackType: String(context?.primaryAttackType || game.attackType || 'projectile'),
+      effectKey: null,
+      reason: 'basic_attack_tree_single_attack_only'
     };
   };
 

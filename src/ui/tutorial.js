@@ -32,14 +32,22 @@ export const TUTORIAL_STEPS = [
   },
   {
     id: 4,
-    title: "Loot Collection",
-    message: "Collect items that drop from enemies",
+    title: "Loot from enemies",
+    message: "Walk over loot from enemies — rare gear powers your build",
     highlight: "loot",
     action: "collectLoot",
     completed: false
   },
   {
     id: 5,
+    title: "Search chests",
+    message: "Stand near a chest and hold E to search for more loot",
+    highlight: "searchable",
+    action: "searchChest",
+    completed: false
+  },
+  {
+    id: 6,
     title: "Inventory",
     message: "Press I to open inventory and equip items",
     highlight: "inventoryButton",
@@ -47,7 +55,7 @@ export const TUTORIAL_STEPS = [
     completed: false
   },
   {
-    id: 6,
+    id: 7,
     title: "Skills",
     message: "Press 1-4 to use skills",
     highlight: "skillSlots",
@@ -55,7 +63,15 @@ export const TUTORIAL_STEPS = [
     completed: false
   },
   {
-    id: 7,
+    id: 8,
+    title: "Kill the miniboss",
+    message: "Defeat the Dragon miniboss to open extraction",
+    highlight: "boss",
+    action: "killBoss",
+    completed: false
+  },
+  {
+    id: 9,
     title: "Map Navigation",
     message: "Find the exit to move to the next map",
     highlight: "exit",
@@ -63,11 +79,11 @@ export const TUTORIAL_STEPS = [
     completed: false
   },
   {
-    id: 8,
-    title: "Boss Battle",
-    message: "Find and kill the boss",
-    highlight: "boss",
-    action: "killBoss",
+    id: 10,
+    title: "Extract",
+    message: "Enter the extraction portal and press E to leave with your loot",
+    highlight: "victoryPortal",
+    action: "extract",
     completed: false
   }
 ];
@@ -93,6 +109,10 @@ export class TutorialSystem {
     this.skillUsed = false;
     this.reachedExit = false;
     this.bossKilled = false;
+    this.searchableSearched = false;
+    this.extractionOpened = false;
+    this.tutorialMiniBoss = null;
+    this.tutorialMiniBossSpawned = false;
     
     // Store initial state
     this.initialEnemyCount = 0;
@@ -101,6 +121,8 @@ export class TutorialSystem {
   start() {
     this.active = true;
     this.currentStep = 0;
+    this.tutorialMiniBoss = null;
+    this.tutorialMiniBossSpawned = false;
     this.stepStartTime = this.game.time;
     this.showTutorialOverlay();
     this.showCurrentStep();
@@ -140,6 +162,31 @@ export class TutorialSystem {
     
     // Setup highlighting
     this.setupHighlight(step);
+
+    // Tutorial miniboss spawn (Dragon + fixed HP + specific affixes) — step 8
+    if (step.id === 8 && step.action === "killBoss" && step.highlight === "boss" && !this.tutorialMiniBossSpawned) {
+      const gs = this.game;
+      const es = gs?.enemySystem;
+      if (es?.spawnOne && gs?.player && gs?.world) {
+        const px = gs.player.position.x + gs.player.size / 2;
+        const py = gs.player.position.y + gs.player.size / 2;
+        const miniBoss = es.spawnOne(
+          "miniBoss",
+          ["phantom", "auraBearer", "orbiting", "inking"],
+          { x: px, y: py },
+          gs,
+          "m_9c_dragon",
+          false
+        );
+        if (miniBoss) {
+          miniBoss.maxHealth = 400;
+          miniBoss.health = 400;
+          miniBoss.activated = true; // Make sure the player can engage immediately
+          this.tutorialMiniBoss = miniBoss;
+          this.tutorialMiniBossSpawned = true;
+        }
+      }
+    }
     
     // Store initial state for this step
     if (step.id === 1) {
@@ -194,6 +241,8 @@ export class TutorialSystem {
     this.skillUsed = false;
     this.reachedExit = false;
     this.bossKilled = false;
+    this.searchableSearched = false;
+    this.extractionOpened = false;
   }
 
   setupHighlight(step) {
@@ -245,6 +294,12 @@ export class TutorialSystem {
         break;
       case "boss":
         // Boss highlighting done in render
+        break;
+      case "searchable":
+        // Nearest unsearched prop highlighted in render
+        break;
+      case "victoryPortal":
+        // Portal highlighted in render
         break;
     }
   }
@@ -300,7 +355,15 @@ export class TutorialSystem {
       case "reachExit":
         return this.reachedExit;
       case "killBoss":
-        return this.bossKilled || (this.game.enemySystem?.boss?.isDead === true);
+        return (
+          this.bossKilled
+          || this.tutorialMiniBoss?.isDead === true
+          || (this.game.enemySystem?.boss?.isDead === true)
+        );
+      case "searchChest":
+        return this.searchableSearched;
+      case "extract":
+        return this.extractionOpened;
       default:
         return false;
     }
@@ -309,6 +372,16 @@ export class TutorialSystem {
   completeCurrentStep() {
     const step = this.steps[this.currentStep];
     step.completed = true;
+
+    // Place chests after loot-from-enemies step so the next step has guaranteed props
+    if (step.id === 4 && typeof this.game.spawnTutorialChestNearPlayer === "function") {
+      this.game.spawnTutorialChestNearPlayer(3);
+    }
+
+    // After miniboss (step 8); ensure extract step always has a portal
+    if (step.id === 8 && typeof this.game.spawnExtractionPortalNearPlayer === "function" && !this.game.victoryPortal) {
+      this.game.spawnExtractionPortalNearPlayer();
+    }
 
     // Spawn enemy after step 2 (Dash) completes
     if (step.id === 2 && this.game.player && this.game.enemySystem) {
@@ -370,7 +443,7 @@ export class TutorialSystem {
     // Show completion message
     this.game.showNotification(
       "Tutorial Complete!",
-      "You've learned the basics. Good luck on your adventure!"
+      "You know how to fight, loot, search, and extract. Good luck on your runs!"
     );
   }
 
@@ -429,6 +502,18 @@ export class TutorialSystem {
   onBossKilled() {
     if (this.active && this.steps[this.currentStep]?.action === "killBoss") {
       this.bossKilled = true;
+    }
+  }
+
+  onSearchableSearched() {
+    if (this.active && this.steps[this.currentStep]?.action === "searchChest") {
+      this.searchableSearched = true;
+    }
+  }
+
+  onExtractionInventoryOpened() {
+    if (this.active && this.steps[this.currentStep]?.action === "extract") {
+      this.extractionOpened = true;
     }
   }
 
@@ -494,9 +579,11 @@ export class TutorialSystem {
       ctx.strokeRect(ex, ey, exit.w, exit.h);
     }
 
-    if (step.highlight === "boss" && this.game.enemySystem?.boss && !this.game.enemySystem.boss.isDead) {
-      // Highlight boss
-      const boss = this.game.enemySystem.boss;
+    if (step.highlight === "boss") {
+      const boss = this.tutorialMiniBoss && !this.tutorialMiniBoss.isDead
+        ? this.tutorialMiniBoss
+        : this.game.enemySystem?.boss;
+      if (boss && !boss.isDead) {
       const bx = boss.position.x - camera.position.x;
       const by = boss.position.y - camera.position.y;
       const pulse = 0.5 + Math.sin(this.game.time * 4) * 0.3;
@@ -504,6 +591,34 @@ export class TutorialSystem {
       ctx.strokeStyle = `rgba(220, 38, 38, ${pulse})`;
       ctx.lineWidth = 5;
       ctx.strokeRect(bx - 10, by - 10, boss.size + 20, boss.size + 20);
+      }
+    }
+
+    if (step.highlight === "searchable") {
+      const props = (this.game.searchableProps || []).filter((p) => p && !p.isSearched);
+      const prop = props[0];
+      if (prop) {
+        const sx = prop.position.x - camera.position.x;
+        const sy = prop.position.y - camera.position.y;
+        const w = prop.width ?? 32;
+        const h = prop.height ?? 32;
+        const pulse = 0.5 + Math.sin(this.game.time * 4) * 0.3;
+        ctx.strokeStyle = `rgba(56, 189, 248, ${pulse})`;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(sx - 2, sy - 2, w + 4, h + 4);
+      }
+    }
+
+    if (step.highlight === "victoryPortal" && this.game.victoryPortal) {
+      const vp = this.game.victoryPortal;
+      const px = vp.x - camera.position.x;
+      const py = vp.y - camera.position.y;
+      const pulse = 0.5 + Math.sin(this.game.time * 4) * 0.3;
+      ctx.strokeStyle = `rgba(52, 211, 153, ${pulse})`;
+      ctx.lineWidth = 4;
+      const w = vp.w ?? 72;
+      const h = vp.h ?? 72;
+      ctx.strokeRect(px - 4, py - 4, w + 8, h + 8);
     }
 
     ctx.restore();

@@ -15,7 +15,7 @@ describe("Skill trigger progress", () => {
     const { advanceSkillTriggerProgress, ensureSkillTriggerProgress } = await import("../src/game/skill-trigger-progress.js");
     const game = {
       skills: ["fireball", null, null, null],
-      runSkillMods: { fireball: ["triggerFromKill"] },
+      devModOverrides: { 0: ["triggerFromKill"] },
       skillTriggerProgress: [0, 0, 0, 0]
     };
     ensureSkillTriggerProgress(game);

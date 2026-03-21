@@ -31,17 +31,15 @@ describe("loot luck helpers", () => {
 });
 
 describe("economy luck hooks", () => {
-  it("gold gain respects Fortune Cookie and luck", async () => {
+  it("gold gain respects luck scaling", async () => {
     const economy = await import("../src/game/economy.js");
     const game = {
       gold: 0,
-      time: 5,
-      snackFortuneCookieUntil: 6,
-      runConfig: { selectedCharacter: { attributes: { luck: 10 } } }
+      runCharacterAttributes: { luck: 10 }
     };
 
     economy.addGold(game, 10, "test");
 
-    assert.strictEqual(game.gold, 13);
+    assert.strictEqual(game.gold, 11);
   });
 });

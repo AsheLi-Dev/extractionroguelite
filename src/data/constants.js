@@ -7,11 +7,25 @@ export const APP_TITLE = "Extract Da Panda";
 export const APP_SUBTITLE = "Fight through shifting biomes, grow stronger, and escape alive.";
 export const BUILD_CHANNEL = "main";
 export const DEMO_BUILD = BUILD_CHANNEL === "demo";
+/** Shown on the main menu when `DEMO_BUILD`. */
+export const DEMO_VERSION_LABEL = "Demo 1.0";
+/** Demo quick-start: skip pre-run and skill-select; used with `startDemoQuickRun` in `pre-run.js`. */
+export const DEMO_DEFAULT_PLAYABLE_CHARACTER_ID = "reaper";
+/** `ATTACK_TYPES` id for Elemental Shot */
+export const DEMO_DEFAULT_ATTACK_TYPE = "projectile";
+/** Four skill slots before hero unique skill override (Reaper replaces slot 0 with `reaper_scythe`). */
+export const DEMO_DEFAULT_RUN_SKILLS = ["fireball", "rapidFire", "groundSlam", "healPulse"];
+/** Multiply run XP, skill XP, weapon-art XP, and token roll odds when `DEMO_BUILD` (set `BUILD_CHANNEL` to `"demo"` on the branch you deploy). */
+export const DEMO_PROGRESSION_MULT = 4;
+export function getDemoProgressionMult() {
+  return DEMO_BUILD ? DEMO_PROGRESSION_MULT : 1;
+}
 export const SHOW_DEV_CONTROLS = !DEMO_BUILD;
 export const SHOW_DEV_MENU = !DEMO_BUILD;
 
 export const TALENTS_KEY = "spaceShooter_talents";
 export const TALENT_CRYSTALS_KEY = "spaceShooter_talentCrystals";
+export const GLOBAL_PLAYER_PROFILE_KEY = "spaceShooter_globalPlayerProfile";
 export const SKILL_UNLOCKS_KEY = "spaceShooter_skillUnlocks";
 export const SKILL_LEVELS_KEY = "spaceShooter_skillLevels";
 export const SKILL_MOD_SOCKETS_KEY = "spaceShooter_skillModSockets";

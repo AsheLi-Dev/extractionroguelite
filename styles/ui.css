@@ -465,6 +465,44 @@
   font-variant-numeric: tabular-nums;
 }
 
+.weapon-art-xp-section {
+  margin-top: 8px;
+}
+
+.weapon-art-xp-row {
+  margin-bottom: 4px;
+}
+
+.weapon-art-level {
+  font-size: 11px;
+  font-weight: 700;
+  color: #67e8f9;
+}
+
+.weapon-art-xp-track {
+  width: 100%;
+  height: 6px;
+  background: #0f172a;
+  border: 1px solid #164e63;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 2px;
+}
+
+.weapon-art-xp-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #0ea5e9, #2dd4bf);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.weapon-art-xp-label {
+  font-size: 10px;
+  color: #a5f3fc;
+  font-variant-numeric: tabular-nums;
+}
+
 .equipped-section,
 .inventory-section,
 .stats-section {

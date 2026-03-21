@@ -189,7 +189,7 @@ export const MAP_DEFS = [
   },
 ];
 
-/** Biome map def for dev-mode 60x120 archetype grid (8 grids). Exit zone uses procedural exit (right side). */
+/** Biome map def for dev-mode 60x120 archetype grid (8 grids). */
 export const BIOME_MAP_DEF = {
   id: 'biome',
   name: 'Forest Biome',
@@ -198,9 +198,7 @@ export const BIOME_MAP_DEF = {
   floorPattern: 'grass',
   wallColor: '#2d4a2e',
   wallAccent: '#3d6b3e',
-  exits: [
-    { x: 99999, y: 0, w: 1, h: 1, targetMapId: 0, spawnSide: 'right' }
-  ],
+  exits: [],
   enemyCount: 0,
   enemyScale: { hp: 1.2, attack: 1.15, speed: 1.1 },
   lootQuality: 0.3,
@@ -311,6 +309,7 @@ const BIOME_ARCHETYPE_POOL = [
  * Build 4x4 archetype grid. Middle two rows (1–2): start/exit/miniboss/corridors/vault/pool as before.
  * Top row (0) and bottom row (3): 1 or 2 cells randomly get OPEN_SPACE, rest EMPTY (walled later).
  * Start/exit are derived from world.startPixel/exitPixel (expected in middle rows).
+ * Miniboss is always column 3 (fourth column), row 1 preferred else row 2 if that cell is start/exit.
  * Returns { grid, startCell, exitCell }. grid[row][col] = archetype id.
  */
 export function buildArchetypeGrid(world) {
@@ -356,25 +355,15 @@ export function buildArchetypeGrid(world) {
   const topActiveCols = pickActiveCols();
   const bottomActiveCols = pickActiveCols();
 
-  // Pick a MINIBOSS cell adjacent to the exit, only in middle rows (1, 2).
-  const neighborOffsets = [
-    { dc: -1, dr: 0 },
-    { dc: 1, dr: 0 },
-    { dc: 0, dr: -1 },
-    { dc: 0, dr: 1 },
-  ];
-  const minibossCandidates = [];
-  for (const o of neighborOffsets) {
-    const col = exitCol + o.dc;
-    const row = exitRow + o.dr;
-    if (col < 0 || col >= cols || row < 1 || row > 2) continue;
-    if (col === startCol && row === startRow) continue;
-    if (col === exitCol && row === exitRow) continue;
-    minibossCandidates.push({ col, row });
+  // Miniboss: always column 3 (fourth column), row 1 or 2 — prefer row 1 unless start/exit occupies it.
+  const MINIBOSS_COL = 3;
+  let minibossPick = null;
+  for (const row of [1, 2]) {
+    if (startCol === MINIBOSS_COL && startRow === row) continue;
+    if (exitCol === MINIBOSS_COL && exitRow === row) continue;
+    minibossPick = { col: MINIBOSS_COL, row };
+    break;
   }
-  const minibossPick = minibossCandidates.length
-    ? minibossCandidates[Math.floor(rng() * minibossCandidates.length)]
-    : null;
 
   // Candidates for corridor/vault only in middle two rows (1, 2).
   const candidates = [];

@@ -727,6 +727,24 @@
   margin-bottom: 28px;
 }
 
+.main-menu-inner--demo .main-menu-subtitle {
+  margin-bottom: 10px;
+}
+
+.main-menu-demo-badge {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #38bdf8;
+  margin-bottom: 28px;
+}
+
+.main-menu-demo-badge.hidden {
+  display: none;
+}
+
 .main-menu-btn {
   padding: 14px 36px;
   font-size: 16px;

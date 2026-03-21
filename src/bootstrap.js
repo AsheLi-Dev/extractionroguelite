@@ -4,13 +4,15 @@
 import {
   refreshMainMenuLP, openInstructions, closeInstructions,
   openOptions, closeOptions, applyResolutionPreset, initOptionsSettings,
-  giveAllCharacters999Crystals
+  giveAllCharacters999Crystals,
+  applyDemoMainMenuLayout
 } from "./ui/main-menu.js";
 import {
   APP_TITLE,
   APP_SUBTITLE,
   SHOW_DEV_CONTROLS,
-  SHOW_DEV_MENU
+  SHOW_DEV_MENU,
+  DEMO_BUILD
 } from "./data/constants.js";
 import {
   openLegacyVault, closeLegacyVault, openLegacyVaultForIronsmith, getSelectedLegacyItems, deleteLegacySelectedItems
@@ -18,6 +20,7 @@ import {
 import {
   openSkillLibrary, closeSkillLibrary
 } from "./ui/skill-library.js";
+import { closeBasicAttackTree, openBasicAttackTree } from "./ui/basic-attack-tree-ui.js";
 import { closeTalentTree, openTalentTree } from "./ui/talent-tree-ui.js";
 import {
   openFriends, closeFriends
@@ -27,7 +30,8 @@ import {
   acceptPreRunAndStart, confirmSkillSelectAndStart, clearSkillSelectUpgrades,
   setStartGameCallback,
   setPendingDevMode, getSkillSelectBackTarget,
-  setPreRunStateForDevMode, renderPreRunScreen
+  setPreRunStateForDevMode, renderPreRunScreen,
+  startDemoQuickRun
 } from "./ui/pre-run.js";
 import { showSelectHeroScreen, hideSelectHeroScreen, setSelectHeroBackTarget } from "./ui/select-hero.js";
 import { installPillarSystem } from "./game/game-pillar.js";
@@ -92,7 +96,6 @@ function queueSceneTransition(task, options = {}) {
 function setRunHudVisibility(visible) {
   const ids = [
     "pause-toggle",
-    "mod-screen-button",
     "inventory-button",
     "build-log-toggle"
   ];
@@ -110,11 +113,13 @@ function setRunHudVisibility(visible) {
 function closeRunSetupOverlays() {
   document.getElementById("pre-run-overlay")?.classList.add("hidden");
   document.getElementById("skill-select-overlay")?.classList.add("hidden");
+  document.getElementById("basic-attack-tree-overlay")?.classList.add("hidden");
 }
 
 function hideRunOverlays() {
   document.getElementById("game-over")?.classList.add("hidden");
   document.getElementById("victory-overlay")?.classList.add("hidden");
+  document.getElementById("weapon-art-draft-overlay")?.classList.add("hidden");
   document.getElementById("level-up-overlay")?.classList.add("hidden");
   document.getElementById("event-overlay")?.classList.add("hidden");
   document.getElementById("shrine-overlay")?.classList.add("hidden");
@@ -126,8 +131,13 @@ function hideRunOverlays() {
 
 function openPreRunFrom(source, legacyItems = [], options = {}) {
   preRunSource = source;
+  const lureIds = Array.isArray(options?.selectedLureIds) ? options.selectedLureIds : [];
+  if (DEMO_BUILD) {
+    startDemoQuickRun(legacyItems, { selectedLureIds: lureIds });
+    return;
+  }
   showPreRunScreen(legacyItems, {
-    selectedLureIds: Array.isArray(options?.selectedLureIds) ? options.selectedLureIds : []
+    selectedLureIds: lureIds
   });
 }
 
@@ -282,9 +292,7 @@ function startGameImmediate(legacyItems = [], runConfig = {}) {
   document.querySelector(".game-root")?.classList.remove("hidden");
   if (runConfig.tutorial === true) {
     document.getElementById("pause-toggle")?.classList.add("hidden");
-    document.getElementById("mod-screen-button")?.classList.add("hidden");
     document.getElementById("dev-toggle")?.classList.add("hidden");
-    document.getElementById("inventory-button")?.classList.add("hidden");
   }
 
   window.debugSkillTags = (skillId, modifier = null) => {
@@ -361,8 +369,6 @@ function startForestBiomeTestMap() {
     devMode: true,
     testMapId: "forest_biome_0",
     attackType: "projectile",
-    secondaryAttackType: "projectile",
-    selectedUpgrades: [],
     playableCharacterId: DEFAULT_PLAYABLE_CHARACTER_ID
   });
 }
@@ -419,6 +425,7 @@ function bootstrap() {
     initializePillarUI(initialPillarContext, { showFloatingButton: false });
     initOptionsSettings();
     ensureMainMenuReturnButton();
+    applyDemoMainMenuLayout();
     mainMenu.classList.remove("hidden");
     gameRoot.classList.add("hidden");
     setRunHudVisibility(false);
@@ -451,6 +458,8 @@ function bootstrap() {
         "options-overlay",
         "legacy-vault-overlay",
         "talent-tree-overlay",
+        "basic-attack-tree-overlay",
+        "weapon-art-draft-overlay",
         "skill-library-overlay",
         "friends-overlay",
         "pre-run-overlay",
@@ -471,7 +480,6 @@ function bootstrap() {
         document.getElementById("main-menu")?.classList.add("hidden");
         document.querySelector(".game-root")?.classList.remove("hidden");
         document.getElementById("pause-toggle")?.classList.add("hidden");
-        document.getElementById("mod-screen-button")?.classList.add("hidden");
         if (SHOW_DEV_CONTROLS) {
           document.getElementById("dev-toggle")?.classList.add("hidden");
         }
@@ -489,8 +497,8 @@ function bootstrap() {
       dev999CrystalsBtn.addEventListener("click", () => {
         const { total, updated } = giveAllCharacters999Crystals();
         const msg = total === 0
-          ? "No saved characters. Save a character from a run first."
-          : `Set 999 of all crystals for ${updated} character(s).`;
+          ? "Unable to update global talent points."
+          : `Set unspent talent points to 999 for the global profile (${updated} updated).`;
         if (typeof window.alert === "function") window.alert(msg);
         renderHallOfChampions();
       });
@@ -516,10 +524,18 @@ function bootstrap() {
     if (talentsBtn) {
       talentsBtn.addEventListener("click", openTalentTree);
     }
+    const basicAttackTreeBtn = document.getElementById("main-menu-basic-attack-tree");
+    if (basicAttackTreeBtn) {
+      basicAttackTreeBtn.addEventListener("click", openBasicAttackTree);
+    }
 
     const talentTreeCloseBtn = document.getElementById("talent-tree-close");
     if (talentTreeCloseBtn) {
       talentTreeCloseBtn.addEventListener("click", closeTalentTree);
+    }
+    const basicAttackTreeCloseBtn = document.getElementById("basic-attack-tree-close");
+    if (basicAttackTreeCloseBtn) {
+      basicAttackTreeCloseBtn.addEventListener("click", closeBasicAttackTree);
     }
 
     refreshMainMenuLP();

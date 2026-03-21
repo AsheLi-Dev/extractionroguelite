@@ -78,7 +78,7 @@ function buildChampionCard(char, index) {
         ${formatCards(char.activeUpgradeCards || [])}
       </div>
       <div class="champion-card-actions">
-        <button type="button" class="champion-talent-tree-btn" aria-label="Open talent tree">Talent Tree</button>
+        <button type="button" class="champion-talent-tree-btn" aria-label="Open talents">Talents</button>
         <button type="button" class="champion-allocate-btn" aria-label="Allocate attributes">Allocate Attributes</button>
         <button type="button" class="champion-delete-btn" aria-label="Delete character">Delete</button>
       </div>

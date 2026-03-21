@@ -29,6 +29,8 @@ import {
 } from '../data/soul-siphon-evolution.js';
 import { onRingLevelUp } from './ring-effects.js';
 import { play as playSfx } from '../audio.js';
+import { loadGlobalPlayerProfile, updateGlobalPlayerProfile } from '../ui/save-system.js';
+import { getDemoProgressionMult } from '../data/constants.js';
 
 const PROJECTILE_BASE_WEAPON_ID = "ProjectileShot";
 const CATEGORY_ORDER = ["damage", "rhythm", "control", "onhit"];
@@ -460,6 +462,8 @@ export function applyGameLevelUpMixin(Game) {
     },
 
     grantXP(amount) {
+      const demoMult = getDemoProgressionMult();
+      amount = Math.max(0, Number(amount) || 0) * demoMult;
       let mult = this.equipmentXpGainedMult ?? 1;
       if ((this.equipmentNewMapGoldXpBuffUntil || 0) > this.time) {
         mult *= (this.equipmentNewMapGoldXpBuffMult || 1);
@@ -469,6 +473,8 @@ export function applyGameLevelUpMixin(Game) {
       }
       const rounded = Math.round(amount * mult);
       this.xp += rounded;
+      updateGlobalPlayerProfile({ xp: this.xp });
+      this.runAttackXpEarned = Math.max(0, Number(this.runAttackXpEarned) || 0) + rounded;
       this.updateXpUI();
       this.checkLevelUp();
       for (let i = 0; i < (this.skills?.length || 0); i++) {
@@ -890,13 +896,17 @@ export function applyGameLevelUpMixin(Game) {
     checkLevelUp() {
       if (this.levelUpChoices) return;
       let leveled = false;
-      while (!this.levelUpChoices) {
-        const nextThreshold = getXpForLevel(this.level + 1);
-        if (this.xp < nextThreshold) break;
-
+      while (this.xp >= getXpForLevel(this.level + 1)) {
         this.level++;
         leveled = true;
         this.runAttributePoints = Math.max(0, Number(this.runAttributePoints) || 0) + 1;
+        const currentProfile = loadGlobalPlayerProfile();
+        updateGlobalPlayerProfile({
+          level: this.level,
+          xp: this.xp,
+          unspentAttributePoints: this.runAttributePoints,
+          unspentTalentPoints: Math.max(0, Number(currentProfile.unspentTalentPoints) || 0) + 1
+        });
         onRingLevelUp(this);
         this.triggerEquipmentModifierEvent?.("level_up", {
           level: this.level,
@@ -905,77 +915,9 @@ export function applyGameLevelUpMixin(Game) {
         if (typeof playSfx === "function") playSfx("levelUp");
         this.levelUpVfxStartTime = this.time;
         this.updateXpUI();
-
-        if (this.maybeOpenElementalShotFirstEvolutionPrompt()) break;
-        if (this.maybeOpenElementalShotSecondEvolutionPrompt()) break;
-        if (this.maybeOpenBladeBlastFirstEvolutionPrompt()) break;
-        if (this.maybeOpenBladeBlastSecondEvolutionPrompt()) break;
-        if (this.maybeOpenSoulSiphonFirstEvolutionPrompt()) break;
-        if (this.maybeOpenSoulSiphonSecondEvolutionPrompt()) break;
-
-        if (this.maybeOpenTier1EvolutionPrompt()) {
-          break;
-        }
-
-        if (!this.tier2EvolutionId && this.level === 13) {
-          if (this.maybeOpenTier2EvolutionPrompt({ forced: false })) {
-            break;
-          }
-          continue;
-        }
-
-        // Elemental Shot evolutions consume the level-up at 9 and 16 (no upgrade granted).
-        if ((this.attackType === "projectile" && this.level === 9) || (this.attackType === "projectile" && this.level === 16)) {
-          this.finalizeLevelUpState();
-          continue;
-        }
-        if ((this.attackType === "bladeBlast" && this.level === 9) || (this.attackType === "bladeBlast" && this.level === 16)) {
-          this.finalizeLevelUpState();
-          continue;
-        }
-        if ((this.attackType === "soulSiphon" && this.level === 9) || (this.attackType === "soulSiphon" && this.level === 16)) {
-          this.finalizeLevelUpState();
-          continue;
-        }
-
-        const grantedUpgrade = this.grantRandomSelectedUpgrade();
-        if (this.tier2EvolutionPending && !this.tier2EvolutionId) {
-          this.tier2DelayRemaining--;
-        }
-
-        if (!grantedUpgrade) {
-          this.finalizeLevelUpState();
-          continue;
-        }
-
-        if (this.attackType === "projectile") {
-          if (typeof this.getElementalShotEvolutionTrace === "function" && (this.level === 9 || this.level === 16)) {
-            const trace = this.getElementalShotEvolutionTrace();
-            if (trace) console.log("[Elemental Shot evolution]", trace);
-          }
-        }
-
-        if (this.shouldForceTier2EvolutionPrompt()) {
-          this.finalizeLevelUpState();
-          if (this.maybeOpenTier2EvolutionPrompt({ forced: true })) {
-            break;
-          }
-        } else if (
-          !this.tier2EvolutionId &&
-          !this.tier2EvolutionPending &&
-          this.level > 13 &&
-          this.getUnlockedTier2Categories().length > 0
-        ) {
-          this.finalizeLevelUpState();
-          if (this.maybeOpenTier2EvolutionPrompt({ forced: false })) {
-            break;
-          }
-        } else {
-          this.finalizeLevelUpState();
-        }
       }
 
-      if (leveled && !this.levelUpChoices) {
+      if (leveled) {
         this.finalizeLevelUpState();
       }
     },
@@ -990,113 +932,8 @@ export function applyGameLevelUpMixin(Game) {
     },
 
     applyLevelUpChoice(choice, cardEl) {
-      if (choice?.type !== "evolution" && Array.isArray(choice?.upgrades)) {
-        const pickState = this.levelUpPickState || {
-          pickCount: 1,
-          picksRemaining: 1,
-          resolvedPicks: 0,
-          effectiveness: [1],
-          chosen: []
-        };
-        const currentPickIndex = Math.max(
-          0,
-          Math.min(Number(pickState.pickCount || 1) - 1, Number(pickState.resolvedPicks || 0))
-        );
-        const effectiveness = Number(pickState.effectiveness?.[currentPickIndex] ?? 1) || 1;
-        for (const upgrade of choice.upgrades) {
-          const appliedUpgrade = { ...upgrade };
-          if (Number.isFinite(Number(appliedUpgrade.value))) {
-            appliedUpgrade.value = Math.round(Number(appliedUpgrade.value) * effectiveness * 10000) / 10000;
-          }
-          this.runAttackUpgrades = this.runAttackUpgrades || [];
-          this.runAttackUpgrades.push(appliedUpgrade);
-          this.addUpgradeOnlyStatsFromLevelUpUpgrade(appliedUpgrade);
-        }
-        if (choice.penalty) {
-          this.runAttackPenalties = this.runAttackPenalties || [];
-          this.runAttackPenalties.push({ ...choice.penalty });
-        }
-        pickState.resolvedPicks = Math.max(0, Number(pickState.resolvedPicks || 0)) + 1;
-        pickState.picksRemaining = Math.max(0, Number(pickState.picksRemaining || 0) - 1);
-        pickState.chosen = Array.isArray(pickState.chosen) ? pickState.chosen : [];
-        pickState.chosen.push({
-          name: choice.upgrades?.[0]?.name || "Upgrade",
-          scale: effectiveness
-        });
-        this.levelUpPickState = pickState;
-        this.refreshAscendedGrowthRuntimeState();
-        if (pickState.picksRemaining <= 0) {
-          this.levelUpPickState = null;
-          this.refreshAscendedGrowthRuntimeState();
-        }
-        this.finalizeLevelUpState();
-        return;
-      }
-
-      if (choice?.type === "elementalShotEvolution") {
-        const cat = choice.category;
-        if (!["damage", "rhythm", "control", "elemental"].includes(cat)) return;
-        if (choice.stage === "first") {
-          this.elementalShotEvolutionFirst = cat;
-          this.elementalShotEvolutionSecond = null;
-        } else if (choice.stage === "second") {
-          this.elementalShotEvolutionSecond = cat;
-        } else {
-          return;
-        }
-        // Re-sync immediate combat state from profile.
-        this._elementalShotSurgeSynced = false;
-        const profile = getElementalShotProfile(getElementalShotEvolutionState(this));
-        if (this.time >= (this.elementalSurgeEndTime || 0)) {
-          this.elementalState = profile?.defaultElement ?? "fire";
-        }
-        const sb = profile?.surgeBehavior?.elements;
-        if (Array.isArray(sb) && sb[0]) this.nextElementalSurge = sb[0];
-
-        if (cardEl) cardEl.classList.add("level-up-card-selected");
-        setTimeout(() => {
-          closeLevelUpOverlay(this);
-          this.finalizeLevelUpState();
-          this.checkLevelUp();
-        }, cardEl ? 220 : 0);
-        return;
-      }
-
-      if (choice?.type === "soulSiphonEvolution") {
-        const cat = choice.category;
-        if (!["damage", "rhythm", "control", "spiritcraft"].includes(cat)) return;
-        if (choice.stage === "first") {
-          this.soulSiphonEvolutionFirst = cat;
-          this.soulSiphonEvolutionSecond = null;
-        } else if (choice.stage === "second") {
-          this.soulSiphonEvolutionSecond = cat;
-        } else {
-          return;
-        }
-        if (cardEl) cardEl.classList.add("level-up-card-selected");
-        setTimeout(() => {
-          closeLevelUpOverlay(this);
-          this.finalizeLevelUpState();
-          this.checkLevelUp();
-        }, cardEl ? 220 : 0);
-        return;
-      }
-
-      if (choice?.type !== "evolution" || !choice.evolutionId) return;
-      this.applyTransformChoice({
-        baseWeaponId: choice.baseWeaponId || this.levelUpChoiceContext?.baseWeaponId || PROJECTILE_BASE_WEAPON_ID,
-        evolutionId: choice.evolutionId
-      });
-
-      if (cardEl) {
-        cardEl.classList.add("level-up-card-selected");
-      }
-
-      setTimeout(() => {
-        closeLevelUpOverlay(this);
-        this.finalizeLevelUpState();
-        this.checkLevelUp();
-      }, cardEl ? 220 : 0);
+      void choice;
+      void cardEl;
     }
   });
 }

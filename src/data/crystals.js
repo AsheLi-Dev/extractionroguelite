@@ -61,6 +61,15 @@ export function spendGlobalTalentCrystal(crystalId, amount = 1) {
   return setGlobalTalentCrystals(next);
 }
 
+export function removeGlobalTalentCrystal(crystalId, amount = 1) {
+  const next = getGlobalTalentCrystals();
+  if (!Object.prototype.hasOwnProperty.call(next, crystalId)) return null;
+  const removeAmount = Math.max(0, Math.floor(Number(amount) || 0));
+  if ((next[crystalId] || 0) < removeAmount) return null;
+  next[crystalId] = Math.max(0, (next[crystalId] || 0) - removeAmount);
+  return setGlobalTalentCrystals(next);
+}
+
 export function getHighestAttributeCrystalReward(attributes) {
   if (!attributes || typeof attributes !== "object") return null;
   const ranked = CRYSTAL_TYPES.map((entry) => ({

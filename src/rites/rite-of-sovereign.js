@@ -209,7 +209,7 @@ export function installRiteOfSovereign(game, options = {}) {
 
   const boss = createSovereignBoss(state.arena.centerX - 90, state.arena.centerY - 90);
   game.enemySystem.boss = boss;
-  game.player.position.set(state.arena.centerX - 340, state.arena.centerY - 24);
+  game.placeEntityAtWithCollision?.(game.player, state.arena.centerX - 340, state.arena.centerY - 24);
   game.camera.snapTo(game.player, game.world.width, game.world.height);
 
   function setObjective(text) {
@@ -388,8 +388,7 @@ export function installRiteOfSovereign(game, options = {}) {
     const dy = playerCenter.y - bossCenter.y;
     const dist = Math.hypot(dx, dy) || 1;
     const speed = (boss.speed || 120) * speedMult;
-    boss.position.x += (dx / dist) * speed * dt;
-    boss.position.y += (dy / dist) * speed * dt;
+    game.moveEntityByWithCollision?.(boss, (dx / dist) * speed * dt, (dy / dist) * speed * dt);
   }
 
   function spawnAuxEnemy(tag, hp, atk, speed) {
@@ -483,8 +482,7 @@ export function installRiteOfSovereign(game, options = {}) {
         data.timerA = 2.6;
         const playerCenter = getEntityCenter(game.player);
         const angle = rand(0, Math.PI * 2);
-        boss.position.x = playerCenter.x + Math.cos(angle) * 140 - boss.size * 0.5;
-        boss.position.y = playerCenter.y + Math.sin(angle) * 140 - boss.size * 0.5;
+        game.placeEntityAtWithCollision?.(boss, playerCenter.x + Math.cos(angle) * 140 - boss.size * 0.5, playerCenter.y + Math.sin(angle) * 140 - boss.size * 0.5, { maxSearchRadius: 0 });
         boss.invulnUntil = game.time + 0.45;
       }
       if (data.timerB <= 0) {

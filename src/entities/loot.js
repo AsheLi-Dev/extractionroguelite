@@ -176,24 +176,6 @@ export class LootItem {
       ctx.stroke();
       ctx.restore();
     }
-    if (this.type === "ModCard") {
-      const pos = this.displayPosition;
-      const dx = pos.x - camera.position.x;
-      const dy = pos.y - camera.position.y;
-      const r = String(this.rarity || "common").toLowerCase();
-      const fill = r === "legendary" ? "#f59e0b" : r === "epic" ? "#a855f7" : r === "rare" ? "#eab308" : "#94a3b8";
-      ctx.save();
-      ctx.fillStyle = fill;
-      ctx.strokeStyle = "#1e293b";
-      ctx.lineWidth = 1.5;
-      const w = this.size || 22;
-      const h = this.size || 22;
-      ctx.beginPath();
-      ctx.roundRect(dx, dy, w, h, 4);
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-    }
     void timeSeconds;
   }
 
@@ -432,17 +414,18 @@ export class LootSystem {
       item.updateBurst(dt);
     }
 
+    const snapshot = [...this.items];
     const remaining = [];
-    for (const item of this.items) {
+    for (const item of snapshot) {
       if (item.intersectsPlayer(player, pickupRadiusMult)) {
-        // Auto-pickup gold and XP orbs; other items require click
-        if ((item.type === "Gold" || item.type === "XpOrb") && onLootPicked) onLootPicked(item);
+        if (onLootPicked) onLootPicked(item);
         else remaining.push(item);
       } else {
         remaining.push(item);
       }
     }
-    this.items = remaining;
+    const spawnedDuringPickup = this.items.filter((it) => !snapshot.includes(it));
+    this.items = [...remaining, ...spawnedDuringPickup];
   }
 
   draw(ctx, camera, timeSeconds) {

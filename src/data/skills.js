@@ -2,22 +2,101 @@ import { getSkillModSockets, getSkillUnlocks } from './constants.js';
 
 export const SKILL_CATEGORIES = { projectile: "Projectile", melee: "Melee", aura: "Aura" };
 
-/** Scaling tier = extra % base damage/healing per stat point. S=4%, A=2%, B=1%, C=0.5%. */
-export const SCALING_TIERS = { S: 0.04, A: 0.02, B: 0.01, C: 0.005 };
+/**
+ * Damage scaling: +% of skill base damage per point in the listed stat.
+ * S=30%, A=20%, B=10%, C=5% per attribute point.
+ */
+export const DAMAGE_SCALING_TIERS = { S: 0.3, A: 0.2, B: 0.1, C: 0.05 };
 
-export function getSkillStatScalingMult(game, skillDef) {
+/** @deprecated Use DAMAGE_SCALING_TIERS */
+export const SCALING_TIERS = DAMAGE_SCALING_TIERS;
+
+/** Same numeric table as damage; used for heal amount scaling (separate skill fields). */
+export const HEAL_SCALING_TIERS = DAMAGE_SCALING_TIERS;
+
+function tierMultiplier(tierTable, tierLetter) {
+  return tierLetter && tierTable[tierLetter] ? tierTable[tierLetter] : 0;
+}
+
+/**
+ * Skill damage: uses scalingPrimary / scalingSecondary (tiers) and scalingStat1 / scalingStat2.
+ */
+export function getSkillDamageScalingMult(game, skillDef) {
   if (!skillDef || !game) return 1;
   const attrs = game.runCharacterAttributes || {};
-  const tierVal = (tier) => (tier && SCALING_TIERS[tier]) ? SCALING_TIERS[tier] : 0;
+  const t1 = tierMultiplier(DAMAGE_SCALING_TIERS, skillDef.scalingPrimary);
+  const t2 = tierMultiplier(DAMAGE_SCALING_TIERS, skillDef.scalingSecondary);
   const statVal = (key) => Math.max(0, Number(attrs[key]) || 0);
-  const stat1 = skillDef.scalingStat1 || 'brutality';
-  const stat2 = skillDef.scalingStat2 || 'agility';
-  const t1 = tierVal(skillDef.scalingPrimary);
-  const t2 = tierVal(skillDef.scalingSecondary);
+  const stat1 = skillDef.scalingStat1 || "brutality";
+  const stat2 = skillDef.scalingStat2 || "agility";
   const s1 = statVal(stat1);
   const s2 = statVal(stat2);
-  const mult = 1 + s1 * t1 + (t2 ? s2 * t2 : 0);
+  const mult = 1 + s1 * t1 + s2 * t2;
   return Number.isFinite(mult) && mult > 0 ? mult : 1;
+}
+
+/**
+ * Heal-only scaling: healScalingPrimary / healScalingSecondary and healScalingStat1 / healScalingStat2.
+ * Returns 1 if no heal tier is set.
+ */
+export function getSkillHealScalingMult(game, skillDef) {
+  if (!skillDef || !game) return 1;
+  const t1 = tierMultiplier(HEAL_SCALING_TIERS, skillDef.healScalingPrimary);
+  const t2 = tierMultiplier(HEAL_SCALING_TIERS, skillDef.healScalingSecondary);
+  if (t1 === 0 && t2 === 0) return 1;
+  const attrs = game.runCharacterAttributes || {};
+  const statVal = (key) => Math.max(0, Number(attrs[key]) || 0);
+  const stat1 = skillDef.healScalingStat1 || "vitality";
+  const stat2 = skillDef.healScalingStat2 || "luck";
+  const s1 = statVal(stat1);
+  const s2 = statVal(stat2);
+  const mult = 1 + s1 * t1 + s2 * t2;
+  return Number.isFinite(mult) && mult > 0 ? mult : 1;
+}
+
+/**
+ * Future: cooldown scaling from attributes (not used yet).
+ * @returns {number} Always 1 until implemented.
+ */
+export function getSkillCooldownScalingMult(_game, _skillDef) {
+  return 1;
+}
+
+/**
+ * Future: crowd-control duration / potency scaling (not used yet).
+ * @returns {number} Always 1 until implemented.
+ */
+export function getSkillCrowdControlScalingMult(_game, _skillDef) {
+  return 1;
+}
+
+/** @deprecated Use getSkillDamageScalingMult — same behavior. */
+export function getSkillStatScalingMult(game, skillDef) {
+  return getSkillDamageScalingMult(game, skillDef);
+}
+
+/** Base attack used when estimating skill hit damage outside a run (matches Game `baseStats.attack` before gear). */
+export const SKILL_LIBRARY_PREVIEW_BASE_ATTACK = 20;
+
+/**
+ * Estimated integer damage for a typical hit (multiplier 1, no gear/mods), using global attributes.
+ * Returns null if the skill has no damage scaling tiers (e.g. heal-only).
+ */
+export function previewSkillLibraryHitDamage(skillDef, attributes) {
+  if (!skillDef) return null;
+  if (!skillDef.scalingPrimary && !skillDef.scalingSecondary) return null;
+  const attrs = attributes || {};
+  const game = {
+    runCharacterAttributes: {
+      brutality: Math.max(0, Number(attrs.brutality) || 0),
+      agility: Math.max(0, Number(attrs.agility) || 0),
+      vitality: Math.max(0, Number(attrs.vitality) || 0),
+      luck: Math.max(0, Number(attrs.luck) || 0)
+    }
+  };
+  const scalingMult = getSkillDamageScalingMult(game, skillDef);
+  const attack = SKILL_LIBRARY_PREVIEW_BASE_ATTACK + game.runCharacterAttributes.brutality;
+  return Math.round(attack * scalingMult);
 }
 
 export const MODIFICATION_CARD_CATEGORIES = { delivery: "Delivery", trigger: "Trigger", element: "Element", self: "Self" };
@@ -81,19 +160,6 @@ export const DELIVERY_TRIGGER_MOD_IDS = MODIFICATION_CARD_DEFS.filter(
 export function getModsForSkillSlot(game, slot) {
   const skillId = game.skills?.[slot];
   if (!skillId) return [];
-  // In-run: use run mod state (dropped/equipped mods this run)
-  const runSkillMods = game.runSkillMods;
-  if (runSkillMods && typeof runSkillMods === 'object' && Array.isArray(runSkillMods[skillId])) {
-    const list = runSkillMods[skillId].filter(Boolean);
-    const overrides = game.devModOverrides?.[slot];
-    if (Array.isArray(overrides) && overrides.length > 0) {
-      const set = new Set(list);
-      for (const id of overrides) set.add(id);
-      return [...set];
-    }
-    return list;
-  }
-  // Pre-run / legacy: use persisted sockets from skill library
   const sockets = getSkillModSockets();
   const list = (sockets[skillId] || []).filter(Boolean);
   const overrides = game.devModOverrides?.[slot];
@@ -194,65 +260,65 @@ export function applyElementDebuffsFromMods(game, enemy, mods, skillDamage, game
 }
 
 export const SKILL_DEFS = [
-  { id: "fireball", name: "Fireball", icon: "spr_skill_fireball", illustration: "assets/UI/Fireball.png", baseCd: 3, desc: "Slow projectile, explodes for area damage + burning ground 3s", unlock: "always", category: "projectile", tags: ["projectile", "ranged", "area"], scalingPrimary: "B" },
-  { id: "iceShard", name: "Ice Shard", icon: "spr_skill_iceShard", illustration: "assets/UI/Ice Shard.png", baseCd: 2, desc: "Fast piercing projectile, slows 30% for 2s", unlock: "always", category: "projectile", tags: ["projectile", "ranged"], scalingPrimary: "B" },
-  { id: "lightningBolt", name: "Lightning Bolt", icon: "spr_skill_lightningBolt", illustration: "assets/UI/Lightning Bolt.png", baseCd: 2.5, desc: "Instant strike, chains to 1 enemy for 50%", unlock: "always", category: "projectile", tags: ["ranged"], scalingPrimary: "A" },
-  { id: "rapidFire", name: "Rapid Fire", icon: "spr_skill_rapidFire", illustration: "assets/UI/Rapid Fire.png", baseCd: 8, desc: "3 projectiles/sec at nearest enemy for 3s", unlock: "always", category: "projectile", tags: ["projectile", "ranged"], scalingPrimary: "B" },
-  { id: "shieldBash", name: "Shield Bash", icon: "spr_skill_shieldBash", illustration: "assets/UI/Shield Bash.png", baseCd: 4, desc: "Cone knockback + stun 0.5s", unlock: "always", category: "projectile", tags: ["melee", "crowd_control"], scalingPrimary: "B" },
-  { id: "healPulse", name: "Heal Pulse", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 10, desc: "Restore 15% max health", unlock: "always", category: "projectile", tags: ["area", "defense", "utility"], scalingPrimary: "C", scalingStat1: "vitality" },
-  { id: "iceRain", name: "Ice Rain", icon: "spr_skill_iceRain", illustration: "assets/UI/Ice Rain.png", baseCd: 12, desc: "Ice storm 4s, continuous damage, slow 50%", unlock: "scavengerFull", category: "projectile", tags: ["area", "ranged"], scalingPrimary: "B" },
-  { id: "lightningSpear", name: "Lightning Spear", icon: "spr_skill_lightningSpear", illustration: "assets/UI/Lightning Spear.png", baseCd: 8, desc: "Charge 0.5s, piercing spear, stun 1s", unlock: "diff3", category: "projectile", tags: ["projectile", "ranged", "crowd_control"], scalingPrimary: "A" },
-  { id: "meteor", name: "Meteor", icon: "spr_skill_meteor", illustration: "assets/UI/Meteor.png", baseCd: 15, desc: "1s delay, massive area damage, burning 5s", unlock: "diff4", category: "projectile", tags: ["area", "ranged"], scalingPrimary: "S" },
-  { id: "voidRift", name: "Void Rift", icon: "spr_skill_voidRift", illustration: "assets/UI/Void Rift.png", baseCd: 14, desc: "Pull enemies 3s then explode", unlock: "diff5", category: "projectile", tags: ["area", "ranged", "crowd_control"], scalingPrimary: "A" },
-  { id: "timeWarp", name: "Time Warp", icon: "spr_skill_timeWarp", illustration: "assets/UI/Time Warp.png", baseCd: 20, desc: "Slow enemies 50% for 4s", unlock: "mastermind", category: "projectile", tags: ["utility", "crowd_control"] },
-  { id: "phoenixStrike", name: "Phoenix Strike", icon: "spr_skill_phoenixStrike", illustration: "assets/UI/Phoenix Strike.png", baseCd: 25, desc: "Explosion + 3s invincibility", unlock: "secondWindUsed", category: "projectile", tags: ["area", "defense", "utility"], scalingPrimary: "A" },
-  { id: "chainFrost", name: "Chain Frost", icon: "spr_skill_chainFrost", illustration: "assets/UI/Chain Frost.png", baseCd: 18, desc: "Freeze all enemies 2s", unlock: "iceShard5", category: "projectile", tags: ["area", "crowd_control"] },
-  { id: "stormCall", name: "Storm Call", icon: "spr_skill_stormCall", illustration: "assets/UI/Storm Call.png", baseCd: 20, desc: "Lightning storm 6s", unlock: "lightningOnlyRun", category: "projectile", tags: ["area", "ranged"], scalingPrimary: "B" },
-  { id: "bladeDash", name: "Blade Dash", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 5, desc: "Dash forward damaging all enemies in path", unlock: "always", category: "melee", tags: ["melee", "utility"], scalingPrimary: "B" },
-  { id: "whirlwind", name: "Whirlwind", icon: "spr_skill_whirlwind", illustration: "assets/UI/Whirlwind.png", baseCd: 10, desc: "Spin 2s hitting nearby enemies, move at half speed", unlock: "always", category: "melee", tags: ["melee", "area"], scalingPrimary: "B" },
-  { id: "groundSlam", name: "Ground Slam", icon: "spr_skill_groundSlam", illustration: "assets/UI/Ground Slam.png", baseCd: 6, desc: "Shockwave damaging and knocking back nearby enemies", unlock: "always", category: "melee", tags: ["melee", "area", "crowd_control"], scalingPrimary: "B" },
-  { id: "bladeStorm", name: "Blade Storm", icon: "spr_skill_bladeStorm", illustration: "assets/UI/Blade Storm.png", baseCd: 12, desc: "8 spinning blades bounce off walls, pierce enemies 3s", unlock: "diff2", category: "melee", tags: ["melee", "area"], scalingPrimary: "B" },
-  { id: "earthquake", name: "Earthquake", icon: "spr_skill_earthquake", illustration: "assets/UI/Earthquake.png", baseCd: 18, desc: "Map shake 3s, damage and slow all on screen", unlock: "diff4", category: "melee", tags: ["area", "crowd_control"], scalingPrimary: "A" },
-  { id: "frostAura", name: "Frost Aura", icon: "spr_skill_frostAura", illustration: "assets/UI/Frost Aura.png", baseCd: 0, desc: "Toggle: slow nearby 25%, 0.5% HP/s", unlock: "always", category: "aura", auraUpkeep: 0.005, tags: ["aura", "crowd_control"] },
-  { id: "flameAura", name: "Flame Aura", icon: "spr_skill_flameAura", illustration: "assets/UI/Flame Aura.png", baseCd: 0, desc: "Toggle: burn nearby enemies, 0.5% HP/s", unlock: "always", category: "aura", auraUpkeep: 0.005, tags: ["aura", "area"] },
-  { id: "thunderAura", name: "Thunder Aura", icon: "spr_skill_thunderAura", illustration: "assets/UI/Thunder Aura.png", baseCd: 0, desc: "Toggle: lightning to nearest every 1.5s, 1% HP/s", unlock: "always", category: "aura", auraUpkeep: 0.01, tags: ["aura", "ranged"] },
-  { id: "barrierAura", name: "Barrier Aura", icon: "spr_skill_barrierAura", illustration: "assets/UI/Barrier Aura.png", baseCd: 0, desc: "Toggle: -15% damage taken, 1.5% HP/s", unlock: "fortified", category: "aura", auraUpkeep: 0.015, tags: ["aura", "defense", "utility"] },
-  { id: "soulAura", name: "Soul Aura", icon: "spr_skill_soulAura", illustration: "assets/UI/Soul Aura.png", baseCd: 0, desc: "Toggle: 50% damage to healing, 2% HP/s", unlock: "vampiric50", category: "aura", auraUpkeep: 0.02, tags: ["aura", "defense"] },
-  { id: "spinningScythe", name: "Spinning Scythe", icon: "spr_skill_bladeStorm", illustration: "assets/UI/Blade Storm.png", baseCd: 6, desc: "Throw scythe forward; returns, heals 10% of damage dealt", unlock: "always", category: "projectile", tags: ["projectile", "melee", "area"], scalingPrimary: "B" },
-  { id: "lumberjackAssault", name: "Lumberjack Assault", icon: "spr_skill_groundSlam", illustration: "assets/UI/Ground Slam.png", baseCd: 8, desc: "Overhead strike in circle; bonus vs large/miniboss; hitting tree spawns splinters", unlock: "always", category: "melee", tags: ["melee", "area"], scalingPrimary: "B" },
-  { id: "escapePlan", name: "Escape Plan", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 14, desc: "Random teleport within 200px, damage at each; repeats until safe or max limit", unlock: "always", category: "melee", tags: ["utility", "area"], scalingPrimary: "C" },
-  { id: "meteorRain", name: "Meteor Rain", icon: "spr_skill_meteor", illustration: "assets/UI/Meteor.png", baseCd: 18, desc: "Charge up to 5s; meteor field around player, follows you", unlock: "diff4", category: "projectile", tags: ["area", "ranged"], scalingPrimary: "S" },
-  { id: "hauntingGhostCharges", name: "Haunting Ghost Charges", icon: "spr_skill_chainFrost", illustration: "assets/UI/Chain Frost.png", baseCd: 0, desc: "Gain charge per 5 kills; spend to summon ghost that slows and explodes after 2s", unlock: "always", category: "projectile", tags: ["area", "crowd_control"], scalingPrimary: "B" },
-  { id: "frenzyProtocol", name: "Frenzy Protocol", icon: "spr_skill_rapidFire", illustration: "assets/UI/Rapid Fire.png", baseCd: 15, desc: "Basic attack auto-fires 5s, +40% attack speed", unlock: "always", category: "projectile", tags: ["utility"] },
-  { id: "spiritBanner", name: "Spirit Banner", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 20, desc: "Summon spirit at location; move and attack speed nearby", unlock: "always", category: "projectile", tags: ["utility", "area"] },
-  { id: "spiderTrap", name: "Spider Trap", icon: "spr_skill_iceShard", illustration: "assets/UI/Ice Shard.png", baseCd: 10, desc: "Dormant trap; spider bite 3s, resets if victim dies during bite", unlock: "always", category: "projectile", tags: ["crowd_control", "area"], scalingPrimary: "C" },
-  { id: "loyalDragons", name: "Loyal Dragons", icon: "spr_skill_phoenixStrike", illustration: "assets/UI/Phoenix Strike.png", baseCd: 22, desc: "2 orbiting dragons, contact damage; spit fireballs on your basic attack", unlock: "diff3", category: "melee", tags: ["melee", "area", "projectile"], scalingPrimary: "B" },
-  { id: "blackHole", name: "Black Hole", icon: "spr_skill_voidRift", illustration: "assets/UI/Void Rift.png", baseCd: 16, desc: "Pulls enemies and player", unlock: "diff5", category: "projectile", tags: ["area", "crowd_control"], scalingPrimary: "A" },
-  { id: "waveShield", name: "Wave Shield", icon: "spr_skill_shieldBash", illustration: "assets/UI/Shield Bash.png", baseCd: 8, desc: "Orbiting wave knocks back and heals you", unlock: "always", category: "projectile", tags: ["defense", "crowd_control"], scalingPrimary: "C", scalingStat1: "vitality" },
-  { id: "magicHand", name: "Magic Hand", icon: "spr_skill_voidRift", illustration: "assets/UI/Void Rift.png", baseCd: 12, desc: "Grab enemies in area, move them to location", unlock: "always", category: "projectile", tags: ["crowd_control", "area"], scalingPrimary: "C" },
-  { id: "purifyingFire", name: "Purifying Fire", icon: "spr_skill_flameAura", illustration: "assets/UI/Flame Aura.png", baseCd: 18, desc: "Lose 5% HP/s 5s, same damage to nearby; then heal 50% of damage, cap 40% max HP", unlock: "always", category: "aura", tags: ["area", "defense"], scalingPrimary: "B", scalingStat1: "vitality" },
-  { id: "hunterShot", name: "Hunter Shot", icon: "spr_skill_rapidFire", illustration: "assets/UI/Rapid Fire.png", baseCd: 5, desc: "Homing projectile; on hit gain attack speed; basic attacks reduce its CD 0.1s", unlock: "always", category: "projectile", tags: ["projectile", "ranged"], scalingPrimary: "A" },
-  { id: "assimilativeOrb", name: "Assimilative Orb", icon: "spr_skill_voidRift", illustration: "assets/UI/Void Rift.png", baseCd: 14, desc: "5s orb absorbs projectiles, fires on absorb; explodes on expiry", unlock: "diff4", category: "projectile", tags: ["area", "ranged"], scalingPrimary: "A" },
-  { id: "cruelFinisher", name: "Cruel Finisher", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 10, desc: "Usable after 5 basic attacks; massive damage from target missing HP", unlock: "always", category: "melee", tags: ["melee"], scalingPrimary: "S" },
-  { id: "homingSkullCharges", name: "Homing Skull Charges", icon: "spr_skill_chainFrost", illustration: "assets/UI/Chain Frost.png", baseCd: 0, desc: "Fire homing skull; gain charge per 3 kills, max 3", unlock: "always", category: "projectile", tags: ["projectile", "ranged"], scalingPrimary: "B" },
-  { id: "bloodFrenzy", name: "Blood Frenzy", icon: "spr_skill_rapidFire", illustration: "assets/UI/Rapid Fire.png", baseCd: 12, desc: "Lose 20% HP, gain attack speed", unlock: "always", category: "projectile", tags: ["utility"] },
-  { id: "bloodSacrifice", name: "Blood Sacrifice", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 20, desc: "Lose 20% HP, reduce cooldown of other skills", unlock: "always", category: "projectile", tags: ["utility"] },
-  { id: "bloodPact", name: "Blood Pact", icon: "spr_skill_soulAura", illustration: "assets/UI/Soul Aura.png", baseCd: 15, desc: "Lose 20% HP, gain lifesteal", unlock: "always", category: "projectile", tags: ["defense", "utility"] },
-  { id: "bloodAmmo", name: "Blood Ammo", icon: "spr_skill_rapidFire", illustration: "assets/UI/Rapid Fire.png", baseCd: 0, desc: "Basic attacks cost HP and gain damage", unlock: "always", category: "projectile", tags: ["utility"] },
-  { id: "bloodDebt", name: "Blood Debt", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 0, desc: "Blood-risk; kill to recover", unlock: "always", category: "projectile", tags: ["defense", "utility"] },
-  { id: "lockpick", name: "Lockpick", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 8, desc: "Instantly open nearby chest", unlock: "always", category: "projectile", tags: ["utility"] },
-  { id: "shatterPulse", name: "Shatter Pulse", icon: "spr_skill_groundSlam", illustration: "assets/UI/Ground Slam.png", baseCd: 6, desc: "Break nearby urns/breakables", unlock: "always", category: "melee", tags: ["area", "utility"], scalingPrimary: "C" },
-  { id: "trickstersKit", name: "Trickster's Kit", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 12, desc: "Random: move speed, dash charge, mimic loot, or luck bomb", unlock: "always", category: "projectile", tags: ["utility"] },
-  { id: "fortuneCollapse", name: "Fortune Collapse", icon: "spr_skill_voidRift", illustration: "assets/UI/Void Rift.png", baseCd: 25, desc: "Luck to 0 for 10s, gain shield from lost Luck; restore after", unlock: "always", category: "projectile", tags: ["defense", "utility"] },
-  { id: "shadowHeist", name: "Shadow Heist", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 18, desc: "Invisibility 5s; attacks break it; charge after 2 chests opened", unlock: "always", category: "melee", tags: ["utility"] },
-  { id: "loadedDice", name: "Loaded Dice", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 30, desc: "Luck-gambling; random powerful effect", unlock: "always", category: "projectile", tags: ["utility"] },
-  { id: "ancestralShout", name: "Ancestral Shout", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 20, desc: "Nearby allies +10% damage per ancestral spirit", unlock: "always", category: "projectile", tags: ["utility", "area"] },
+  { id: "fireball", name: "Fireball", icon: "spr_skill_fireball", illustration: "assets/UI/Fireball.png", baseCd: 3, desc: "Slow projectile, explodes for area damage + burning ground 3s", unlock: "always", category: "projectile", tags: ["projectile", "ranged", "area"], scalingPrimary: "A", scalingStat1: "brutality", scalingSecondary: "C", scalingStat2: "luck" },
+  { id: "iceShard", name: "Ice Shard", icon: "spr_skill_iceShard", illustration: "assets/UI/Ice Shard.png", baseCd: 2, desc: "Fast piercing projectile, slows 30% for 2s", unlock: "always", category: "projectile", tags: ["projectile", "ranged"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "agility" },
+  { id: "lightningBolt", name: "Lightning Bolt", icon: "spr_skill_lightningBolt", illustration: "assets/UI/Lightning Bolt.png", baseCd: 2.5, desc: "Instant strike, chains to 1 enemy for 50%", unlock: "always", category: "projectile", tags: ["ranged"], scalingPrimary: "A", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "luck" },
+  { id: "rapidFire", name: "Rapid Fire", icon: "spr_skill_rapidFire", illustration: "assets/UI/Rapid Fire.png", baseCd: 8, desc: "3 projectiles/sec at nearest enemy for 3s", unlock: "always", category: "projectile", tags: ["projectile", "ranged"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "A", scalingStat2: "agility" },
+  { id: "shieldBash", name: "Shield Bash", icon: "spr_skill_shieldBash", illustration: "assets/UI/Shield Bash.png", baseCd: 4, desc: "Cone knockback + stun 0.5s", unlock: "always", category: "projectile", tags: ["melee", "crowd_control"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "C", scalingStat2: "vitality" },
+  { id: "healPulse", name: "Heal Pulse", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 10, desc: "Restore 15% max health", unlock: "always", category: "projectile", tags: ["area", "defense", "utility"], healScalingPrimary: "C", healScalingStat1: "vitality" },
+  { id: "iceRain", name: "Ice Rain", icon: "spr_skill_iceRain", illustration: "assets/UI/Ice Rain.png", baseCd: 12, desc: "Ice storm 4s, continuous damage, slow 50%", unlock: "scavengerFull", category: "projectile", tags: ["area", "ranged"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "agility" },
+  { id: "lightningSpear", name: "Lightning Spear", icon: "spr_skill_lightningSpear", illustration: "assets/UI/Lightning Spear.png", baseCd: 8, desc: "Charge 0.5s, piercing spear, stun 1s", unlock: "diff3", category: "projectile", tags: ["projectile", "ranged", "crowd_control"], scalingPrimary: "A", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "agility" },
+  { id: "meteor", name: "Meteor", icon: "spr_skill_meteor", illustration: "assets/UI/Meteor.png", baseCd: 15, desc: "1s delay, massive area damage, burning 5s", unlock: "diff4", category: "projectile", tags: ["area", "ranged"], scalingPrimary: "S", scalingStat1: "brutality", scalingSecondary: "A", scalingStat2: "luck" },
+  { id: "voidRift", name: "Void Rift", icon: "spr_skill_voidRift", illustration: "assets/UI/Void Rift.png", baseCd: 14, desc: "Pull enemies 3s then explode", unlock: "diff5", category: "projectile", tags: ["area", "ranged", "crowd_control"], scalingPrimary: "A", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "luck" },
+  { id: "timeWarp", name: "Time Warp", icon: "spr_skill_timeWarp", illustration: "assets/UI/Time Warp.png", baseCd: 20, desc: "Slow enemies 50% for 4s", unlock: "mastermind", category: "projectile", tags: ["utility", "crowd_control"], scalingPrimary: "B", scalingStat1: "luck", scalingSecondary: "C", scalingStat2: "agility" },
+  { id: "phoenixStrike", name: "Phoenix Strike", icon: "spr_skill_phoenixStrike", illustration: "assets/UI/Phoenix Strike.png", baseCd: 25, desc: "Explosion + 3s invincibility", unlock: "secondWindUsed", category: "projectile", tags: ["area", "defense", "utility"], scalingPrimary: "A", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "vitality" },
+  { id: "chainFrost", name: "Chain Frost", icon: "spr_skill_chainFrost", illustration: "assets/UI/Chain Frost.png", baseCd: 18, desc: "Freeze all enemies 2s", unlock: "iceShard5", category: "projectile", tags: ["area", "crowd_control"], scalingPrimary: "A", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "luck" },
+  { id: "stormCall", name: "Storm Call", icon: "spr_skill_stormCall", illustration: "assets/UI/Storm Call.png", baseCd: 20, desc: "Lightning storm 6s", unlock: "lightningOnlyRun", category: "projectile", tags: ["area", "ranged"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "luck" },
+  { id: "bladeDash", name: "Blade Dash", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 5, desc: "Dash forward damaging all enemies in path", unlock: "always", category: "melee", tags: ["melee", "utility"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "A", scalingStat2: "agility" },
+  { id: "whirlwind", name: "Whirlwind", icon: "spr_skill_whirlwind", illustration: "assets/UI/Whirlwind.png", baseCd: 10, desc: "Spin 2s hitting nearby enemies, move at half speed", unlock: "always", category: "melee", tags: ["melee", "area"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "agility" },
+  { id: "groundSlam", name: "Ground Slam", icon: "spr_skill_groundSlam", illustration: "assets/UI/Ground Slam.png", baseCd: 6, desc: "Shockwave damaging and knocking back nearby enemies", unlock: "always", category: "melee", tags: ["melee", "area", "crowd_control"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "C", scalingStat2: "vitality" },
+  { id: "bladeStorm", name: "Blade Storm", icon: "spr_skill_bladeStorm", illustration: "assets/UI/Blade Storm.png", baseCd: 12, desc: "8 spinning blades bounce off walls, pierce enemies 3s", unlock: "diff2", category: "melee", tags: ["melee", "area"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "agility" },
+  { id: "earthquake", name: "Earthquake", icon: "spr_skill_earthquake", illustration: "assets/UI/Earthquake.png", baseCd: 18, desc: "Map shake 3s, damage and slow all on screen", unlock: "diff4", category: "melee", tags: ["area", "crowd_control"], scalingPrimary: "A", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "vitality" },
+  { id: "frostAura", name: "Frost Aura", icon: "spr_skill_frostAura", illustration: "assets/UI/Frost Aura.png", baseCd: 0, desc: "Toggle: slow nearby 25%, 0.5% HP/s", unlock: "always", category: "aura", auraUpkeep: 0.005, tags: ["aura", "crowd_control"], scalingPrimary: "B", scalingStat1: "vitality", scalingSecondary: "C", scalingStat2: "luck" },
+  { id: "flameAura", name: "Flame Aura", icon: "spr_skill_flameAura", illustration: "assets/UI/Flame Aura.png", baseCd: 0, desc: "Toggle: burn nearby enemies, 0.5% HP/s", unlock: "always", category: "aura", auraUpkeep: 0.005, tags: ["aura", "area"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "luck" },
+  { id: "thunderAura", name: "Thunder Aura", icon: "spr_skill_thunderAura", illustration: "assets/UI/Thunder Aura.png", baseCd: 0, desc: "Toggle: lightning to nearest every 1.5s, 1% HP/s", unlock: "always", category: "aura", auraUpkeep: 0.01, tags: ["aura", "ranged"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "A", scalingStat2: "luck" },
+  { id: "barrierAura", name: "Barrier Aura", icon: "spr_skill_barrierAura", illustration: "assets/UI/Barrier Aura.png", baseCd: 0, desc: "Toggle: -15% damage taken, 1.5% HP/s", unlock: "fortified", category: "aura", auraUpkeep: 0.015, tags: ["aura", "defense", "utility"], scalingPrimary: "C", scalingStat1: "vitality", scalingSecondary: "B", scalingStat2: "brutality" },
+  { id: "soulAura", name: "Soul Aura", icon: "spr_skill_soulAura", illustration: "assets/UI/Soul Aura.png", baseCd: 0, desc: "Toggle: 50% damage to healing, 2% HP/s", unlock: "vampiric50", category: "aura", auraUpkeep: 0.02, tags: ["aura", "defense"], scalingPrimary: "B", scalingStat1: "vitality", scalingSecondary: "B", scalingStat2: "brutality" },
+  { id: "spinningScythe", name: "Spinning Scythe", icon: "spr_skill_bladeStorm", illustration: "assets/UI/Blade Storm.png", baseCd: 6, desc: "Throw scythe forward; returns, heals 10% of damage dealt", unlock: "always", category: "projectile", tags: ["projectile", "melee", "area"], scalingPrimary: "B", scalingStat1: "brutality", healScalingPrimary: "C", healScalingStat1: "vitality" },
+  { id: "lumberjackAssault", name: "Lumberjack Assault", icon: "spr_skill_groundSlam", illustration: "assets/UI/Ground Slam.png", baseCd: 8, desc: "Overhead strike in circle; bonus vs large/miniboss; hitting tree spawns splinters", unlock: "always", category: "melee", tags: ["melee", "area"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "C", scalingStat2: "luck" },
+  { id: "escapePlan", name: "Escape Plan", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 14, desc: "Random teleport within 50px, damage at each; repeats until safe or max limit", unlock: "always", category: "melee", tags: ["utility", "area"], scalingPrimary: "C", scalingStat1: "agility", scalingSecondary: "C", scalingStat2: "luck" },
+  { id: "meteorRain", name: "Meteor Rain", icon: "spr_skill_meteor", illustration: "assets/UI/Meteor.png", baseCd: 18, desc: "Charge up to 5s; meteor field around player, follows you", unlock: "diff4", category: "projectile", tags: ["area", "ranged"], scalingPrimary: "S", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "luck" },
+  { id: "hauntingGhostCharges", name: "Haunting Ghost Charges", icon: "spr_skill_chainFrost", illustration: "assets/UI/Chain Frost.png", baseCd: 0, desc: "Gain charge per 5 kills; spend to summon ghost that slows and explodes after 2s", unlock: "always", category: "projectile", tags: ["area", "crowd_control"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "C", scalingStat2: "luck" },
+  { id: "frenzyProtocol", name: "Frenzy Protocol", icon: "spr_skill_rapidFire", illustration: "assets/UI/Rapid Fire.png", baseCd: 15, desc: "Basic attack auto-fires 5s, +40% attack speed", unlock: "always", category: "projectile", tags: ["utility"], scalingPrimary: "C", scalingStat1: "agility", scalingSecondary: "C", scalingStat2: "brutality" },
+  { id: "spiritBanner", name: "Spirit Banner", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 20, desc: "Summon spirit at location; move and attack speed nearby", unlock: "always", category: "projectile", tags: ["utility", "area"], scalingPrimary: "C", scalingStat1: "vitality", scalingSecondary: "B", scalingStat2: "luck" },
+  { id: "spiderTrap", name: "Spider Trap", icon: "spr_skill_iceShard", illustration: "assets/UI/Ice Shard.png", baseCd: 10, desc: "Dormant trap; spider bite 3s, resets if victim dies during bite", unlock: "always", category: "projectile", tags: ["crowd_control", "area"], scalingPrimary: "C", scalingStat1: "luck", scalingSecondary: "C", scalingStat2: "agility" },
+  { id: "loyalDragons", name: "Loyal Dragons", icon: "spr_skill_phoenixStrike", illustration: "assets/UI/Phoenix Strike.png", baseCd: 22, desc: "2 orbiting dragons, contact damage; spit fireballs on your basic attack", unlock: "diff3", category: "melee", tags: ["melee", "area", "projectile"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "luck" },
+  { id: "blackHole", name: "Black Hole", icon: "spr_skill_voidRift", illustration: "assets/UI/Void Rift.png", baseCd: 16, desc: "Pulls enemies and player", unlock: "diff5", category: "projectile", tags: ["area", "crowd_control"], scalingPrimary: "A", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "luck" },
+  { id: "waveShield", name: "Wave Shield", icon: "spr_skill_shieldBash", illustration: "assets/UI/Shield Bash.png", baseCd: 8, desc: "Orbiting wave knocks back and heals you", unlock: "always", category: "projectile", tags: ["defense", "crowd_control"], scalingPrimary: "C", scalingStat1: "brutality", healScalingPrimary: "C", healScalingStat1: "vitality" },
+  { id: "magicHand", name: "Magic Hand", icon: "spr_skill_voidRift", illustration: "assets/UI/Void Rift.png", baseCd: 12, desc: "Grab enemies in area, move them to location", unlock: "always", category: "projectile", tags: ["crowd_control", "area"], scalingPrimary: "C", scalingStat1: "luck", scalingSecondary: "C", scalingStat2: "vitality" },
+  { id: "purifyingFire", name: "Purifying Fire", icon: "spr_skill_flameAura", illustration: "assets/UI/Flame Aura.png", baseCd: 18, desc: "Lose 5% HP/s 5s, same damage to nearby; then heal 50% of damage, cap 40% max HP", unlock: "always", category: "aura", tags: ["area", "defense"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "C", scalingStat2: "luck", healScalingPrimary: "B", healScalingStat1: "vitality" },
+  { id: "hunterShot", name: "Hunter Shot", icon: "spr_skill_rapidFire", illustration: "assets/UI/Rapid Fire.png", baseCd: 5, desc: "Homing projectile; on hit gain attack speed; basic attacks reduce its CD 0.1s", unlock: "always", category: "projectile", tags: ["projectile", "ranged"], scalingPrimary: "A", scalingStat1: "brutality", scalingSecondary: "A", scalingStat2: "agility" },
+  { id: "assimilativeOrb", name: "Assimilative Orb", icon: "spr_skill_voidRift", illustration: "assets/UI/Void Rift.png", baseCd: 14, desc: "5s orb absorbs projectiles, fires on absorb; explodes on expiry", unlock: "diff4", category: "projectile", tags: ["area", "ranged"], scalingPrimary: "A", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "luck" },
+  { id: "cruelFinisher", name: "Cruel Finisher", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 10, desc: "Usable after 5 basic attacks; massive damage from target missing HP", unlock: "always", category: "melee", tags: ["melee"], scalingPrimary: "S", scalingStat1: "brutality", scalingSecondary: "A", scalingStat2: "luck" },
+  { id: "homingSkullCharges", name: "Homing Skull Charges", icon: "spr_skill_chainFrost", illustration: "assets/UI/Chain Frost.png", baseCd: 0, desc: "Fire homing skull; gain charge per 3 kills, max 3", unlock: "always", category: "projectile", tags: ["projectile", "ranged"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "C", scalingStat2: "luck" },
+  { id: "bloodFrenzy", name: "Blood Frenzy", icon: "spr_skill_rapidFire", illustration: "assets/UI/Rapid Fire.png", baseCd: 12, desc: "Lose 20% HP, gain attack speed", unlock: "always", category: "projectile", tags: ["utility"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "agility" },
+  { id: "bloodSacrifice", name: "Blood Sacrifice", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 20, desc: "Lose 20% HP, reduce cooldown of other skills", unlock: "always", category: "projectile", tags: ["utility"], scalingPrimary: "C", scalingStat1: "vitality", scalingSecondary: "B", scalingStat2: "luck" },
+  { id: "bloodPact", name: "Blood Pact", icon: "spr_skill_soulAura", illustration: "assets/UI/Soul Aura.png", baseCd: 15, desc: "Lose 20% HP, gain lifesteal", unlock: "always", category: "projectile", tags: ["defense", "utility"], scalingPrimary: "B", scalingStat1: "vitality", scalingSecondary: "B", scalingStat2: "brutality" },
+  { id: "bloodAmmo", name: "Blood Ammo", icon: "spr_skill_rapidFire", illustration: "assets/UI/Rapid Fire.png", baseCd: 0, desc: "Basic attacks cost HP and gain damage", unlock: "always", category: "projectile", tags: ["utility"], scalingPrimary: "A", scalingStat1: "brutality", scalingSecondary: "C", scalingStat2: "vitality" },
+  { id: "bloodDebt", name: "Blood Debt", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 0, desc: "Blood-risk; kill to recover", unlock: "always", category: "projectile", tags: ["defense", "utility"], scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "vitality" },
+  { id: "lockpick", name: "Lockpick", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 8, desc: "Instantly open nearby chest", unlock: "always", category: "projectile", tags: ["utility"], scalingPrimary: "C", scalingStat1: "luck", scalingSecondary: "C", scalingStat2: "agility" },
+  { id: "shatterPulse", name: "Shatter Pulse", icon: "spr_skill_groundSlam", illustration: "assets/UI/Ground Slam.png", baseCd: 6, desc: "Break nearby urns/breakables", unlock: "always", category: "melee", tags: ["area", "utility"], scalingPrimary: "C", scalingStat1: "vitality", scalingSecondary: "C", scalingStat2: "luck" },
+  { id: "trickstersKit", name: "Trickster's Kit", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 12, desc: "Random: move speed, dash charge, mimic loot, or luck bomb", unlock: "always", category: "projectile", tags: ["utility"], scalingPrimary: "C", scalingStat1: "luck", scalingSecondary: "A", scalingStat2: "agility" },
+  { id: "fortuneCollapse", name: "Fortune Collapse", icon: "spr_skill_voidRift", illustration: "assets/UI/Void Rift.png", baseCd: 25, desc: "Luck to 0 for 10s, gain shield from lost Luck; restore after", unlock: "always", category: "projectile", tags: ["defense", "utility"], scalingPrimary: "B", scalingStat1: "luck", scalingSecondary: "C", scalingStat2: "vitality" },
+  { id: "shadowHeist", name: "Shadow Heist", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 18, desc: "Invisibility 5s; attacks break it; charge after 2 chests opened", unlock: "always", category: "melee", tags: ["utility"], scalingPrimary: "C", scalingStat1: "agility", scalingSecondary: "C", scalingStat2: "luck" },
+  { id: "loadedDice", name: "Loaded Dice", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 30, desc: "Luck-gambling; random powerful effect", unlock: "always", category: "projectile", tags: ["utility"], scalingPrimary: "C", scalingStat1: "luck", scalingSecondary: "B", scalingStat2: "agility" },
+  { id: "ancestralShout", name: "Ancestral Shout", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 20, desc: "Nearby allies +10% damage per ancestral spirit", unlock: "always", category: "projectile", tags: ["utility", "area"], scalingPrimary: "B", scalingStat1: "vitality", scalingSecondary: "B", scalingStat2: "luck" },
   // Hero-unique skills (only assigned via playable character; not in skill picker)
-  { id: "reaper_scythe", name: "Reveal", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 20, desc: "Reveal and become hostile for 10s: +15% damage and attack speed, heal 1 on kill", unlock: "always", category: "melee", tags: ["melee", "utility"], heroOnly: true },
-  { id: "strider_gust", name: "Gust", icon: "spr_skill_iceShard", illustration: "assets/UI/Ice Shard.png", baseCd: 4, desc: "Wind burst at target location, damages and knocks back", unlock: "always", category: "projectile", tags: ["area", "crowd_control"], heroOnly: true },
-  { id: "panda_focus", name: "Focus", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 12, desc: "Gain +20% damage and +15% damage reduction for 4s", unlock: "always", category: "projectile", tags: ["defense", "utility"], heroOnly: true },
-  { id: "knight_slide", name: "Slide", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 7, desc: "Slide through enemies, damaging and stunning them", unlock: "always", category: "melee", tags: ["melee", "utility", "crowd_control"], heroOnly: true },
-  { id: "scavenger_rush", name: "Rush", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 20, desc: "+20% movement and chest open speed for 10s", unlock: "always", category: "projectile", tags: ["utility"], heroOnly: true }
+  { id: "reaper_scythe", name: "Reveal", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 20, desc: "Reveal and become hostile for 10s: +15% damage and attack speed, heal 1 on kill", unlock: "always", category: "melee", tags: ["melee", "utility"], heroOnly: true, scalingPrimary: "B", scalingStat1: "brutality", healScalingPrimary: "C", healScalingStat1: "vitality" },
+  { id: "strider_gust", name: "Gust", icon: "spr_skill_iceShard", illustration: "assets/UI/Ice Shard.png", baseCd: 4, desc: "Wind burst at target location, damages and knocks back", unlock: "always", category: "projectile", tags: ["area", "crowd_control"], heroOnly: true, scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "agility" },
+  { id: "panda_focus", name: "Focus", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 12, desc: "Gain +20% damage and +15% damage reduction for 4s", unlock: "always", category: "projectile", tags: ["defense", "utility"], heroOnly: true, scalingPrimary: "B", scalingStat1: "vitality", scalingSecondary: "B", scalingStat2: "brutality" },
+  { id: "knight_slide", name: "Slide", icon: "spr_skill_bladeDash", illustration: "assets/UI/Blade Dash.png", baseCd: 7, desc: "Slide through enemies, damaging and stunning them", unlock: "always", category: "melee", tags: ["melee", "utility", "crowd_control"], heroOnly: true, scalingPrimary: "B", scalingStat1: "brutality", scalingSecondary: "B", scalingStat2: "agility" },
+  { id: "scavenger_rush", name: "Rush", icon: "spr_skill_healPulse", illustration: "assets/UI/Heal Pulse.png", baseCd: 20, desc: "+20% movement and chest open speed for 10s", unlock: "always", category: "projectile", tags: ["utility"], heroOnly: true, scalingPrimary: "C", scalingStat1: "agility", scalingSecondary: "C", scalingStat2: "luck" }
 ];
 
 export function isSkillUnlocked(skillDef, game) {

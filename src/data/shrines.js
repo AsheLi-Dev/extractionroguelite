@@ -2,50 +2,56 @@ export const SHRINE_DEFS = [
   {
     id: "purification",
     name: "Shrine of Purification",
-    description: "Removes one chosen standard penalty and one random standard upgrade from your build.",
+    description: "Disabled while permanent basic attack trees are active.",
     icon: "spr_shrine_purification",
     color: "#ffffff",
-    auraColor: "#e0e7ff"
+    auraColor: "#e0e7ff",
+    disabled: true
   },
   {
     id: "chaos",
     name: "Shrine of Chaos",
-    description: "Adds two random standard upgrades, then removes one random upgrade from your build.",
+    description: "Disabled while permanent basic attack trees are active.",
     icon: "spr_shrine_chaos",
     color: "#f59e0b",
-    auraColor: "#fef3c7"
+    auraColor: "#fef3c7",
+    disabled: true
   },
   {
     id: "frenzy",
     name: "Shrine of Frenzy",
-    description: "Remove one chosen upgrade to gain 40% movement speed, 30% attack speed, and 20% XP gained for 30 seconds.",
+    description: "Disabled while permanent basic attack trees are active.",
     icon: "spr_shrine_frenzy",
     color: "#ef4444",
-    auraColor: "#fee2e2"
+    auraColor: "#fee2e2",
+    disabled: true
   },
   {
     id: "ascension",
     name: "Shrine of Ascension",
-    description: "Transforms one random standard upgrade into a random unique upgrade.",
+    description: "Disabled while permanent basic attack trees are active.",
     icon: "spr_shrine_ascension",
     color: "#fbbf24",
-    auraColor: "#fef3c7"
+    auraColor: "#fef3c7",
+    disabled: true
   },
   {
     id: "restoration",
     name: "Shrine of Restoration",
-    description: "Remove one chosen upgrade to restore your health to full maximum.",
+    description: "Disabled while permanent basic attack trees are active.",
     icon: "spr_shrine_restoration",
     color: "#22c55e",
-    auraColor: "#dcfce7"
+    auraColor: "#dcfce7",
+    disabled: true
   },
   {
     id: "trial",
     name: "Shrine of Trial",
-    description: "Remove one chosen upgrade to summon two mini-bosses. Defeat both within 30 seconds to earn 1 Legacy Point.",
+    description: "Disabled while permanent basic attack trees are active.",
     icon: "spr_shrine_trial",
     color: "#7f1d1d",
-    auraColor: "#fee2e2"
+    auraColor: "#fee2e2",
+    disabled: true
   }
 ];
 

@@ -1,7 +1,29 @@
 "use strict";
 
-const { describe, it } = require("node:test");
+const { beforeEach, describe, it } = require("node:test");
 const assert = require("node:assert");
+
+function createMemoryLocalStorage() {
+  const store = new Map();
+  return {
+    getItem(key) {
+      return store.has(key) ? store.get(key) : null;
+    },
+    setItem(key, value) {
+      store.set(String(key), String(value));
+    },
+    removeItem(key) {
+      store.delete(String(key));
+    },
+    clear() {
+      store.clear();
+    }
+  };
+}
+
+beforeEach(() => {
+  global.localStorage = createMemoryLocalStorage();
+});
 
 describe("Elemental Shot – evolution state / profile", () => {
   it("evolution state: first and second set formId", async () => {
@@ -340,5 +362,59 @@ describe("Elemental Shot – evolution state and profile wiring", () => {
     const p2 = evolution.getElementalShotProfile(state);
     assert.strictEqual(p1.formId, p2.formId);
     assert.strictEqual(p1.formId, "storm_circle");
+  });
+
+  it("progression-backed projectile capstones hydrate into the expected evolution form", async () => {
+    const progression = await import("../src/data/basic-attack-progression.js");
+    const evolution = await import("../src/data/elemental-shot-evolution.js");
+    progression.addBasicAttackXp("projectile", progression.getXpForBasicAttackLevel(30));
+    for (let i = 0; i < 5; i += 1) {
+      assert.strictEqual(
+        progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:elemental_damage"),
+        true
+      );
+    }
+    for (let i = 0; i < 4; i += 1) {
+      assert.strictEqual(
+        progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:burning_power"),
+        true
+      );
+    }
+    for (let i = 0; i < 4; i += 1) {
+      assert.strictEqual(
+        progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:burn_hunter"),
+        true
+      );
+    }
+    for (let i = 0; i < 5; i += 1) {
+      assert.strictEqual(
+        progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:attack_speed"),
+        true
+      );
+    }
+    for (let i = 0; i < 2; i += 1) {
+      assert.strictEqual(
+        progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:projectile_speed"),
+        true
+      );
+    }
+    assert.strictEqual(
+      progression.purchaseBasicAttackNode("projectile", "projectile:evolution:first:damage"),
+      true
+    );
+    assert.strictEqual(
+      progression.purchaseBasicAttackNode("projectile", "projectile:evolution:second:damage:damage"),
+      true
+    );
+
+    const runtime = progression.buildRunAttackStateFromProgress("projectile");
+    const state = evolution.getElementalShotEvolutionState(runtime);
+    const profile = evolution.getElementalShotProfile(state);
+
+    assert.strictEqual(state.first, "damage");
+    assert.strictEqual(state.second, "damage");
+    assert.strictEqual(state.formId, "damage_damage");
+    assert.strictEqual(profile.formId, "meteorfall");
+    assert.strictEqual(profile.attackMode, "meteor");
   });
 });

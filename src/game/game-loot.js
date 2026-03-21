@@ -4,7 +4,6 @@
 
 import { ENEMY_TYPES, UNDEAD_HERO_TYPES, Enemy } from '../entities/enemy.js';
 import { LootItem } from '../entities/loot.js';
-import { SearchableProp } from '../entities/searchable-prop.js';
 import { BLESSING_DEFS } from '../data/cubes-data.js';
 import { HUMAN_SQUAD_DROP, SQUAD_WIPE_BONUS } from '../data/human-squad-data.js';
 import { MODIFIER_CUBES, UPGRADE_CUBES, LEGENDARY_CUBES } from '../data/cubes-data.js';
@@ -154,28 +153,23 @@ export function applyGameLootMixin(Game) {
         ? "elite"
         : (enemy.enemyTier === "elite" || enemy.isElite || isSpecialTier ? "elite" : "mob");
       const goldAmount = rollGoldDrop(goldType);
-      const useMiniBossChest = !!(enemy.enemyTier === "miniBoss" || enemy.enemyTier === "miniboss" || enemy.isMiniBoss);
-      const queuedMiniBossLootDefs = [];
+      const isMiniBossTier = !!(enemy.enemyTier === "miniBoss" || enemy.enemyTier === "miniboss" || enemy.isMiniBoss);
       const emitGold = (amount) => {
         const value = Math.max(0, Number(amount) || 0);
         if (value <= 0) return;
-        if (useMiniBossChest) queuedMiniBossLootDefs.push({ type: "Gold", name: `${value} Gold`, goldAmount: value });
-        else this.lootSystem.spawnGoldAt(ex, ey, value);
+        this.lootSystem.spawnGoldAt(ex, ey, value);
       };
       const emitCube = (cubeKey) => {
         if (!cubeKey) return;
-        if (useMiniBossChest) queuedMiniBossLootDefs.push({ type: "Cube", name: cubeKey, cubeKey });
-        else this.lootSystem.spawnCubeAt(ex, ey, cubeKey);
+        this.lootSystem.spawnCubeAt(ex, ey, cubeKey);
       };
       const emitEquipment = (def) => {
         if (!def) return;
-        if (useMiniBossChest) queuedMiniBossLootDefs.push(def);
-        else this.lootSystem.spawnEquipmentAt(ex, ey, def);
+        this.lootSystem.spawnEquipmentAt(ex, ey, def);
       };
       const emitSpirit = (def) => {
         if (!def) return;
-        if (useMiniBossChest) queuedMiniBossLootDefs.push(def);
-        else this.lootSystem.spawnAncestorSpiritAt(ex, ey, def);
+        this.lootSystem.spawnAncestorSpiritAt(ex, ey, def);
       };
       emitGold(goldAmount);
       const isMiniBoss = !!(enemy.enemyTier === "miniBoss" || enemy.enemyTier === "miniboss" || enemy.isMiniBoss || enemy.isFiery || enemy.isCursedChestGuardian);
@@ -237,7 +231,7 @@ export function applyGameLootMixin(Game) {
       if (xpFromEnemy > 0) {
         this.lootSystem.spawnXpOrbAt(ex, ey, "small", xpFromEnemy);
       }
-      this.tryDropCubeFromEnemy(enemy, useMiniBossChest ? emitCube : null);
+      this.tryDropCubeFromEnemy(enemy);
 
       const tier = enemy.enemyTier || (enemy.isMiniBoss ? "miniBoss" : (enemy.isElite || enemy.isSpecial) ? "elite" : "minion");
       const types = ["Helmet", "Boots", "Body Armour", "Weapon", "Ring"];
@@ -377,48 +371,63 @@ export function applyGameLootMixin(Game) {
         const spiritDef = rollRandomAncestorSpiritLootDefByRarity(spiritRarity);
         if (spiritDef) emitSpirit(spiritDef);
       }
-      const bloodDropChance = isBoss ? 0.05 : (useMiniBossChest ? 0.01 : 0);
+      const bloodDropChance = isBoss ? 0.05 : (isMiniBossTier ? 0.01 : 0);
       if (bloodDropChance > 0 && Math.random() < bloodDropChance) {
         const bloodDef = { ...BLOOD_OF_THE_LAMB_LOOT_DEF };
-        if (useMiniBossChest) queuedMiniBossLootDefs.push(bloodDef);
-        else this.lootSystem.spawnEquipmentAt(ex, ey, bloodDef);
-      }
-      if (useMiniBossChest && queuedMiniBossLootDefs.length > 0) {
-        this.searchableProps = this.searchableProps || [];
-        const chestId = this.searchablePropNextId ?? 1;
-        const chest = new SearchableProp(chestId, ex - 16, ey - 16, "chest");
-        chest.isMiniBossLootChest = true;
-        const baseSearchTime = Number(chest?.def?.searchTime) || 0;
-        if (baseSearchTime > 0) {
-          chest.searchTimeOverride = baseSearchTime / 3;
-        }
-        chest.pendingLootDefs = queuedMiniBossLootDefs.map((d) => ({ ...d }));
-        this.searchableProps.push(chest);
-        this.searchablePropNextId = chestId + 1;
-      }
-      if (typeof this.tryRollModDropForEnemy === "function") {
-        this.tryRollModDropForEnemy(enemy);
+        this.lootSystem.spawnEquipmentAt(ex, ey, bloodDef);
       }
       return martyrMinions;
     },
 
+    formatLootPickupFeedLine(lootItem) {
+      if (!lootItem) return "";
+      if (lootItem.type === "Cube" && lootItem.cubeKey) {
+        return `Picked up: ${lootItem.name || lootItem.cubeKey}`;
+      }
+      if (lootItem.type === "Ancestor Spirit" && lootItem.spiritDefId) {
+        return `Spirit: ${lootItem.name || lootItem.spiritDefId}`;
+      }
+      if (lootItem.type === "HealingOrb") return "Picked up: Healing Orb";
+      if (lootItem.type === "LifeOrb") return "Picked up: Life Orb";
+      if (lootItem.type === "LifeFlask") return "Picked up: Life Flask";
+      if (lootItem.type === "Precious" && lootItem.name) return `Picked up: ${lootItem.name}`;
+      if (lootItem.name) {
+        const r = lootItem.rarity ? String(lootItem.rarity) : "";
+        const tag = r && r !== "common" ? ` (${r})` : "";
+        return `Picked up: ${lootItem.name}${tag}`;
+      }
+      return `Picked up: ${lootItem.type || "item"}`;
+    },
+
+    notifyLootPickupFeed(lootItem) {
+      if (!lootItem) return;
+      if (lootItem.type === "Gold" && lootItem.goldAmount > 0) return;
+      if (lootItem.type === "XpOrb" && lootItem.xpAmount > 0) return;
+      const text = this.formatLootPickupFeedLine(lootItem);
+      if (text) this.pushLootPickupFeedMessage(text);
+    },
+
+    pushLootPickupFeedMessage(text) {
+      const el = typeof document !== "undefined" ? document.getElementById("loot-pickup-feed") : null;
+      if (!el || !text) return;
+      const line = document.createElement("div");
+      line.className = "loot-pickup-feed__line";
+      line.textContent = text;
+      el.appendChild(line);
+      const maxLines = 8;
+      while (el.children.length > maxLines) {
+        el.removeChild(el.firstChild);
+      }
+      window.setTimeout(() => {
+        line.classList.add("loot-pickup-feed__line--fade");
+        window.setTimeout(() => {
+          if (line.parentNode === el) el.removeChild(line);
+        }, 380);
+      }, 4200);
+    },
+
     handleLootPickup(lootItem) {
       handleAncestorOnLootPickup(this, lootItem);
-      if (lootItem.type === "ModCard" && lootItem.modId) {
-        const added = this.addModToInventory(lootItem.modId);
-        if (added) {
-          if (typeof playSfx === "function") playSfx("collectGold");
-        } else {
-          if (typeof this.showModPackFullToast === "function") {
-            this.showModPackFullToast(lootItem.modId);
-          }
-          const pos = lootItem.position || lootItem.displayPosition;
-          if (pos && typeof this.spawnModDrop === "function") {
-            this.spawnModDrop(pos.x, pos.y, lootItem.modId);
-          }
-        }
-        return;
-      }
       if (lootItem.type === "Gold" && lootItem.goldAmount > 0) {
         addGold(this, lootItem.goldAmount, "loot_pickup", {});
         if (typeof playSfx === "function") playSfx("collectGold");
@@ -442,6 +451,7 @@ export function applyGameLootMixin(Game) {
         }
         if (this.hasUpgradeCard("secureFooting")) this.swiftFeetTimer = 2.0;
         this.updateInventoryUI();
+        this.notifyLootPickupFeed(lootItem);
         return;
       }
       if (lootItem.type === "LifeOrb" || lootItem.type === "LifeFlask") {
@@ -451,6 +461,7 @@ export function applyGameLootMixin(Game) {
         if (lootItem.type === "LifeOrb" && typeof this.showNotification === "function") {
           this.showNotification("Life Orb", `Recovered ${healAmount} HP.`);
         }
+        this.notifyLootPickupFeed(lootItem);
         return;
       }
       if (lootItem.type === "Ancestor Spirit" && lootItem.spiritDefId) {
@@ -463,6 +474,7 @@ export function applyGameLootMixin(Game) {
         }
         this.updateInventoryUI();
         if (this.tutorialSystem) this.tutorialSystem.onLootCollected();
+        this.notifyLootPickupFeed(lootItem);
         return;
       }
       if (lootItem.type === "HealingOrb") {
@@ -475,6 +487,7 @@ export function applyGameLootMixin(Game) {
         if (typeof this.showNotification === "function") {
           this.showNotification("Healing Orb", `Recovered ${healAmount} HP.`);
         }
+        this.notifyLootPickupFeed(lootItem);
         return;
       }
       const isBloodOfTheLamb = lootItem.type === "Precious" && lootItem.preciousId === RITE_ENTRY_ITEM_PRECIOUS_ID;
@@ -513,6 +526,7 @@ export function applyGameLootMixin(Game) {
       };
       ensureItemVessels(newItem);
 
+      this.notifyLootPickupFeed(lootItem);
       this.inventory.push(newItem);
       this.triggerEquipmentModifierEvent?.("item_picked_up", {
         item: newItem,

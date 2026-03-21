@@ -3,11 +3,11 @@
 // This module adds methods to Game.prototype when imported
 
 import { refreshMainMenuLP } from '../ui/main-menu.js';
-import { loadSavedCharacters, addConquerorBonusItem, addToLegacyCubeStash, addToLegacyAncestorStash, ETERNAL_ITEMS_ON_DEFEAT_KEY, SAVE_KEY, updateSavedCharacter } from '../ui/save-system.js';
-import { getDefaultAttributes, WOUND_MAX_STACKS } from '../data/character-attributes.js';
-import { addGlobalTalentCrystal, getHighestAttributeCrystalReward } from '../data/crystals.js';
+import { addConquerorBonusItem, addToLegacyCubeStash, addToLegacyAncestorStash, ETERNAL_ITEMS_ON_DEFEAT_KEY } from '../ui/save-system.js';
+import { addBasicAttackXp, grantWeaponArtRunRewards, hasPendingWeaponArtChoices } from '../data/basic-attack-progression.js';
 import { renderHallOfChampions } from '../ui/hall-of-champions.js';
 import { hasTalent } from '../data/talents.js';
+import { openWeaponArtDraftOverlay } from '../ui/weapon-art-draft-ui.js';
 import {
   getModifierPoolForType,
   LOCAL_STAT_SCALE_MOD_IDS,
@@ -18,15 +18,32 @@ import { getGold } from './economy.js';
 import { handleArchivistOnExtraction, handleHeirloomOnDefeat } from './ring-effects.js';
 import { stopBgm } from '../audio.js';
 
-function formatCrystalRewardText(reward) {
-  if (!reward?.crystalId || !reward?.attributeId) return "Crystal Reward: None";
-  const crystalName = String(reward.crystalId).charAt(0).toUpperCase() + String(reward.crystalId).slice(1);
-  const attributeName = String(reward.attributeId).charAt(0).toUpperCase() + String(reward.attributeId).slice(1);
-  return `Crystal Reward: +1 ${crystalName} Crystal (${attributeName})`;
-}
-
 export function applyGameVictoryMixin(Game) {
   Object.assign(Game.prototype, {
+    persistBasicAttackXpOnRunEnd(summary = {}) {
+      if (this._basicAttackXpPersisted) return null;
+      const attackType = this.attackType || null;
+      const xp = Math.max(0, Number(this.runAttackXpEarned) || 0);
+      this._basicAttackXpPersisted = true;
+      const next = attackType && xp > 0 ? addBasicAttackXp(attackType, xp) : null;
+      const tokenRewards = grantWeaponArtRunRewards({
+        difficulty: this.difficulty,
+        mapsCleared: this.visitedMaps?.size || 0,
+        enemiesKilled: this.enemiesKilled || 0,
+        victory: !!summary?.victory,
+        bossKill: !!summary?.bossKill
+      });
+      this.attackProgressLevel = next?.level ?? this.attackProgressLevel;
+      this.attackProgressXp = next?.xp ?? this.attackProgressXp;
+      this.attackProgressPendingPicks = next?.pendingPickCount ?? this.attackProgressPendingPicks;
+      this.lastWeaponArtTokenRewards = tokenRewards?.rewards || {};
+      this.lastWeaponArtTokenInventory = tokenRewards?.inventory || null;
+      if (next) {
+        next.tokenRewards = tokenRewards?.rewards || {};
+      }
+      return next;
+    },
+
     transferRunCubesToLegacyVaultOnExtraction() {
       if (this._extractionCubesTransferred) return;
       const cubes = this.cubeInventory || {};
@@ -103,6 +120,7 @@ export function applyGameVictoryMixin(Game) {
     },
 
     showGameOver() {
+      this.persistBasicAttackXpOnRunEnd({ victory: false, bossKill: false });
       handleHeirloomOnDefeat(this);
       if (typeof this.transferVaultMasterSecuredItemsOnDeath === "function") {
         this.transferVaultMasterSecuredItemsOnDeath();
@@ -125,18 +143,6 @@ export function applyGameVictoryMixin(Game) {
         } catch (_) {}
       }
 
-      const charIndex = this.runConfig?.selectedCharacterIndex;
-      if (charIndex != null && typeof charIndex === "number") {
-        const saved = loadSavedCharacters();
-        const char = saved[charIndex];
-        if (char && !char.dead) {
-          const currentWounds = Math.max(0, Number(char.wounds) || 0);
-          const newWounds = Math.min(WOUND_MAX_STACKS, currentWounds + 1);
-          const isDead = newWounds >= WOUND_MAX_STACKS;
-          updateSavedCharacter(charIndex, { wounds: newWounds, dead: isDead });
-        }
-      }
-      
       // Update game over panel stats
       if (this.gameOverMapsEl) {
         this.gameOverMapsEl.textContent = this.visitedMaps.size;
@@ -165,27 +171,31 @@ export function applyGameVictoryMixin(Game) {
         this.gameOverEl.style.padding = '0';
         this.gameOverEl.style.zIndex = '60';
       }
+      if (hasPendingWeaponArtChoices()) {
+        openWeaponArtDraftOverlay({ preferredAttackType: this.attackType });
+      }
     },
 
     showVictory() {
+      this.persistBasicAttackXpOnRunEnd({ victory: true, bossKill: true });
       this.gameOver = true;
       const el = document.getElementById("victory-overlay");
       if (el) {
         el.classList.remove("hidden");
         this.populateVictorySummary();
       }
+      if (hasPendingWeaponArtChoices()) {
+        openWeaponArtDraftOverlay({ preferredAttackType: this.attackType });
+      }
     },
 
     populateVictorySummary() {
       const gold = getGold(this);
-      const reward = this._previewTalentCrystalReward
-        || getHighestAttributeCrystalReward(this.runCharacterAttributes || this.runConfig?.selectedCharacter?.attributes || null);
-      this._previewTalentCrystalReward = reward || null;
 
       const goldEl = document.getElementById("victory-gold");
       if (goldEl) goldEl.textContent = `Gold: ${gold}`;
       const crystalRewardEl = document.getElementById("victory-crystal-reward");
-      if (crystalRewardEl) crystalRewardEl.textContent = formatCrystalRewardText(reward);
+      if (crystalRewardEl) crystalRewardEl.textContent = "Each level now grants 1 attribute point and 1 talent point.";
 
       const equippedEl = document.getElementById("victory-equipped");
       const statsEl = document.getElementById("victory-stats");
@@ -249,60 +259,13 @@ export function applyGameVictoryMixin(Game) {
       }
     },
 
-    grantTalentCrystalOnExtraction() {
-      if (this._extractionTalentCrystalGranted) return null;
-      const reward = this._previewTalentCrystalReward
-        || getHighestAttributeCrystalReward(this.runCharacterAttributes || this.runConfig?.selectedCharacter?.attributes || null);
-      if (!reward?.crystalId) return null;
-      addGlobalTalentCrystal(reward.crystalId, 1);
-      this._previewTalentCrystalReward = reward;
-      this._extractionTalentCrystalGranted = true;
-      return reward;
-    },
-
     saveCharacterAndReturnToMenu() {
+      this.persistBasicAttackXpOnRunEnd({ victory: true, bossKill: true });
       handleArchivistOnExtraction(this);
       this.applyCuratorCubeUpgradeOnExtraction();
       this.applyLootTranscendenceOnExtraction();
-      this.grantTalentCrystalOnExtraction();
       this.transferRunCubesToLegacyVaultOnExtraction();
       this.transferRunAncestorsToLegacyVaultOnExtraction();
-      const nameInput = document.getElementById("victory-char-name");
-      const name = (nameInput && nameInput.value.trim()) || "Champion";
-      const saveData = {
-        name,
-        level: this.level,
-        difficulty: this.difficulty,
-        attributes: getDefaultAttributes(),
-        wounds: 0,
-        dead: false,
-        talents: [],
-        equipment: JSON.parse(JSON.stringify(this.equipment)),
-        inventory: JSON.parse(JSON.stringify(this.inventory)),
-        cubeInventory: JSON.parse(JSON.stringify(this.cubeInventory)),
-        stats: { ...this.currentStats },
-        savedAt: Date.now()
-      };
-      const saved = loadSavedCharacters();
-      const charIndex = this.runConfig?.selectedCharacterIndex;
-      if (charIndex != null && typeof charIndex === "number" && saved[charIndex] && !saved[charIndex].dead) {
-        const char = saved[charIndex];
-        const newWounds = Math.max(0, (Number(char.wounds) || 0) - 1);
-        updateSavedCharacter(charIndex, {
-          name,
-          level: this.level,
-          difficulty: this.difficulty,
-          equipment: saveData.equipment,
-          inventory: saveData.inventory,
-          cubeInventory: saveData.cubeInventory,
-          stats: saveData.stats,
-          savedAt: saveData.savedAt,
-          wounds: newWounds
-        });
-      } else {
-        saved.push(saveData);
-        localStorage.setItem(SAVE_KEY, JSON.stringify(saved));
-      }
       this.destroy();
       stopBgm();
       document.getElementById("victory-overlay")?.classList.add("hidden");
@@ -316,7 +279,6 @@ export function applyGameVictoryMixin(Game) {
       document.querySelector(".game-root")?.classList.add("hidden");
       refreshMainMenuLP();
       document.getElementById("pause-toggle")?.classList.add("hidden");
-      document.getElementById("mod-screen-button")?.classList.add("hidden");
       document.getElementById("dev-toggle")?.classList.add("hidden");
       renderHallOfChampions();
     }

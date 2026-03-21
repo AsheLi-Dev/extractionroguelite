@@ -1,18 +1,186 @@
 // -------- Skill Library UI --------
 
 import { escapeHtml } from '../utils.js';
-import { SKILL_DEFS, MODIFICATION_CARD_DEFS, MODIFICATION_CARD_CATEGORIES } from '../data/skills.js';
+import {
+  SKILL_DEFS,
+  MODIFICATION_CARD_DEFS,
+  MODIFICATION_CARD_CATEGORIES,
+  previewSkillLibraryHitDamage
+} from '../data/skills.js';
+import { META_ATTRIBUTES } from '../data/character-attributes.js';
+import { CRYSTAL_TYPES } from '../data/crystals.js';
+import { loadGlobalPlayerProfile } from './save-system.js';
 import {
   getXpForSkillLevel, getSkillLevels, getSkillLevel, getSkillXp,
   SKILL_MAX_LEVEL, getModSlotsForSkillLevel,
   getSkillModSockets, setSkillModSockets,
   getSelectedRunSkills, setSelectedRunSkills,
   getAvailableSkillSlots,
+  DEMO_BUILD,
 } from '../data/constants.js';
 const SKILL_SLOT_UNLOCK = { 1: 0, 2: 1, 3: 3, 4: 5 };
 
 let skillLibraryPickerTarget = null;
 let selectedRunSlot = -1;
+let skillLibraryDetailHideTimer = null;
+
+const DEMO_SKILL_LIBRARY_IDS = new Set([
+  "fireball",
+  "rapidFire",
+  "groundSlam",
+  "healPulse",
+  "hunterShot",
+  "earthquake",
+  "whirlwind",
+  "cruelFinisher"
+]);
+
+function getVisibleSkillDefs() {
+  if (!DEMO_BUILD) return SKILL_DEFS;
+  return SKILL_DEFS.filter((s) => DEMO_SKILL_LIBRARY_IDS.has(String(s?.id || "")));
+}
+
+function findVisibleSkillDefById(skillId) {
+  const id = String(skillId || "");
+  if (!id) return null;
+  const visible = getVisibleSkillDefs();
+  return visible.find((s) => s.id === id) || null;
+}
+
+function getStatDisplayName(statId) {
+  const m = META_ATTRIBUTES.find((a) => a.id === statId);
+  return m ? m.name : statId.charAt(0).toUpperCase() + statId.slice(1);
+}
+
+function getStatColor(statId) {
+  const t = CRYSTAL_TYPES.find((c) => c.attributeId === statId);
+  return t?.color || "#e2e8f0";
+}
+
+function formatDamageScalingHtml(skillDef) {
+  const parts = [];
+  if (skillDef.scalingPrimary) {
+    const sid = skillDef.scalingStat1 || "brutality";
+    parts.push(
+      `<span class="skill-library-stat-name" style="color:${escapeHtml(getStatColor(sid))}">${escapeHtml(getStatDisplayName(sid))}</span> <span class="skill-library-tier">${escapeHtml(skillDef.scalingPrimary)}</span>`
+    );
+  }
+  if (skillDef.scalingSecondary) {
+    const sid = skillDef.scalingStat2 || "agility";
+    parts.push(
+      `<span class="skill-library-stat-name" style="color:${escapeHtml(getStatColor(sid))}">${escapeHtml(getStatDisplayName(sid))}</span> <span class="skill-library-tier">${escapeHtml(skillDef.scalingSecondary)}</span>`
+    );
+  }
+  return parts.length
+    ? parts.join(' <span class="skill-library-detail-sep">·</span> ')
+    : "";
+}
+
+function formatHealScalingHtml(skillDef) {
+  const parts = [];
+  if (skillDef.healScalingPrimary) {
+    const sid = skillDef.healScalingStat1 || "vitality";
+    parts.push(
+      `<span class="skill-library-stat-name" style="color:${escapeHtml(getStatColor(sid))}">${escapeHtml(getStatDisplayName(sid))}</span> <span class="skill-library-tier">${escapeHtml(skillDef.healScalingPrimary)}</span>`
+    );
+  }
+  if (skillDef.healScalingSecondary) {
+    const sid = skillDef.healScalingStat2 || "luck";
+    parts.push(
+      `<span class="skill-library-stat-name" style="color:${escapeHtml(getStatColor(sid))}">${escapeHtml(getStatDisplayName(sid))}</span> <span class="skill-library-tier">${escapeHtml(skillDef.healScalingSecondary)}</span>`
+    );
+  }
+  return parts.length
+    ? parts.join(' <span class="skill-library-detail-sep">·</span> ')
+    : "";
+}
+
+function buildSkillLibraryDetailHtml(skillDef, profile) {
+  const attrs = profile?.attributes || {};
+  const desc = escapeHtml(skillDef.desc || "");
+  const previewDmg = previewSkillLibraryHitDamage(skillDef, attrs);
+  let body = desc;
+  if (previewDmg != null) {
+    body += ` <strong class="skill-library-detail-dmg">Damage: ${previewDmg}.</strong>`;
+  } else {
+    body +=
+      ' <span class="skill-library-detail-muted">No direct attack damage scaling (utility, healing, or fixed effects).</span>';
+  }
+  const dmgScale = formatDamageScalingHtml(skillDef);
+  const healScale = formatHealScalingHtml(skillDef);
+  let extra = "";
+  if (dmgScale) {
+    extra += `<div class="skill-library-detail-scaling"><span class="skill-library-detail-label">Damage scaling:</span> ${dmgScale}</div>`;
+  }
+  if (healScale) {
+    extra += `<div class="skill-library-detail-scaling"><span class="skill-library-detail-label">Heal scaling:</span> ${healScale}</div>`;
+  }
+  return `<p class="skill-library-detail-text">${body}</p>${extra}`;
+}
+
+function positionSkillLibraryDetailPanel(panel, anchorRect) {
+  const pad = 10;
+  panel.classList.remove("hidden");
+  panel.style.visibility = "hidden";
+  panel.style.display = "block";
+  const w = panel.offsetWidth || 280;
+  const h = panel.offsetHeight || 100;
+  let left = anchorRect.right + pad;
+  let top = anchorRect.top;
+  if (left + w > window.innerWidth - 12) {
+    left = anchorRect.left - w - pad;
+  }
+  if (left < 12) left = 12;
+  if (top + h > window.innerHeight - 12) {
+    top = Math.max(12, window.innerHeight - h - 12);
+  }
+  panel.style.left = `${Math.round(left)}px`;
+  panel.style.top = `${Math.round(top)}px`;
+  panel.style.visibility = "visible";
+  panel.setAttribute("aria-hidden", "false");
+}
+
+function showSkillLibrarySkillDetail(skillDef, anchorEl) {
+  const panel = document.getElementById("skill-library-skill-detail");
+  if (!panel || !skillDef || !anchorEl) return;
+  if (skillLibraryDetailHideTimer) {
+    clearTimeout(skillLibraryDetailHideTimer);
+    skillLibraryDetailHideTimer = null;
+  }
+  const profile = loadGlobalPlayerProfile();
+  panel.innerHTML = buildSkillLibraryDetailHtml(skillDef, profile);
+  requestAnimationFrame(() => {
+    const rect = anchorEl.getBoundingClientRect();
+    positionSkillLibraryDetailPanel(panel, rect);
+  });
+}
+
+function hideSkillLibrarySkillDetail() {
+  const panel = document.getElementById("skill-library-skill-detail");
+  if (!panel) return;
+  skillLibraryDetailHideTimer = setTimeout(() => {
+    panel.classList.add("hidden");
+    panel.innerHTML = "";
+    panel.setAttribute("aria-hidden", "true");
+    skillLibraryDetailHideTimer = null;
+  }, 80);
+}
+
+function forceHideSkillLibrarySkillDetail() {
+  if (skillLibraryDetailHideTimer) {
+    clearTimeout(skillLibraryDetailHideTimer);
+    skillLibraryDetailHideTimer = null;
+  }
+  const panel = document.getElementById("skill-library-skill-detail");
+  if (panel) {
+    panel.classList.add("hidden");
+    panel.innerHTML = "";
+    panel.style.left = "";
+    panel.style.top = "";
+    panel.style.visibility = "";
+    panel.setAttribute("aria-hidden", "true");
+  }
+}
 
 function isHubActive() {
   return document.body.classList.contains("home-base-active");
@@ -64,6 +232,7 @@ const BUILD_PATHS = [
 ];
 
 export function openSkillLibrary() {
+  forceHideSkillLibrarySkillDetail();
   renderSkillLibrary();
   const overlay = document.getElementById("skill-library-overlay");
   const mainMenu = document.getElementById("main-menu");
@@ -72,6 +241,7 @@ export function openSkillLibrary() {
 }
 
 export function closeSkillLibrary() {
+  forceHideSkillLibrarySkillDetail();
   const overlay = document.getElementById("skill-library-overlay");
   if (overlay) overlay.classList.add("hidden");
   const mainMenu = document.getElementById("main-menu");
@@ -109,7 +279,7 @@ function renderSkillLibrarySlotsPanel() {
     div.className = "skill-library-slot" + (selectedSkills[i] ? " filled" : "") + (selectedRunSlot === i ? " selected" : "") + (locked ? " locked" : "");
     div.dataset.runSlot = String(i);
     const skillId = selectedSkills[i];
-    const skillDef = skillId ? SKILL_DEFS.find((s) => s.id === skillId) : null;
+    const skillDef = skillId ? findVisibleSkillDefById(skillId) : null;
     const iconContent = skillDef && skillDef.illustration
       ? `<img class="skill-library-slot-illustration" src="${escapeHtml(skillDef.illustration)}" alt="">`
       : skillDef ? `<span style="font-size:20px">${skillDef.icon}</span>` : null;
@@ -249,6 +419,10 @@ function getCardNameById(id) {
 function renderSkillLibraryBuildPathsPanel() {
   const el = document.getElementById("skill-library-build-paths");
   if (!el) return;
+  if (DEMO_BUILD) {
+    el.innerHTML = "";
+    return;
+  }
 
   const html = BUILD_PATHS.map((path) => {
     const skills = path.skills.map((id) => escapeHtml(getSkillNameById(id))).join(", ");
@@ -272,11 +446,12 @@ export function renderSkillLibrary() {
 
   const levels = getSkillLevels();
   const sockets = getSkillModSockets();
-  const skillIds = SKILL_DEFS.map((s) => s.id);
+  const visibleSkillDefs = getVisibleSkillDefs();
+  const skillIds = visibleSkillDefs.map((s) => s.id);
 
   let html = '<div class="skill-library-list">';
   for (const skillId of skillIds) {
-    const def = SKILL_DEFS.find((s) => s.id === skillId);
+    const def = visibleSkillDefs.find((s) => s.id === skillId);
     if (!def) continue;
     const level = getSkillLevel(skillId);
     const xp = getSkillXp(skillId);
@@ -326,6 +501,14 @@ export function renderSkillLibrary() {
   skillsPanel.innerHTML = html;
 
   skillsPanel.querySelectorAll(".skill-library-card").forEach((cardEl) => {
+    cardEl.addEventListener("mouseenter", () => {
+      const sid = cardEl.dataset.skillId;
+      const def = sid ? findVisibleSkillDefById(sid) : null;
+      if (def) showSkillLibrarySkillDetail(def, cardEl);
+    });
+    cardEl.addEventListener("mouseleave", () => {
+      hideSkillLibrarySkillDetail();
+    });
     cardEl.addEventListener("click", (e) => {
       if (e.target.closest(".skill-library-mod-slot") || e.target.closest(".skill-library-remove-all-btn")) return;
       if (selectedRunSlot < 0) return;

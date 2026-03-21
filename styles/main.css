@@ -34,6 +34,7 @@
 }
 
 #talent-tree-close,
+#basic-attack-tree-close,
 #skill-library-close,
 #instructions-close,
 #options-close,
@@ -60,6 +61,7 @@
 }
 
 #talent-tree-close:hover,
+#basic-attack-tree-close:hover,
 #skill-library-close:hover,
 #instructions-close:hover,
 #options-close:hover,
@@ -71,4 +73,3 @@
 #friends-close-btn:hover {
   filter: brightness(1.15);
 }
-

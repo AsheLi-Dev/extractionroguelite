@@ -240,7 +240,8 @@ export function applyGameEnemyAttacksMixin(Game) {
         color,
         executeOpts,
         sourceEnemy,
-        useHitbox: opts.useHitbox === true
+        useHitbox: opts.useHitbox === true,
+        aimAtPlayerOnFire: opts.aimAtPlayerOnFire === true
       });
     },
 
@@ -372,11 +373,23 @@ export function applyGameEnemyAttacksMixin(Game) {
       if (this.delayedEnemyProjectiles?.length) {
         this.delayedEnemyProjectiles = this.delayedEnemyProjectiles.filter((p) => {
           if (now < p.at) return true;
+          let vx = p.vx;
+          let vy = p.vy;
+          if (p.aimAtPlayerOnFire && this.player) {
+            const px = this.player.position.x + this.player.size / 2;
+            const py = this.player.position.y + this.player.size / 2;
+            const dx = px - p.x;
+            const dy = py - p.y;
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+            const speed = Math.sqrt(vx * vx + vy * vy) || 1;
+            vx = (dx / len) * speed;
+            vy = (dy / len) * speed;
+          }
           if (p.useHitbox && typeof this.spawnEnemyProjectileHitbox === 'function') {
-            const sp = Math.sqrt(p.vx * p.vx + p.vy * p.vy) || 1;
-            this.spawnEnemyProjectileHitbox(p.x, p.y, p.vx / sp, p.vy / sp, p.damage, p.executeOpts, p.sourceEnemy);
+            const sp = Math.sqrt(vx * vx + vy * vy) || 1;
+            this.spawnEnemyProjectileHitbox(p.x, p.y, vx / sp, vy / sp, p.damage, p.executeOpts, p.sourceEnemy);
           } else {
-            this.spawnEnemyProjectile(p.x, p.y, p.vx, p.vy, p.damage, p.size, p.color, p.executeOpts, p.sourceEnemy);
+            this.spawnEnemyProjectile(p.x, p.y, vx, vy, p.damage, p.size, p.color, p.executeOpts, p.sourceEnemy);
           }
           return false;
         });

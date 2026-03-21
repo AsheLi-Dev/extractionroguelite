@@ -11,6 +11,7 @@
       <div class="main-menu-inner">
         <h1 class="main-menu-title">Extract Da Panda</h1>
         <p class="main-menu-subtitle">Fight through shifting biomes, grow stronger, and escape alive.</p>
+        <p id="main-menu-demo-badge" class="main-menu-demo-badge hidden" aria-hidden="true">Demo 1.0</p>
         <button id="main-menu-new-game" class="main-menu-btn">New Game</button>
         <button id="main-menu-select-hero" class="main-menu-btn main-menu-btn-secondary">Select Hero</button>
         <button id="main-menu-tutorial" class="main-menu-btn main-menu-btn-secondary">Tutorial</button>
@@ -18,14 +19,15 @@
         <button id="main-menu-options" class="main-menu-btn main-menu-btn-secondary">Options</button>
         <button id="main-menu-dev-mode" class="main-menu-btn main-menu-btn-secondary">Dev Mode</button>
         <button id="main-menu-legacy-vault" class="main-menu-btn main-menu-btn-secondary">Legacy Vault</button>
-        <button id="main-menu-talents" class="main-menu-btn main-menu-btn-secondary">Talent Tree</button>
+        <button id="main-menu-talents" class="main-menu-btn main-menu-btn-secondary">Talents</button>
+        <button id="main-menu-basic-attack-tree" class="main-menu-btn main-menu-btn-secondary">Weapon Art</button>
         <button id="main-menu-skill-library" class="main-menu-btn main-menu-btn-secondary">Skill Library</button>
         <button id="main-menu-pillars" class="main-menu-btn main-menu-btn-secondary">Pillars</button>
         <button id="main-menu-friends" class="main-menu-btn main-menu-btn-secondary">Friends</button>
         <div id="main-menu-dev-panel" class="main-menu-dev-panel">
           <span class="main-menu-dev-panel-title">DEV</span>
           <div class="main-menu-dev-panel-row">
-            <button id="main-menu-dev-999-crystals" class="main-menu-dev-btn" type="button">Give all characters 999 crystals</button>
+            <button id="main-menu-dev-999-crystals" class="main-menu-dev-btn" type="button">Give 999 talent points</button>
           </div>
         </div>
       </div>
@@ -35,6 +37,7 @@
       <div class="canvas-wrapper">
         <canvas id="game-canvas"></canvas>
         <canvas id="minimap-canvas" class="minimap-canvas"></canvas>
+        <div id="loot-pickup-feed" class="loot-pickup-feed" aria-live="polite" aria-relevant="additions"></div>
         <div id="skill-bar" class="skill-bar">
           <div class="skill-slot" data-slot="0"><span class="skill-key">1</span><div class="skill-icon" id="skill-icon-0">-</div><span class="skill-empower-stacks"></span><span class="skill-charge-count"></span><div class="skill-name" id="skill-name-0">Empty</div><div class="skill-cd-ring" id="skill-cd-0"></div></div>
           <div class="skill-slot" data-slot="1"><span class="skill-key">2</span><div class="skill-icon" id="skill-icon-1">-</div><span class="skill-empower-stacks"></span><span class="skill-charge-count"></span><div class="skill-name" id="skill-name-1">Empty</div><div class="skill-cd-ring" id="skill-cd-1"></div></div>
@@ -55,17 +58,6 @@
             <span class="escort-quest-text">Escort Quest Active</span>
           </div>
         </section>
-        <section class="health-bar-section">
-          <div id="player-shield-bar-wrap" class="player-shield-bar-wrap hidden">
-            <div class="player-shield-bar-track">
-              <div id="player-shield-fill" class="player-shield-bar-fill"></div>
-            </div>
-          </div>
-          <div class="player-health-bar-track">
-            <div id="player-health-fill" class="player-health-bar-fill"></div>
-          </div>
-          <div id="player-health-label" class="player-health-label">0 / 0</div>
-        </section>
         <section class="xp-section">
           <div class="xp-level-row">
             <span id="player-level" class="xp-level">Level 1</span>
@@ -74,6 +66,15 @@
             <div id="xp-bar-fill" class="xp-bar-fill"></div>
           </div>
           <div id="xp-label" class="xp-label">0 / 100 XP</div>
+          <div class="weapon-art-xp-section">
+            <div class="weapon-art-xp-row">
+              <span id="weapon-art-level" class="weapon-art-level">Weapon Art Lv 1</span>
+            </div>
+            <div class="weapon-art-xp-track">
+              <div id="weapon-art-xp-fill" class="weapon-art-xp-fill"></div>
+            </div>
+            <div id="weapon-art-xp-label" class="weapon-art-xp-label">0 / 250 XP</div>
+          </div>
         </section>
       </aside>
     </div>
@@ -92,7 +93,7 @@
         <h1>Victory!</h1>
         <p class="victory-message">Your character has been saved!</p>
         <p class="victory-gold" id="victory-gold">Gold: 0</p>
-        <p class="victory-gold" id="victory-crystal-reward">Crystal Reward: None</p>
+        <p class="victory-gold" id="victory-crystal-reward">Each level now grants 1 attribute point and 1 talent point.</p>
         <div class="victory-summary">
           <div class="victory-summary-section">
             <h3>Equipped Items</h3>
@@ -123,20 +124,13 @@
     <div id="skill-select-overlay" class="skill-select-overlay hidden">
       <div class="skill-select-box">
         <h1 class="skill-select-title">Select Skills</h1>
-        <p class="skill-select-subtitle">Choose your basic attack.</p>
+        <p class="skill-select-subtitle">Choose your Weapon Art.</p>
         <div class="skill-select-attack-type-section">
-          <label class="skill-select-attack-label">Basic Attack</label>
+          <label class="skill-select-attack-label">Weapon Art</label>
           <div id="skill-select-attack-type" class="skill-select-attack-type"></div>
-        </div>
-        <div class="skill-select-upgrade-section">
-          <label class="skill-select-attack-label">Build Upgrades</label>
-          <p id="skill-select-upgrade-help" class="skill-select-upgrade-help">Choose 4 upgrades for this run. Each level-up randomly improves one of your picks.</p>
-          <div id="skill-select-upgrade-slots" class="skill-select-upgrade-slots"></div>
-          <div id="skill-select-upgrade-pool" class="skill-select-upgrade-pool"></div>
         </div>
         <div class="skill-select-actions">
           <button id="skill-select-back" class="skill-select-back">Back</button>
-          <button id="skill-select-clear-upgrades" class="skill-select-clear-upgrades" type="button">Clear upgrades</button>
           <button id="skill-select-confirm" class="skill-select-confirm">Start Run</button>
         </div>
       </div>
@@ -145,10 +139,6 @@
     <div id="pre-run-overlay" class="pre-run-overlay hidden">
       <div class="pre-run-box">
         <h1 class="pre-run-title">Prepare for Run</h1>
-        <div class="pre-run-character">
-          <label>Character</label>
-          <div id="pre-run-character-list" class="pre-run-character-btns"></div>
-        </div>
         <div class="pre-run-hero">
           <label>Hero</label>
           <div class="pre-run-hero-row">
@@ -216,7 +206,7 @@
     <div id="talent-tree-overlay" class="talent-tree-overlay hidden">
       <div class="talent-tree-box">
         <header class="talent-tree-header">
-          <h1 class="talent-tree-title">Talent Tree</h1>
+          <h1 class="talent-tree-title">Talents</h1>
           <div id="talent-tree-crystals" class="talent-tree-crystals" aria-label="Crystals from attributes">
             <span class="talent-tree-crystal" data-crystal="orange" title="Orange (Brutality)">🟠 <span id="talent-tree-crystal-orange">0</span></span>
             <span class="talent-tree-crystal" data-crystal="green" title="Green (Agility)">🟢 <span id="talent-tree-crystal-green">0</span></span>
@@ -229,7 +219,29 @@
       </div>
     </div>
 
+    <div id="basic-attack-tree-overlay" class="basic-attack-tree-overlay hidden">
+      <div class="basic-attack-tree-box">
+        <header class="basic-attack-tree-header">
+          <h1 class="basic-attack-tree-title">Weapon Art</h1>
+          <button id="basic-attack-tree-close" class="talent-tree-btn">Back</button>
+        </header>
+        <div id="basic-attack-tree-selector" class="basic-attack-tree-selector"></div>
+        <div id="basic-attack-tree-summary" class="basic-attack-tree-summary"></div>
+        <div class="basic-attack-tree-toolbar">
+          <button id="basic-attack-tree-resolve" class="basic-attack-tree-refund-btn" type="button">Resolve Pending Picks</button>
+        </div>
+        <div id="basic-attack-tree-content" class="basic-attack-tree-content"></div>
+      </div>
+    </div>
+
+    <div id="weapon-art-draft-overlay" class="weapon-art-draft-overlay hidden">
+      <div class="weapon-art-draft-box">
+        <div id="weapon-art-draft-body" class="weapon-art-draft-body"></div>
+      </div>
+    </div>
+
     <div id="skill-library-overlay" class="skill-library-overlay hidden">
+      <div id="skill-library-skill-detail" class="skill-library-skill-detail hidden" role="tooltip" aria-hidden="true"></div>
       <div class="skill-library-box">
         <header class="skill-library-header">
           <h1 class="skill-library-title">Skill Library</h1>
@@ -560,24 +572,6 @@
       <button id="inventory-button" class="inventory-button">Inventory (I)</button>
       <button id="build-log-toggle" class="build-log-toggle" title="Build log">Build</button>
       <button id="pause-toggle" class="pause-toggle">Pause</button>
-      <button id="mod-screen-button" class="mod-screen-button" title="Mod Pack (M)">Mods (M)</button>
-      <div id="mod-screen-overlay" class="mod-screen-overlay hidden">
-        <div class="mod-screen-box">
-          <h2 class="mod-screen-title">Mod Pack</h2>
-          <div class="mod-screen-shards">Mod Shards: <span id="mod-screen-shards">0</span></div>
-          <div class="mod-screen-layout">
-            <div class="mod-screen-skills">
-              <div class="mod-screen-skills-label">Skills &amp; sockets</div>
-              <div id="mod-screen-skills-list" class="mod-screen-skills-list"></div>
-            </div>
-            <div class="mod-screen-pack">
-              <div class="mod-screen-pack-label">Mod Pack — click a socket to equip</div>
-              <div id="mod-screen-pack-list" class="mod-screen-pack-list"></div>
-            </div>
-          </div>
-          <button id="mod-screen-close" class="mod-screen-close">Close</button>
-        </div>
-      </div>
       <div id="pause-enemy-panel" class="pause-enemy-panel hidden">
         <div class="pause-enemy-panel-title">Enemy Test Spawn</div>
         <div class="pause-enemy-panel-row">

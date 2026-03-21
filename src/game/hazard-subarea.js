@@ -284,9 +284,7 @@ function updateHurricane(dt, game, zone, state, cfg) {
     state.windDirection = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
   }
   if (game.time < state.windGustUntil && game.player && !game.dashActive && isPlayerInZone(game.player, zone.bounds)) {
-    const margin = game.world.wallThickness ?? 32;
-    game.player.position.x = Math.max(margin, Math.min(game.player.position.x + state.windDirection.x * dt, game.world.width - margin - game.player.size));
-    game.player.position.y = Math.max(margin, Math.min(game.player.position.y + state.windDirection.y * dt, game.world.height - margin - game.player.size));
+    game.movePlayerByWithCollision?.(state.windDirection.x * dt, state.windDirection.y * dt);
   }
 }
 

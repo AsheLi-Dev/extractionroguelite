@@ -1,7 +1,39 @@
 "use strict";
 
-const { describe, it } = require("node:test");
+const { beforeEach, describe, it } = require("node:test");
 const assert = require("node:assert");
+
+function createMemoryLocalStorage() {
+  const store = new Map();
+  return {
+    getItem(key) {
+      return store.has(key) ? store.get(key) : null;
+    },
+    setItem(key, value) {
+      store.set(String(key), String(value));
+    },
+    removeItem(key) {
+      store.delete(String(key));
+    },
+    clear() {
+      store.clear();
+    }
+  };
+}
+
+beforeEach(() => {
+  global.localStorage = createMemoryLocalStorage();
+});
+
+function collapseProgressionRunUpgrades(runAttackUpgrades = []) {
+  const byId = new Map();
+  for (const upgrade of runAttackUpgrades) {
+    const current = byId.get(upgrade.id) || { id: upgrade.id, level: 0 };
+    current.level += Number(upgrade.level || 1);
+    byId.set(upgrade.id, current);
+  }
+  return [...byId.values()];
+}
 
 const {
   createElementalShotTestContext,
@@ -108,6 +140,34 @@ describe("Elemental Shot – upgrade effects (deterministic)", () => {
     simulateProjectileHit(ctx, log, e, { element: "fire", baseDamage: 100 });
     const burn = log.getEventsByType("burn_applied")[0];
     // burn scales from the player's attack stat, not the on-hit base damage.
+    assert.strictEqual(Math.round(burn.dps), Math.round(80 * 0.2 * 1.2));
+  });
+
+  it("progression-backed burning_power purchases hydrate into the same burn DPS bonus", async () => {
+    const progression = await import("../src/data/basic-attack-progression.js");
+    progression.addBasicAttackXp("projectile", progression.getXpForBasicAttackLevel(7));
+    for (let i = 0; i < 5; i += 1) {
+      assert.strictEqual(
+        progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:elemental_damage"),
+        true
+      );
+    }
+    assert.strictEqual(
+      progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:burning_power"),
+      true
+    );
+
+    const runtime = progression.buildRunAttackStateFromProgress("projectile");
+    const log = createEventLog();
+    const ctx = await createElementalShotTestContext({
+      seed: 1001,
+      runAttackUpgrades: collapseProgressionRunUpgrades(runtime.runAttackUpgrades),
+      currentStats: { attack: 80, maxHealth: 100 }
+    });
+    await syncProfile(ctx, log);
+    const e = createTestDummy("e1");
+    simulateProjectileHit(ctx, log, e, { element: "fire", baseDamage: 100 });
+    const burn = log.getEventsByType("burn_applied")[0];
     assert.strictEqual(Math.round(burn.dps), Math.round(80 * 0.2 * 1.2));
   });
 

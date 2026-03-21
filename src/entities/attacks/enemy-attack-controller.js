@@ -441,6 +441,10 @@ export class EnemyAttackController {
           const vx = Math.cos(angle) * speed;
           const vy = Math.sin(angle) * speed;
           const useHitbox = opts?.useHitbox === true && typeof game.spawnEnemyProjectileHitbox === "function";
+          const delayedOpts = {
+            useHitbox,
+            aimAtPlayerOnFire: opts?.retargetOnBurst === true
+          };
           if (atTime == null || atTime <= 0) {
             if (useHitbox) {
               game.spawnEnemyProjectileHitbox(sx, sy, Math.cos(angle), Math.sin(angle), dmg, opts, enemy);
@@ -448,7 +452,7 @@ export class EnemyAttackController {
               game.spawnEnemyProjectile(sx, sy, vx, vy, dmg, size, color, opts, enemy);
             }
           } else if (typeof game.addDelayedEnemyProjectile === "function") {
-            game.addDelayedEnemyProjectile(game.time + atTime, sx, sy, vx, vy, dmg, size, color, opts, enemy, useHitbox ? { useHitbox: true } : {});
+            game.addDelayedEnemyProjectile(game.time + atTime, sx, sy, vx, vy, dmg, size, color, opts, enemy, delayedOpts);
           } else {
             if (useHitbox) {
               game.spawnEnemyProjectileHitbox(sx, sy, Math.cos(angle), Math.sin(angle), dmg, opts, enemy);
@@ -516,7 +520,10 @@ export class EnemyAttackController {
                   game.spawnEnemyProjectile(ex, ey, vx, vy, baseDmg, size, color, opts, enemy);
                 }
               } else if (typeof game.addDelayedEnemyProjectile === "function") {
-                game.addDelayedEnemyProjectile(game.time + shotAt, ex, ey, vx, vy, baseDmg, size, color, opts, enemy, useHitbox ? { useHitbox: true } : {});
+                game.addDelayedEnemyProjectile(game.time + shotAt, ex, ey, vx, vy, baseDmg, size, color, opts, enemy, {
+                  useHitbox,
+                  aimAtPlayerOnFire: opts?.retargetOnBurst === true
+                });
               } else {
                 if (useHitbox) {
                   game.spawnEnemyProjectileHitbox(ex, ey, Math.cos(angle), Math.sin(angle), baseDmg, opts, enemy);

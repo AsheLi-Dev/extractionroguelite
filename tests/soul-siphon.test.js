@@ -1,6 +1,6 @@
 "use strict";
 
-const { describe, it } = require("node:test");
+const { beforeEach, describe, it } = require("node:test");
 const assert = require("node:assert");
 const {
   createSeededRandom,
@@ -36,6 +36,28 @@ async function getStats() {
   }
   return soulSiphonStats;
 }
+
+function createMemoryLocalStorage() {
+  const store = new Map();
+  return {
+    getItem(key) {
+      return store.has(key) ? store.get(key) : null;
+    },
+    setItem(key, value) {
+      store.set(String(key), String(value));
+    },
+    removeItem(key) {
+      store.delete(String(key));
+    },
+    clear() {
+      store.clear();
+    }
+  };
+}
+
+beforeEach(() => {
+  global.localStorage = createMemoryLocalStorage();
+});
 
 // --- 1. DERIVED STATS / GEOMETRY ---
 
@@ -830,16 +852,16 @@ describe("Soul Siphon Phase 2 – proc safety (bounded)", () => {
 describe("Soul Siphon – evolution state / profile", () => {
   it("evolution state: first and second set formId", async () => {
     const evolution = await import("../src/data/soul-siphon-evolution.js");
-    const ctx = { soulSiphonEvolutionFirst: "power", soulSiphonEvolutionSecond: "tempo" };
+    const ctx = { soulSiphonEvolutionFirst: "damage", soulSiphonEvolutionSecond: "rhythm" };
     const state = evolution.getSoulSiphonEvolutionState(ctx);
-    assert.strictEqual(state.first, "power");
-    assert.strictEqual(state.second, "tempo");
-    assert.strictEqual(state.formId, "power_tempo");
+    assert.strictEqual(state.first, "damage");
+    assert.strictEqual(state.second, "rhythm");
+    assert.strictEqual(state.formId, "damage_rhythm");
   });
 
-  it("profile: power_tempo has beamMode, beamMods (tripleBeam, pulseDamageMult), spiritPool", async () => {
+  it("profile: damage_rhythm has beamMode, beamMods (tripleBeam, pulseDamageMult), spiritPool", async () => {
     const evolution = await import("../src/data/soul-siphon-evolution.js");
-    const state = { first: "power", second: "tempo", formId: "power_tempo" };
+    const state = { first: "damage", second: "rhythm", formId: "damage_rhythm" };
     const profile = evolution.getSoulSiphonProfile(state);
     assert.strictEqual(profile.beamMode, "delayed_shot");
     assert.strictEqual(profile.beamMods.tripleBeam, true);
@@ -848,34 +870,34 @@ describe("Soul Siphon – evolution state / profile", () => {
     assert.strictEqual(profile.spiritTrigger.mode, "normal_random");
   });
 
-  it("profile: power_control has beamStun and stunSec in beamMods", async () => {
+  it("profile: damage_control has beamStun and stunSec in beamMods", async () => {
     const evolution = await import("../src/data/soul-siphon-evolution.js");
-    const state = { first: "power", second: "control", formId: "power_control" };
+    const state = { first: "damage", second: "control", formId: "damage_control" };
     const profile = evolution.getSoulSiphonProfile(state);
     assert.strictEqual(profile.beamMods.beamStun, true);
     assert.strictEqual(profile.beamMods.stunSec, 0.2);
     assert.strictEqual(profile.beamMods.widerCoverage, true);
   });
 
-  it("profile: control_tempo has fieldHaste in links", async () => {
+  it("profile: control_rhythm has fieldHaste in links", async () => {
     const evolution = await import("../src/data/soul-siphon-evolution.js");
-    const state = { first: "control", second: "tempo", formId: "control_tempo" };
+    const state = { first: "control", second: "rhythm", formId: "control_rhythm" };
     const profile = evolution.getSoulSiphonProfile(state);
     assert.strictEqual(profile.beamMode, "cursor_area");
     assert.strictEqual(profile.links.fieldHaste, true);
     assert.strictEqual(profile.spiritPool, "slam_only");
   });
 
-  it("profile: tempo_control has freezeBuildUp in beamMods", async () => {
+  it("profile: rhythm_control has freezeBuildUp in beamMods", async () => {
     const evolution = await import("../src/data/soul-siphon-evolution.js");
-    const state = { first: "tempo", second: "control", formId: "tempo_control" };
+    const state = { first: "rhythm", second: "control", formId: "rhythm_control" };
     const profile = evolution.getSoulSiphonProfile(state);
     assert.strictEqual(profile.beamMods.freezeBuildUp, true);
   });
 
-  it("profile: spiritcraft_tempo has spiritTrigger cast_all_three", async () => {
+  it("profile: spiritcraft_rhythm has spiritTrigger cast_all_three", async () => {
     const evolution = await import("../src/data/soul-siphon-evolution.js");
-    const state = { first: "spiritcraft", second: "tempo", formId: "spiritcraft_tempo" };
+    const state = { first: "spiritcraft", second: "rhythm", formId: "spiritcraft_rhythm" };
     const profile = evolution.getSoulSiphonProfile(state);
     assert.strictEqual(profile.spiritTrigger.mode, "cast_all_three");
     assert.strictEqual(profile.spiritTrigger.chargeThreshold, 2);
@@ -897,5 +919,61 @@ describe("Soul Siphon – evolution state / profile", () => {
     assert.deepStrictEqual(evolution.getSpiritAbilityListFromPool("slam_only"), ["ground_slam"]);
     assert.deepStrictEqual(evolution.getSpiritAbilityListFromPool("all_three"), ["fireball", "ground_slam", "speed_buff"]);
     assert.deepStrictEqual(evolution.getSpiritAbilityListFromPool("fireball_and_slam"), ["fireball", "ground_slam"]);
+  });
+
+  it("progression-backed soul siphon capstones hydrate into the expected evolution form", async () => {
+    const progression = await import("../src/data/basic-attack-progression.js");
+    const evolution = await import("../src/data/soul-siphon-evolution.js");
+    progression.addBasicAttackXp("soulSiphon", progression.getXpForBasicAttackLevel(30));
+    for (let i = 0; i < 5; i += 1) {
+      assert.strictEqual(
+        progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:upgrade:soul_pressure"),
+        true
+      );
+    }
+    for (let i = 0; i < 4; i += 1) {
+      assert.strictEqual(
+        progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:upgrade:condensed_beam"),
+        true
+      );
+    }
+    for (let i = 0; i < 3; i += 1) {
+      assert.strictEqual(
+        progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:upgrade:execution_drain"),
+        true
+      );
+      assert.strictEqual(
+        progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:upgrade:energy_recycling"),
+        true
+      );
+    }
+    for (let i = 0; i < 4; i += 1) {
+      assert.strictEqual(
+        progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:upgrade:spiritual_conduit"),
+        true
+      );
+    }
+    assert.strictEqual(
+      progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:upgrade:rhythmic_siphon"),
+      true
+    );
+    assert.strictEqual(
+      progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:evolution:first:spiritcraft"),
+      true
+    );
+    assert.strictEqual(
+      progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:evolution:second:spiritcraft:rhythm"),
+      true
+    );
+
+    const runtime = progression.buildRunAttackStateFromProgress("soulSiphon");
+    const state = evolution.getSoulSiphonEvolutionState(runtime);
+    const profile = evolution.getSoulSiphonProfile(state);
+
+    assert.strictEqual(state.first, "spiritcraft");
+    assert.strictEqual(state.second, "rhythm");
+    assert.strictEqual(state.formId, "spiritcraft_rhythm");
+    assert.strictEqual(profile.spiritTrigger.mode, "cast_all_three");
+    assert.strictEqual(profile.spiritTrigger.chargeThreshold, 2);
   });
 });

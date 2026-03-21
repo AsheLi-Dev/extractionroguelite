@@ -301,6 +301,105 @@ describe("Gameplay bot smoke", () => {
       assert.strictEqual(knockbackResult.collides, false, "player should not end inside a blocking volume after knockback-like movement");
       assert.ok(Number.isFinite(knockbackResult.after.x) && Number.isFinite(knockbackResult.after.y), "player position should stay finite after knockback-like movement");
 
+      const controlledMoveResult = await page.evaluate(() => {
+        const game = window.currentGame;
+        const wall = game?.world?.tileWallRects?.[0];
+        if (!game || !wall || typeof game.moveEntityByWithCollision !== "function" || typeof game.placeEntityAtWithCollision !== "function") {
+          return null;
+        }
+
+        const enemy = game.enemySystem.spawnOne(
+          "minion",
+          null,
+          {
+            x: game.player.position.x + game.player.size + 120,
+            y: game.player.position.y
+          },
+          game,
+          "m_5h_medium_dummy",
+          false
+        );
+        if (!enemy) return null;
+
+        const findValidStart = (entity) => {
+          const offsets = [12, 24, 36, 48, 64, 80];
+          for (const dx of offsets) {
+            for (const dy of offsets) {
+              const candidates = [
+                { x: wall.x + wall.w + dx, y: wall.y + dy },
+                { x: wall.x + wall.w + dx, y: wall.y + wall.h - dy - entity.size },
+                { x: wall.x - dx - entity.size, y: wall.y + dy },
+                { x: wall.x - dx - entity.size, y: wall.y + wall.h - dy - entity.size }
+              ];
+              for (const candidate of candidates) {
+                const normalized = game.clampEntityPosition(entity, candidate.x, candidate.y);
+                if (!game.entityPositionHasBlockingCollision(entity, normalized.x, normalized.y)) {
+                  return normalized;
+                }
+              }
+            }
+          }
+          return null;
+        };
+
+        const start = findValidStart(enemy);
+        if (!start) return null;
+
+        enemy.position.x = start.x;
+        enemy.position.y = start.y;
+        const towardWall = wall.x > start.x
+          ? (wall.x - start.x) + wall.w + 40
+          : -((start.x - wall.x) + wall.w + 40);
+        game.moveEntityByWithCollision(enemy, towardWall, 0);
+
+        const findValidPlayerStart = () => {
+          const offsets = [12, 24, 36, 48, 64, 80];
+          for (const dx of offsets) {
+            for (const dy of offsets) {
+              const candidates = [
+                { x: wall.x + wall.w + dx, y: wall.y + dy },
+                { x: wall.x + wall.w + dx, y: wall.y + wall.h - dy - game.player.size },
+                { x: wall.x - dx - game.player.size, y: wall.y + dy },
+                { x: wall.x - dx - game.player.size, y: wall.y + wall.h - dy - game.player.size }
+              ];
+              for (const candidate of candidates) {
+                const normalized = game.clampEntityPosition(game.player, candidate.x, candidate.y);
+                if (!game.playerPositionHasBlockingCollision(normalized.x, normalized.y)) {
+                  return normalized;
+                }
+              }
+            }
+          }
+          return null;
+        };
+
+        const playerStart = findValidPlayerStart();
+        if (!playerStart) return null;
+        game.player.position.x = playerStart.x;
+        game.player.position.y = playerStart.y;
+        const blockedPlayerX = wall.x + wall.w * 0.5 - game.player.size * 0.5;
+        const blockedPlayerY = playerStart.y;
+        const placed = game.placeEntityAtWithCollision(game.player, blockedPlayerX, blockedPlayerY, {
+          maxSearchRadius: 160,
+          searchStep: 8
+        });
+
+        return {
+          enemyAfter: { x: enemy.position.x, y: enemy.position.y },
+          enemyCollides: game.entityPositionHasBlockingCollision(enemy, enemy.position.x, enemy.position.y),
+          playerAfter: { x: game.player.position.x, y: game.player.position.y },
+          playerCollides: game.playerPositionHasBlockingCollision(game.player.position.x, game.player.position.y),
+          placed
+        };
+      });
+
+      assert.ok(controlledMoveResult, "expected collision-safe controlled movement helpers to be available");
+      assert.strictEqual(controlledMoveResult.enemyCollides, false, "controlled enemy movement should stop before entering a blocking volume");
+      assert.strictEqual(controlledMoveResult.playerCollides, false, "collision-safe placement should not leave the player inside a blocking volume");
+      assert.strictEqual(typeof controlledMoveResult.placed, "boolean", "collision-safe placement should report whether it found a new valid position");
+      assert.ok(Number.isFinite(controlledMoveResult.enemyAfter.x) && Number.isFinite(controlledMoveResult.enemyAfter.y), "enemy controlled movement should keep finite coordinates");
+      assert.ok(Number.isFinite(controlledMoveResult.playerAfter.x) && Number.isFinite(controlledMoveResult.playerAfter.y), "player placement should keep finite coordinates");
+
       const deathState = await page.evaluate(() => {
         const game = window.currentGame;
         if (!game) return null;
@@ -681,18 +780,6 @@ describe("Gameplay bot smoke", () => {
             for (let step = 0; step < 30; step += 1) {
               game.update(0.016);
               if ((game.enemySystem.enemies || []).filter((enemy) => enemy && !enemy.isDead).length === 0) break;
-            }
-            const miniBossLootChests = (game.searchableProps || []).filter(
-              (prop) => prop && prop.isMiniBossLootChest && !prop.isSearched
-            );
-            for (const chest of miniBossLootChests) {
-              currentSource = "chest_open";
-              if (typeof chest.finishSearch === "function") {
-                chest.finishSearch(game);
-              } else if (typeof chest.spawnLoot === "function") {
-                chest.isSearched = true;
-                chest.spawnLoot(game);
-              }
             }
             currentSource = "enemy";
             const remaining = (game.enemySystem.enemies || []).filter((enemy) => enemy && !enemy.isDead).length;

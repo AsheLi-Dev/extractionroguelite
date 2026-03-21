@@ -1,10 +1,91 @@
 // -------- Save system (localStorage helpers) --------
+import { GLOBAL_PLAYER_PROFILE_KEY } from "../data/constants.js";
+import { getGlobalTalentCrystals } from "../data/crystals.js";
 
 export const SAVE_KEY = "spaceShooter_characters";
 export const CONQUEROR_VAULT_KEY = "spaceShooter_conquerorVault";
 export const ETERNAL_ITEMS_ON_DEFEAT_KEY = "spaceShooter_eternalDefeatItems";
 export const LEGACY_CUBE_STASH_KEY = "spaceShooter_legacyCubeStash";
 export const LEGACY_ANCESTOR_STASH_KEY = "spaceShooter_legacyAncestorStash";
+function getDefaultAttributes() {
+  return { brutality: 0, agility: 0, vitality: 0, luck: 0 };
+}
+
+function sanitizeAttributes(attributes) {
+  const source = attributes && typeof attributes === "object" ? attributes : {};
+  return {
+    brutality: Math.max(0, Math.floor(Number(source.brutality) || 0)),
+    agility: Math.max(0, Math.floor(Number(source.agility) || 0)),
+    vitality: Math.max(0, Math.floor(Number(source.vitality) || 0)),
+    luck: Math.max(0, Math.floor(Number(source.luck) || 0))
+  };
+}
+
+export function getDefaultGlobalPlayerProfile() {
+  return {
+    level: 1,
+    xp: 0,
+    unspentAttributePoints: 0,
+    unspentTalentPoints: 0,
+    attributes: getDefaultAttributes()
+  };
+}
+
+export function loadGlobalPlayerProfile() {
+  try {
+    const raw = localStorage.getItem(GLOBAL_PLAYER_PROFILE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const fallback = getDefaultGlobalPlayerProfile();
+    const legacyCrystalTotal = Object.values(getGlobalTalentCrystals()).reduce(
+      (sum, value) => sum + Math.max(0, Math.floor(Number(value) || 0)),
+      0
+    );
+    return {
+      level: Math.max(1, Math.floor(Number(parsed?.level) || fallback.level)),
+      xp: Math.max(0, Math.floor(Number(parsed?.xp) || fallback.xp)),
+      unspentAttributePoints: Math.max(0, Math.floor(Number(parsed?.unspentAttributePoints) || fallback.unspentAttributePoints)),
+      unspentTalentPoints: Math.max(
+        0,
+        Math.floor(
+          Number(
+            parsed?.unspentTalentPoints != null
+              ? parsed.unspentTalentPoints
+              : legacyCrystalTotal
+          ) || fallback.unspentTalentPoints
+        )
+      ),
+      attributes: sanitizeAttributes(parsed?.attributes)
+    };
+  } catch {
+    return getDefaultGlobalPlayerProfile();
+  }
+}
+
+export function saveGlobalPlayerProfile(profile) {
+  const fallback = getDefaultGlobalPlayerProfile();
+  const next = {
+    level: Math.max(1, Math.floor(Number(profile?.level) || fallback.level)),
+    xp: Math.max(0, Math.floor(Number(profile?.xp) || fallback.xp)),
+    unspentAttributePoints: Math.max(0, Math.floor(Number(profile?.unspentAttributePoints) || fallback.unspentAttributePoints)),
+    unspentTalentPoints: Math.max(0, Math.floor(Number(profile?.unspentTalentPoints) || fallback.unspentTalentPoints)),
+    attributes: sanitizeAttributes(profile?.attributes)
+  };
+  localStorage.setItem(GLOBAL_PLAYER_PROFILE_KEY, JSON.stringify(next));
+  return next;
+}
+
+export function updateGlobalPlayerProfile(updates) {
+  const current = loadGlobalPlayerProfile();
+  return saveGlobalPlayerProfile({
+    ...current,
+    ...(updates && typeof updates === "object" ? updates : {}),
+    attributes: updates?.attributes ? { ...current.attributes, ...updates.attributes } : current.attributes
+  });
+}
+
+export function resetGlobalPlayerProfile() {
+  return saveGlobalPlayerProfile(getDefaultGlobalPlayerProfile());
+}
 
 export function loadConquerorVault() {
   try {

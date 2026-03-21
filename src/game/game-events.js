@@ -314,42 +314,11 @@ export function applyGameEventsMixin(Game) {
 
     openRestRoomAttributes(obj) {
       if (!obj) return;
-      const availablePoints = Math.max(0, Number(this.runAttributePoints) || 0);
-      if (availablePoints <= 0) {
-        if (typeof this.addFloatingText === "function") {
-          const px = (this.player?.position?.x || 0) + (this.player?.size || 0) / 2;
-          const py = (this.player?.position?.y || 0) + (this.player?.size || 0) / 2;
-          this.addFloatingText(px, py, "No Attribute Points", "damage");
-        }
-        return;
-      }
       this.openNpcChoiceCard(
         "Attributes",
-        `Spend 1 attribute point. Available: ${availablePoints}.`,
-        META_ATTRIBUTES.map((meta) => {
-          const current = Math.max(0, Number(this.runCharacterAttributes?.[meta.id]) || 0);
-          const deltaLabel = meta.id === "brutality"
-            ? "+1 Attack"
-            : meta.id === "agility"
-              ? "+10 Speed"
-              : meta.id === "vitality"
-                ? "+5 Max HP"
-                : "+1 Luck";
-          return {
-            label: `+1 ${meta.name} (${current} -> ${current + 1}, ${deltaLabel})`,
-            keepOpen: true,
-            onPick: () => {
-              const applied = this.grantRestRoomAttribute(obj, meta.id);
-              if (!applied) return;
-              if ((Number(this.runAttributePoints) || 0) > 0) {
-                this.openRestRoomAttributes(obj);
-              } else {
-                this.closeEventOverlay();
-              }
-            }
-          };
-        }),
-        "Leave"
+        "Attributes are now global. Allocate/refund them from Talents in the hub/menu.",
+        [],
+        "Close"
       );
     },
 
@@ -1111,6 +1080,27 @@ export function applyGameEventsMixin(Game) {
       const cancelBtn = document.getElementById("shrine-cancel");
 
       if (!overlay || !titleEl || !descEl) return;
+
+      const shrineDef = SHRINE_DEFS.find((entry) => entry?.id === shrineObj?.shrineId) || null;
+      if (shrineDef?.disabled) {
+        titleEl.textContent = shrineObj.shrineName || shrineDef.name;
+        descEl.textContent = shrineDef.description || "This shrine is disabled.";
+        overlay.classList.remove("hidden");
+        upgradeSelect.classList.add("hidden");
+        penaltySelect.classList.add("hidden");
+        upgradeList.innerHTML = "";
+        penaltyList.innerHTML = "";
+        confirmBtn.disabled = true;
+        const handleClose = () => {
+          overlay.classList.add("hidden");
+          this.currentShrine = null;
+          this.selectedUpgradeId = null;
+          this.selectedPenaltyId = null;
+          cancelBtn.removeEventListener("click", handleClose);
+        };
+        cancelBtn.addEventListener("click", handleClose);
+        return;
+      }
 
       titleEl.textContent = shrineObj.shrineName;
       descEl.textContent = shrineObj.shrineDescription;

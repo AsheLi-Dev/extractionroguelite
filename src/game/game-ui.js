@@ -3,11 +3,11 @@
 // This module adds methods to Game.prototype when imported
 
 import { getXpForLevel, getAffixDef } from '../entities/enemy.js';
-import { SKILL_DEFS, getModsForSkillSlot, getSkillById } from '../data/skills.js';
+import { SKILL_DEFS, getModsForSkillSlot } from '../data/skills.js';
 import { getAvailableSkillSlots, SKILL_SLOT_UNLOCK } from '../data/constants.js';
 import { BLESSING_DEFS } from '../data/cubes-data.js';
 import { getRingTempBuffs } from './ring-effects.js';
-import { getSkillModById } from '../data/skill-mods.js';
+import { getBasicAttackTree, getXpForBasicAttackLevel } from '../data/basic-attack-progression.js';
 
 /**
  * For skills that require a custom charge to use (kill-based or basic-attack-based).
@@ -158,6 +158,37 @@ export function applyGameUIMixin(Game) {
         this.playerLevelEl.textContent = attributePoints > 0
           ? `Level ${this.level} | AP ${attributePoints}`
           : `Level ${this.level}`;
+      }
+
+      const attackTree = getBasicAttackTree(this.attackType);
+      const projectedAttackXp = Math.max(0, Number(this.attackProgressXp || 0) + Number(this.runAttackXpEarned || 0));
+      let projectedAttackLevel = Math.max(1, Number(this.attackProgressLevel || 1));
+      while (projectedAttackLevel < (attackTree?.maxLevel || 1) && projectedAttackXp >= getXpForBasicAttackLevel(projectedAttackLevel + 1)) {
+        projectedAttackLevel += 1;
+      }
+      const attackPrevThreshold = getXpForBasicAttackLevel(projectedAttackLevel);
+      const attackNextThreshold = projectedAttackLevel >= (attackTree?.maxLevel || 1)
+        ? attackPrevThreshold
+        : getXpForBasicAttackLevel(projectedAttackLevel + 1);
+      const attackXpInLevel = Math.max(0, projectedAttackXp - attackPrevThreshold);
+      const attackXpNeeded = Math.max(0, attackNextThreshold - attackPrevThreshold);
+      const attackPct = projectedAttackLevel >= (attackTree?.maxLevel || 1)
+        ? 1
+        : attackXpNeeded > 0
+          ? Math.min(1, attackXpInLevel / attackXpNeeded)
+          : 0;
+
+      if (this.weaponArtXpBarFillEl) {
+        this.weaponArtXpBarFillEl.style.width = `${Math.round(attackPct * 100)}%`;
+      }
+      if (this.weaponArtXpLabelEl) {
+        this.weaponArtXpLabelEl.textContent = projectedAttackLevel >= (attackTree?.maxLevel || 1)
+          ? "MAX"
+          : `${Math.floor(attackXpInLevel)} / ${Math.floor(attackXpNeeded)} XP`;
+      }
+      if (this.weaponArtLevelEl) {
+        const artName = attackTree?.name || "Weapon Art";
+        this.weaponArtLevelEl.textContent = `${artName} Lv ${projectedAttackLevel}`;
       }
     },
 
@@ -380,174 +411,6 @@ export function applyGameUIMixin(Game) {
     hideAffixTooltip() {
       const tt = document.getElementById("affix-tooltip");
       if (tt) tt.classList.add("hidden");
-    },
-
-    showModScreen() {
-      if (this.gameOver || this.levelUpChoices) return;
-      this.modScreenOpen = true;
-      this.paused = true;
-      if (this.pauseToggleEl) {
-        this.pauseToggleEl.textContent = "Resume";
-        this.pauseToggleEl.classList.add("paused");
-      }
-      const overlay = document.getElementById("mod-screen-overlay");
-      if (overlay) overlay.classList.remove("hidden");
-      this.renderModScreen();
-    },
-
-    hideModScreen() {
-      this.modScreenOpen = false;
-      this.paused = false;
-      if (this.pauseToggleEl) {
-        this.pauseToggleEl.textContent = "Pause";
-        this.pauseToggleEl.classList.remove("paused");
-      }
-      const overlay = document.getElementById("mod-screen-overlay");
-      if (overlay) overlay.classList.add("hidden");
-    },
-
-    renderModScreen() {
-      const shardsEl = document.getElementById("mod-screen-shards");
-      if (shardsEl) shardsEl.textContent = String(this.runModShardCurrency ?? 0);
-
-      const skillsListEl = document.getElementById("mod-screen-skills-list");
-      const packListEl = document.getElementById("mod-screen-pack-list");
-      if (!skillsListEl || !packListEl) return;
-
-      skillsListEl.innerHTML = "";
-      const selected = this.modScreenSelectedSocket || null;
-
-      for (let slot = 0; slot < 4; slot++) {
-        const skillId = this.skills?.[slot];
-        const def = skillId ? getSkillById(skillId) : null;
-        if (!def) continue;
-        const maxSockets = typeof this.getMaxModSocketsForSkill === "function" ? this.getMaxModSocketsForSkill(skillId) : 2;
-        const socketMods = (this.runSkillMods && this.runSkillMods[skillId]) || [];
-        const row = document.createElement("div");
-        row.className = "mod-screen-skill-row";
-        row.innerHTML = `<span class="mod-screen-skill-name">${def.name}</span>`;
-        const socketsWrap = document.createElement("div");
-        socketsWrap.className = "mod-screen-sockets";
-        for (let s = 0; s < maxSockets; s++) {
-          const modId = socketMods[s] || null;
-          const mod = modId ? getSkillModById(modId) : null;
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "mod-screen-socket" + (selected && selected.skillId === skillId && selected.socketIndex === s ? " selected" : "");
-          btn.title = mod ? `${mod.name} (${mod.rarity})` : "Empty — click to equip";
-          btn.textContent = mod ? mod.name.slice(0, 8) : "—";
-          btn.dataset.skillId = skillId;
-          btn.dataset.socketIndex = String(s);
-          btn.addEventListener("click", () => {
-            this.modScreenSelectedSocket = { skillId, socketIndex: s };
-            this.renderModScreen();
-          });
-          socketsWrap.appendChild(btn);
-        }
-        row.appendChild(socketsWrap);
-        skillsListEl.appendChild(row);
-      }
-
-      packListEl.innerHTML = "";
-      const pack = this.runModInventory || [];
-      if (selected) {
-        const compatible = typeof this.getModsCompatibleWithSkill === "function" ? this.getModsCompatibleWithSkill(selected.skillId) : [];
-        const compatibleSet = new Set(compatible);
-        const currentModId = (this.runSkillMods && this.runSkillMods[selected.skillId] && this.runSkillMods[selected.skillId][selected.socketIndex]) || null;
-        for (const modId of pack) {
-          if (!compatibleSet.has(modId)) continue;
-          const mod = getSkillModById(modId);
-          if (!mod) continue;
-          const row = document.createElement("div");
-          row.className = "mod-screen-pack-item-row";
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "mod-screen-pack-item";
-          btn.textContent = `${mod.name} (${mod.rarity})`;
-          btn.title = mod.description || mod.name;
-          btn.addEventListener("click", () => {
-            if (typeof this.equipModToSkill === "function") {
-              this.equipModToSkill(modId, selected.skillId, selected.socketIndex);
-              this.renderModScreen();
-            }
-          });
-          const salvageBtn = document.createElement("button");
-          salvageBtn.type = "button";
-          salvageBtn.className = "mod-screen-salvage-btn";
-          salvageBtn.textContent = "Salvage";
-          salvageBtn.title = "Convert to Mod Shards";
-          salvageBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (typeof this.salvageMod === "function") {
-              this.salvageMod(modId);
-              this.renderModScreen();
-            }
-          });
-          const rerollBtn = document.createElement("button");
-          rerollBtn.type = "button";
-          rerollBtn.className = "mod-screen-reroll-btn";
-          rerollBtn.textContent = "Reroll";
-          rerollBtn.title = "Cost: 2 Mod Shards";
-          rerollBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (typeof this.rerollModInPack === "function" && this.rerollModInPack(modId)) {
-              this.renderModScreen();
-            }
-          });
-          row.appendChild(btn);
-          row.appendChild(salvageBtn);
-          row.appendChild(rerollBtn);
-          packListEl.appendChild(row);
-        }
-        if (currentModId) {
-          const unequipBtn = document.createElement("button");
-          unequipBtn.type = "button";
-          unequipBtn.className = "mod-screen-pack-item mod-screen-unequip";
-          unequipBtn.textContent = "Unequip socket";
-          unequipBtn.addEventListener("click", () => {
-            if (typeof this.unequipModFromSkill === "function") {
-              this.unequipModFromSkill(selected.skillId, selected.socketIndex);
-              this.renderModScreen();
-            }
-          });
-          packListEl.appendChild(unequipBtn);
-        }
-      } else {
-        packListEl.innerHTML = "<p class=\"mod-screen-hint\">Click a skill socket above to equip a mod from your pack. Salvage mods for Mod Shards.</p>";
-        for (const modId of pack) {
-          const mod = getSkillModById(modId);
-          if (!mod) continue;
-          const row = document.createElement("div");
-          row.className = "mod-screen-pack-item-row";
-          const label = document.createElement("span");
-          label.className = "mod-screen-pack-row";
-          label.textContent = `${mod.name} (${mod.rarity})`;
-          const salvageBtn = document.createElement("button");
-          salvageBtn.type = "button";
-          salvageBtn.className = "mod-screen-salvage-btn";
-          salvageBtn.textContent = "Salvage";
-          salvageBtn.addEventListener("click", () => {
-            if (typeof this.salvageMod === "function") {
-              this.salvageMod(modId);
-              this.renderModScreen();
-            }
-          });
-          const rerollBtn = document.createElement("button");
-          rerollBtn.type = "button";
-          rerollBtn.className = "mod-screen-reroll-btn";
-          rerollBtn.textContent = "Reroll";
-          rerollBtn.title = "Cost: 2 Mod Shards";
-          rerollBtn.addEventListener("click", () => {
-            if (typeof this.rerollModInPack === "function" && this.rerollModInPack(modId)) {
-              this.renderModScreen();
-            }
-          });
-          row.appendChild(label);
-          row.appendChild(salvageBtn);
-          row.appendChild(rerollBtn);
-          packListEl.appendChild(row);
-        }
-      }
     }
   });
 }

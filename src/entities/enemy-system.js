@@ -8,6 +8,36 @@ import { EnemyAttackController } from './attacks/index.js';
 import { getHumanSquadTypeDef, HUMAN_SQUAD_FORMATION } from '../data/human-squad-data.js';
 
 const SPECIAL_ENEMY_TIER = "special";
+const HIDDEN_ENEMY_SPAWN_IDS = new Set([
+  "m_2b_two_headed_ettin",
+  "m_1d_orc_blademaster",
+  "m_1e_orc_warchief",
+  "m_3c_slimebody",
+  "m_3d_merged_slimebodies",
+  "m_4a_faceless_monk",
+  "m_4b_unholy_cardinal",
+  "m_6e_hag_witch",
+  "m_7a_giant_centipede",
+  "m_7b_lampreymander",
+  "m_7c_giant_earthworm",
+  "m_7e_giant_ant",
+  "m_7f_lycanthrope",
+  "m_7g_giant_bat",
+  "m_7h_lesser_giant_ant",
+  "m_7j_lesser_giant_spider",
+  "m_7k_warg_dire_wolf",
+  "m_7l_giant_rat",
+  "m_8b_wendigo",
+  "m_8d_centaur",
+  "m_8e_naga",
+  "m_8f_forest_spirit",
+  "m_8g_satyr",
+  "m_8h_minotaur",
+  "m_8i_harpy",
+  "m_8j_gorgon_medusa",
+  "m_9a_lizardfolk_kobold_reptile",
+  "m_9d_cockatrice"
+]);
 const TIER_MULTIPLIERS = {
   minion: { hp: 0.5, atk: 1, xp: 0.7, size: 1.4 },
   elite: { hp: 1, atk: 1.2, xp: 1.4, size: 1 },
@@ -33,7 +63,9 @@ export class EnemySystem {
     this.boss = null;
     this.projectiles = [];
     this.respawnQueue = [];
-    this.normalEnemyTypes = ENEMY_TYPES.filter((enemyType) => enemyType?.spawnPool !== "special");
+    this.normalEnemyTypes = ENEMY_TYPES.filter((enemyType) => (
+      enemyType?.spawnPool !== "special" && !HIDDEN_ENEMY_SPAWN_IDS.has(enemyType?.id)
+    ));
   }
 
   hasCond(id) {
@@ -58,7 +90,10 @@ export class EnemySystem {
   getSpawnPool(includeSpecial = false) {
     const normalPool = this.getNormalEnemyTypePool();
     if (!includeSpecial) return normalPool;
-    return [...normalPool, ...UNDEAD_HERO_TYPES];
+    return [
+      ...normalPool,
+      ...UNDEAD_HERO_TYPES.filter((enemyType) => !HIDDEN_ENEMY_SPAWN_IDS.has(enemyType?.id))
+    ];
   }
 
   pickRandomEnemyType(includeSpecial = false) {
@@ -267,7 +302,12 @@ export class EnemySystem {
     let base = null;
     if (forceType) {
       base = pool.find((e) => e.name === forceType || e.id === forceType);
-      if (!base) base = ENEMY_TYPES.find((e) => e.name === forceType || e.id === forceType);
+      if (!base) {
+        base = ENEMY_TYPES.find((e) => (
+          (e.name === forceType || e.id === forceType) &&
+          !HIDDEN_ENEMY_SPAWN_IDS.has(e?.id)
+        ));
+      }
     }
     if (!base) base = pool[Math.floor(Math.random() * pool.length)];
     if (!forceType && this.hasCond("eliteSpawn")) {

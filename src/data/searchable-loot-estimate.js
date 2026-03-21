@@ -3,7 +3,7 @@
  * Use: node src/data/searchable-loot-estimate.js [N]
  * Default N = 1_000_000.
  *
- * Does not include: pendingLootDefs (START/OPEN_SPACE/miniboss chests), 50% empty on non-biome, Arcane Eye, boss room 2x.
+ * Does not include: pendingLootDefs (START/OPEN_SPACE), 50% empty on non-biome, Arcane Eye, boss room 2x.
  */
 
 import { SEARCHABLE_LOOT_TABLES } from "./searchable-loot-tables.js";

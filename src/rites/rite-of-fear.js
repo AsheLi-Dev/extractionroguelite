@@ -357,7 +357,7 @@ export function installRiteOfFear(game, options = {}) {
       game.hazardSystem.patches = [];
     }
     refreshWorldWallRects();
-    game.player.position.set(layout.spawn.x - game.player.size * 0.5, layout.spawn.y - game.player.size * 0.5);
+    game.placeEntityAtWithCollision?.(game.player, layout.spawn.x - game.player.size * 0.5, layout.spawn.y - game.player.size * 0.5);
     game.camera.snapTo(game.player, game.world.width, game.world.height);
   }
 
@@ -564,7 +564,7 @@ export function installRiteOfFear(game, options = {}) {
   };
 
   game.teleportToFearRiteExit = function teleportToFearRiteExit() {
-    game.player.position.set(layout.exitZone.x - game.player.size - 6, layout.exitZone.y + layout.exitZone.h * 0.5 - game.player.size * 0.5);
+    game.placeEntityAtWithCollision?.(game.player, layout.exitZone.x - game.player.size - 6, layout.exitZone.y + layout.exitZone.h * 0.5 - game.player.size * 0.5);
     return { success: true };
   };
 

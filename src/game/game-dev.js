@@ -458,7 +458,8 @@ export function applyGameDevMixin(Game) {
       const devSpawnShrine = document.getElementById("dev-spawn-shrine");
       if (devShrineSelect && devSpawnShrine) {
         devShrineSelect.innerHTML = '<option value="">-- Select shrine --</option>';
-        for (const shrine of SHRINE_DEFS) {
+        const activeShrines = SHRINE_DEFS.filter((shrine) => shrine?.disabled !== true);
+        for (const shrine of activeShrines) {
           const opt = document.createElement("option");
           opt.value = shrine.id;
           opt.textContent = shrine.name;
@@ -467,7 +468,7 @@ export function applyGameDevMixin(Game) {
         this.addManagedListener(devSpawnShrine, "click", () => {
           const shrineId = devShrineSelect.value;
           if (!shrineId) return;
-          const shrineDef = SHRINE_DEFS.find(s => s.id === shrineId);
+          const shrineDef = activeShrines.find((s) => s.id === shrineId);
           if (!shrineDef) return;
           
           // Spawn shrine near player (offset by 100 pixels)
@@ -833,10 +834,6 @@ export function applyGameDevMixin(Game) {
 
       if (!Array.isArray(this.skills)) this.skills = [null, null, null, null];
       this.skills[idx] = nextSkillId;
-
-      // Ensure mod list exists for this skill so mod toggles/UI don't break.
-      this.runSkillMods = this.runSkillMods || {};
-      if (nextSkillId && !Array.isArray(this.runSkillMods[nextSkillId])) this.runSkillMods[nextSkillId] = [];
 
       // Clear any per-skill progress trackers that would block casting.
       if (nextSkillId !== "cruelFinisher") this.cruelFinisherBasicCount = 0;

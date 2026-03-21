@@ -82,7 +82,7 @@ export function updateEnemyModifiers(game, enemy, dt) {
         const vx = (dx / dist) * projectileSpeed;
         const vy = (dy / dist) * projectileSpeed;
         const dmg = Math.max(1, Math.round((enemy.attack || 10) * 0.6));
-        game.spawnEnemyProjectile(ex, ey, vx, vy, dmg, projectileSize, "#a16207", { lifetime: projectileLifetime }, enemy);
+        game.spawnEnemyProjectile(ex, ey, vx, vy, dmg, projectileSize, "#4b5563", { lifetime: projectileLifetime }, enemy);
       }
     }
   }

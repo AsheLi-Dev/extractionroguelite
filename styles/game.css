@@ -132,6 +132,48 @@
   background: rgba(139, 92, 246, 0.2);
 }
 
+/* Mid-left: non-blocking loot pickup messages (position set from JS to match canvas) */
+.loot-pickup-feed {
+  position: fixed;
+  pointer-events: none;
+  z-index: 56;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 220px;
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #e2e8f0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+
+.loot-pickup-feed__line {
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.75));
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  animation: loot-feed-in 0.2s ease-out;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.loot-pickup-feed__line--fade {
+  opacity: 0;
+  transform: translateX(-6px);
+}
+
+@keyframes loot-feed-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .inventory-panel {
   width: 220px;
   padding: 16px 14px;
