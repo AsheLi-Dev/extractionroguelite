@@ -9,6 +9,8 @@ import {
   SKILL_XP_CURVE, SKILL_MAX_LEVEL, SKILL_SLOT_UNLOCK, DEV_MODE_ENABLED,
   PLAYER_WALL_COLLISION_INSET,
   PLAYER_HITBOX_SCALE,
+  PLAYER_CROUCH_MOVE_SPEED_MULT,
+  PLAYER_CROUCH_DETECTION_RANGE_MULT,
   getXpForSkillLevel, getSkillLevels, setSkillLevels, getSkillLevel, getSkillXp,
   markSkillEncountered, addSkillXp, getModSlotsForSkillLevel,
   getSkillModSockets, setSkillModSockets,
@@ -30,6 +32,7 @@ import {
 } from '../data/skills.js';
 import { RUN_CONDITIONS, ATTACK_TYPES, pickRandomConditions, enforceConditionLimits } from '../data/conditions.js';
 import { MAP_WIDTH, MAP_HEIGHT, WALL_THICKNESS, MAP_DEFS, World, createProceduralWorld, PRESET_MEDIUM, PRESET_BIOME, PRESET_FOREST_BIOME_TEST, BIOME_MAP_DEF, FOREST_BIOME_TEST_MAP_DEF, buildArchetypeGrid, buildForestBiomeTestArchetypeGrid, buildAllSubareaGrids, buildSubareaZonesForWorld, BIOME_ARCHETYPE, getBiomeCellBounds, getBiomeGridDimensions, BIOME_GRID_COLS, BIOME_GRID_ROWS, applyCorridorCellLayouts, applyBiomeTopBottomWalls, buildCobblestonePath, applyLostCampCellLayouts, applyVaultCellLayouts, applyVaultTreasureDecorations, applyMinibossCellDecorations } from '../data/maps.js';
+import { getVisibleOpenWorldBoulderPlacements, getVisibleOpenWorldShrubPlacements } from '../data/openworld-ground.js';
 import { mulberry32 } from '../map-gen-blockers.js';
 import { LOST_CAMP_TILESET } from '../data/lost-camp-data.js';
 import {
@@ -88,7 +91,7 @@ import { advanceSkillTriggerProgress } from './skill-trigger-progress.js';
 import { SKILL_EFFECT_UPDATE_HANDLERS } from './skill-effect-handlers.js';
 import { SKILL_EFFECT_DRAW_HANDLERS } from './skill-effect-draw-handlers.js';
 import { tryInteractProjectileWithOrbs } from './projectile-interactions.js';
-import { GRID_SIZE, NODE_TYPES, NODE_TAGS, generateRunMap } from './run-route-grid.js';
+import { GRID_SIZE, NODE_TYPES, NODE_TAGS, generateRunMap, generateTutorialRunMap } from './run-route-grid.js';
 import { REST_ROOM_MAP_ID } from '../data/rest-room.js';
 import { LootItem, LootSystem } from '../entities/loot.js';
 import { SearchableProp } from '../entities/searchable-prop.js';
@@ -109,6 +112,13 @@ import {
   drawHitboxProjectileTrails,
   drawHitboxProjectileVisuals
 } from '../vfx/projectile-visuals.js';
+import {
+  getElementalShotAnimatedSprite,
+  getSkillEffectAnimatedSprite,
+  getSoulSiphonSpiritFireballAnimatedSprite,
+  getSoulSiphonSpiritFireballImpactAnimatedSprite,
+  getSoulSiphonSpiritGroundSlamAnimatedSprite
+} from '../vfx/animated-sprite-presets.js';
 import { createHitbox, clearHitboxes, updateHitboxes, getActiveHitboxes, drawHitboxDebug } from '../combat/index.js';
 import { PLAYER_FAN_CONE_DEF, DEATH_KNIGHT_CONE_DEF, PLAYER_THRUST_RECT_DEF, HUMAN_LANCER_THRUST_RECT_DEF, PLAYER_PULSE_CIRCLE_DEF, PLAYER_PROJECTILE_CIRCLE_DEF, PLAYER_ELEMENTAL_WIND_RECT_DEF, thrustRectFromDirection, SOUL_SIPHON_BEAM_RECT_DEF } from '../combat/hitbox-examples.js';
 import { refreshMainMenuLP } from '../ui/main-menu.js';
@@ -521,6 +531,10 @@ export class Game {
     this.baseStats.attack += brutality;
     this.baseStats.speed += agility * 10;
     this.baseStats.maxHealth += vitality * 5;
+    if (runConfig.tutorial === true) {
+      this.baseStats.maxHealth = 500;
+      this.currentHealth = 500;
+    }
 
     this.shopRerollCountByShopId = {};
     this.itemServiceRerollCountByItemId = {};
@@ -615,7 +629,7 @@ export class Game {
 
     const isForestBiomeTestMap = runConfig.testMapId === 'forest_biome_0';
     this.testMapId = isForestBiomeTestMap ? 'forest_biome_0' : null;
-    const initialMapDef = MAP_DEFS[0];
+    const initialMapDef = this.getMapDefById(MAP_DEFS[0]?.id) || MAP_DEFS[0];
     const useBiome = isForestBiomeTestMap || this.shouldUseBiomeMapGeneration?.(initialMapDef?.id, { tutorial: tutorialMode }) === true;
     if (useProceduralMap) {
       const seed = (runConfig.seed ?? (isForestBiomeTestMap ? 1337 : Date.now())) ^ 0;
@@ -685,6 +699,9 @@ export class Game {
     this.currentMap = isForestBiomeTestMap ? FOREST_BIOME_TEST_MAP_DEF : initialMapDef;
     this.currentMapStateKey = this.currentMapId;
     this.world.setTheme(this.currentMap);
+    if (this.useProceduralMap) {
+      void this.queueOpenWorldCosmeticFloorBuild(this.world, this.proceduralSeed, this.currentMap);
+    }
     if ((this.devMode || isForestBiomeTestMap) && this.world.archetypeGrid) {
       this.logBiomeArchetypeGrid();
     }
@@ -724,13 +741,6 @@ export class Game {
     // Initialize tutorial system if in tutorial mode
     if (this.tutorialMode) {
       this.tutorialSystem = new TutorialSystem(this);
-      // Setup tutorial button handlers
-      const skipBtn = document.getElementById("tutorial-skip");
-      if (skipBtn) {
-        this.addManagedListener(skipBtn, "click", () => {
-          if (this.tutorialSystem) this.tutorialSystem.skip();
-        });
-      }
     } else {
       this.tutorialSystem = null;
     }
@@ -870,10 +880,11 @@ export class Game {
     this.nearSearchableProp = null;
     this.searchingProp = null;
     this.activeBlessings = [];
-    this.runMapNodes = generateRunMap();
+    this.runMapNodes = this.tutorialMode ? generateTutorialRunMap() : generateRunMap();
+    this.runRouteGridSize = this.tutorialMode ? 2 : GRID_SIZE;
     this.nodeX = 0;
     this.nodeY = 0;
-    this.enableRunRouteGraph = !this.tutorialMode && !isForestBiomeTestMap;
+    this.enableRunRouteGraph = !isForestBiomeTestMap;
     this.runRouteOverlayVisible = false;
     if (this.enableRunRouteGraph) {
       this.currentMapStateKey = this.getCurrentNodeKey();
@@ -905,6 +916,11 @@ export class Game {
     this.dashCooldown = 0;
     this.dashDirection = new Vec2(0, 0);
     this.dashTrail = [];
+    /** Ctrl during dash: cancel dash and slide (speed 200%→100% of walk over 0.5s). */
+    this.slideMoveActive = false;
+    this.slideMoveTimer = 0;
+    this.slideMoveDirection = new Vec2(0, 0);
+    this._prevCrouchHeldForSlide = false;
     this.floatingCombatText = [];
     this.lastMouseWorld = { x: 0, y: 0 };
     this.lastMouseClientX = null;
@@ -1043,6 +1059,19 @@ export class Game {
       this.addManagedListener(weaponUpgradeBtn, "click", () => this.executeWeaponUpgrade());
     }
 
+    // Ctrl+W / Cmd+W closes the tab; crouch (Ctrl) + move (W) triggers that. Capture phase so we run early.
+    this.addManagedListener(
+      window,
+      "keydown",
+      (e) => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        if (e.key !== "w" && e.key !== "W") return;
+        if (this.gameOver || this.paused || this.levelUpChoices || this.currentEvent) return;
+        e.preventDefault();
+      },
+      { capture: true }
+    );
+
     this.addManagedListener(window, "keydown", (e) => {
       if (e.key === "i" || e.key === "I") {
         if (!e.repeat && !this.gameOver && !this.levelUpChoices && !this.currentEvent) {
@@ -1153,6 +1182,7 @@ export class Game {
     });
 
     this._rafId = requestAnimationFrame((t) => this.loop(t));
+    document.getElementById("game-fps-counter")?.classList.remove("hidden");
   }
 
   hasRunTalent(id) {
@@ -1183,6 +1213,8 @@ export class Game {
       cancelAnimationFrame(this._rafId);
       this._rafId = null;
     }
+    this.slideMoveActive = false;
+    this.slideMoveTimer = 0;
     if (this._listenerAbortController) {
       this._listenerAbortController.abort();
       this._listenerAbortController = null;
@@ -1191,6 +1223,7 @@ export class Game {
     if (this.input && typeof this.input.destroy === "function") {
       this.input.destroy();
     }
+    document.getElementById("game-fps-counter")?.classList.add("hidden");
   }
 
   resizeCanvas() {
@@ -1285,6 +1318,16 @@ export class Game {
       pauseToggle.style.transformOrigin = "top center";
       pauseToggle.style.transform = "translateX(-50%)";
     }
+    const fpsCounter = document.getElementById("game-fps-counter");
+    if (fpsCounter) {
+      const margin = 12;
+      const w = fpsCounter.offsetWidth || 72;
+      fpsCounter.style.position = "fixed";
+      fpsCounter.style.left = `${Math.round(canvasLeft + DESIGN_WIDTH * scale - w - margin)}px`;
+      fpsCounter.style.top = `${Math.round(canvasTop + margin * scale)}px`;
+      fpsCounter.style.transformOrigin = "top right";
+      fpsCounter.style.transform = "none";
+    }
     const pauseEnemyPanel = document.getElementById("pause-enemy-panel");
     if (pauseEnemyPanel) {
       pauseEnemyPanel.style.left = `${Math.round(canvasLeft + DESIGN_WIDTH * scale - 16)}px`;
@@ -1371,6 +1414,15 @@ export class Game {
   loop(timestamp) {
     const dt = (timestamp - this.lastTime) / 1000 || 0;
     this.lastTime = timestamp;
+
+    if (dt > 0 && dt < 2) {
+      const inst = 1 / dt;
+      this._fpsSmooth = (this._fpsSmooth ?? inst) * 0.92 + inst * 0.08;
+    }
+    const fpsEl = document.getElementById("game-fps-counter");
+    if (fpsEl && !fpsEl.classList.contains("hidden")) {
+      fpsEl.textContent = `${Math.round(this._fpsSmooth ?? 0)} FPS`;
+    }
 
     if (!this.paused) {
       this.update(dt);
@@ -1765,6 +1817,7 @@ export class Game {
     document.getElementById("pause-toggle").classList.add("hidden");
     document.getElementById("dev-toggle")?.classList.add("hidden");
     document.getElementById("inventory-button")?.classList.add("hidden");
+    document.getElementById("game-fps-counter")?.classList.add("hidden");
     
     // Unpause if paused
     this.paused = false;
@@ -2465,6 +2518,7 @@ export class Game {
     refreshMainMenuLP();
     document.getElementById("pause-toggle").classList.add("hidden");
     document.getElementById("dev-toggle").classList.add("hidden");
+    document.getElementById("game-fps-counter")?.classList.add("hidden");
     renderHallOfChampions();
   }
 
@@ -3057,10 +3111,8 @@ export class Game {
             const tx = nearest.position.x + nearest.size / 2;
             const ty = nearest.position.y + nearest.size / 2;
             const dmg = Math.max(1, Math.round((this.currentStats?.attack || 10) * 0.4));
-            const proj = new PlayerProjectile(sx, sy, tx, ty, dmg, { speedMult: 0.8 });
-            proj.attackType = "soulSiphon";
-            proj._fromSpirit = true;
-            this.playerProjectiles.push(proj);
+            spirit.playAttackAnimation?.('fireball');
+            this.playerProjectiles.push(this.createSoulSiphonSpiritFireballProjectile(sx, sy, tx, ty, dmg, { speedMult: 0.8 }));
             this._spiritOverloadIcdUntil = this.time + 0.6;
           }
         }
@@ -3876,7 +3928,7 @@ export class Game {
     const axis = this.input.getAxis();
     const isMoving = Math.abs(axis.x) > 0.01 || Math.abs(axis.y) > 0.01;
     const isAttacking = !!this.player.attackState?.active || ((this.frenzyAutoAttackUntil || 0) > this.time);
-    if (isMoving && !isAttacking && !this.dashActive) {
+    if (isMoving && !isAttacking && !this.dashActive && !this.slideMoveActive) {
       this.continuousMoveTime += dt;
     } else {
       this.continuousMoveTime = 0;
@@ -3907,6 +3959,12 @@ export class Game {
 
     if (this.player?.isSprinting && (this.equipmentSprintSpeedBonus || 0) !== 0) {
       effectiveSpeed *= 1 + (this.equipmentSprintSpeedBonus || 0);
+    }
+    const crouchHeld = this.input.isCrouchHeld();
+    if (this.player) this.player.isCrouching = crouchHeld;
+    if (crouchHeld) {
+      this.endSprint();
+      effectiveSpeed *= PLAYER_CROUCH_MOVE_SPEED_MULT;
     }
     this.player.speed = effectiveSpeed;
 
@@ -3996,6 +4054,13 @@ export class Game {
         }
       }
       this.dashCooldown = this.dashCharges < this.dashMaxCharges ? Math.max(0, this.dashRechargeTimer) : 0;
+    }
+
+    const crouchPressedForSlide =
+      this.input.isCrouchHeld() && !this._prevCrouchHeldForSlide;
+    this._prevCrouchHeldForSlide = this.input.isCrouchHeld();
+    if (this.dashActive && crouchPressedForSlide) {
+      this.sliding();
     }
 
     if (this.dashActive) {
@@ -4117,6 +4182,57 @@ export class Game {
         if (typeof this.runPillarEvent === "function") {
           this.runPillarEvent("onDashEnded", { reason: "duration_complete", time: this.time });
         }
+      }
+    } else if (this.slideMoveActive) {
+      if (this.player && typeof this.player.tickDashAnimation === "function") {
+        this.player.tickDashAnimation(dt);
+      }
+      const slideDuration = 0.5;
+      const mult = 1 + Math.max(0, this.slideMoveTimer) / slideDuration;
+      const moveDist = this.player.speed * mult * dt;
+      const margin = this.world.wallCollisionThickness ?? this.world.wallThickness;
+      let nx = this.player.position.x + this.slideMoveDirection.x * moveDist;
+      let ny = this.player.position.y + this.slideMoveDirection.y * moveDist;
+      nx = Math.max(margin, Math.min(nx, this.world.width - margin - this.player.size));
+      ny = Math.max(margin, Math.min(ny, this.world.height - margin - this.player.size));
+      const pi = PLAYER_WALL_COLLISION_INSET;
+      const pBase = Math.max(1, this.player.size - 2 * pi);
+      const pw = Math.max(1, pBase * 0.25 * PLAYER_HITBOX_SCALE);
+      const ph = Math.max(1, pBase * 0.5 * PLAYER_HITBOX_SCALE);
+      const pxo = pi + (pBase - pw) / 2;
+      const pyo = pi + (pBase - ph) / 2;
+      const testX = { x: nx + pxo, y: this.player.position.y + pyo, w: pw, h: ph };
+      const testY = { x: this.player.position.x + pxo, y: ny + pyo, w: pw, h: ph };
+      let canMoveX = true;
+      let canMoveY = true;
+      for (const obstacle of this.obstacles || []) {
+        if (obstacle.destroyed || !obstacle.blocksMovement || obstacle.type === "ancientTree") continue;
+        if (obstacleIntersectsRect(obstacle, testX)) canMoveX = false;
+        if (obstacleIntersectsRect(obstacle, testY)) canMoveY = false;
+      }
+      for (const ob of this.getVaultEntranceBlocking()) {
+        if (obstacleIntersectsRect(ob, testX)) canMoveX = false;
+        if (obstacleIntersectsRect(ob, testY)) canMoveY = false;
+      }
+      const slideWalls = this.world.tileWallRects || [];
+      for (const wall of slideWalls) {
+        const wallRect = getWallCollisionRect(wall);
+        if (testX.x < wallRect.x + wallRect.w && testX.x + testX.w > wallRect.x &&
+            testX.y < wallRect.y + wallRect.h && testX.y + testX.h > wallRect.y) canMoveX = false;
+        if (testY.x < wallRect.x + wallRect.w && testY.x + testY.w > wallRect.x &&
+            testY.y < wallRect.y + wallRect.h && testY.y + testY.h > wallRect.y) canMoveY = false;
+      }
+      if (!canMoveX) nx = this.player.position.x;
+      if (!canMoveY) ny = this.player.position.y;
+      if (typeof this.playerPositionHasBlockingCollision === "function" && this.playerPositionHasBlockingCollision(nx, ny)) {
+        nx = this.player.position.x;
+        ny = this.player.position.y;
+      }
+      this.player.position.set(nx, ny);
+      this.slideMoveTimer -= dt;
+      if (this.slideMoveTimer <= 0) {
+        this.slideMoveActive = false;
+        this.slideMoveTimer = 0;
       }
     } else if (this.bladeDashActive) {
       this.bladeDashTimer -= dt;
@@ -4572,11 +4688,12 @@ export class Game {
     if (!this.searchingProp && this.nearVictoryPortal && this.input.keys.has("e")) {
       this.openExtractionInventory();
       this.nearVictoryPortal = false;
-    } else if (!this.searchingProp && this.nearInteractable && this.input.keys.has("e")) {
-      this.interactWithMapObject(this.nearInteractable);
-      const shouldConsume = this.nearInteractable.type !== "shop" && this.nearInteractable.consumeOnInteract !== false;
+    } else if (!this.searchingProp && this.nearInteractable && this.input.keys.has("e") && this.exitTransitionCooldown <= 0) {
+      const interactable = this.nearInteractable;
+      this.interactWithMapObject(interactable);
+      const shouldConsume = interactable.type !== "shop" && interactable.consumeOnInteract !== false;
       if (shouldConsume) {
-        this.mapInteractables = this.mapInteractables.filter((o) => o !== this.nearInteractable);
+        this.mapInteractables = this.mapInteractables.filter((o) => o !== interactable);
       }
       this.nearInteractable = null;
     }
@@ -4614,6 +4731,12 @@ export class Game {
     return this.runMapNodes?.[this.nodeY]?.[this.nodeX] || null;
   }
 
+  getRunRouteGridSize() {
+    const fromNodes = Array.isArray(this.runMapNodes) ? this.runMapNodes.length : 0;
+    if (fromNodes > 0) return fromNodes;
+    return Number.isFinite(this.runRouteGridSize) ? this.runRouteGridSize : GRID_SIZE;
+  }
+
   getCurrentNodeKey() {
     return `node:${this.nodeX},${this.nodeY}`;
   }
@@ -4626,9 +4749,10 @@ export class Game {
       neighbors.push({ x, y });
     };
     if (this.nodeX > 0) tryAdd(this.nodeX - 1, this.nodeY);
-    if (this.nodeX < GRID_SIZE - 1) tryAdd(this.nodeX + 1, this.nodeY);
+    const gridSize = this.getRunRouteGridSize();
+    if (this.nodeX < gridSize - 1) tryAdd(this.nodeX + 1, this.nodeY);
     if (this.nodeY > 0) tryAdd(this.nodeX, this.nodeY - 1);
-    if (this.nodeY < GRID_SIZE - 1) tryAdd(this.nodeX, this.nodeY + 1);
+    if (this.nodeY < gridSize - 1) tryAdd(this.nodeX, this.nodeY + 1);
     return neighbors;
   }
 
@@ -4958,36 +5082,38 @@ export class Game {
       attempts++;
       const typeDef = availableTypes[Math.floor(Math.random() * availableTypes.length)];
       const size = typeDef.size;
-      
+      const placeW = typeDef.placementSize ? typeDef.placementSize.w : size.w;
+      const placeH = typeDef.placementSize ? typeDef.placementSize.h : size.h;
+
       // Random position
       const minSpawnX = Math.max(margin, this.world.width * 0.2);
-      const xRange = Math.max(1, this.world.width - margin - size.w - minSpawnX);
+      const xRange = Math.max(1, this.world.width - margin - placeW - minSpawnX);
       const x = minSpawnX + Math.random() * xRange;
-      const y = margin + Math.random() * (this.world.height - 2 * margin - size.h);
+      const y = margin + Math.random() * (this.world.height - 2 * margin - placeH);
 
       // Check if position is valid
       let valid = true;
 
       // Check exit zones
       for (const zone of exitZones) {
-        if (x < zone.x + zone.w && x + size.w > zone.x &&
-            y < zone.y + zone.h && y + size.h > zone.y) {
+        if (x < zone.x + zone.w && x + placeW > zone.x &&
+            y < zone.y + zone.h && y + placeH > zone.y) {
           valid = false;
           break;
         }
       }
 
       // Check player spawn zone
-      if (x < playerSpawnZone.x + playerSpawnZone.w && x + size.w > playerSpawnZone.x &&
-          y < playerSpawnZone.y + playerSpawnZone.h && y + size.h > playerSpawnZone.y) {
+      if (x < playerSpawnZone.x + playerSpawnZone.w && x + placeW > playerSpawnZone.x &&
+          y < playerSpawnZone.y + playerSpawnZone.h && y + placeH > playerSpawnZone.y) {
         valid = false;
       }
 
       // Check overlap with existing obstacles
       if (valid) {
         for (const existing of this.obstacles) {
-          if (x < existing.position.x + existing.size.w && x + size.w > existing.position.x &&
-              y < existing.position.y + existing.size.h && y + size.h > existing.position.y) {
+          if (x < existing.position.x + existing.size.w && x + placeW > existing.position.x &&
+              y < existing.position.y + existing.size.h && y + placeH > existing.position.y) {
             valid = false;
             break;
           }
@@ -4998,8 +5124,8 @@ export class Game {
       if (valid) {
         for (const loot of this.lootSystem.items) {
           const lootPos = loot.displayPosition;
-          if (x < lootPos.x + loot.size && x + size.w > lootPos.x &&
-              y < lootPos.y + loot.size && y + size.h > lootPos.y) {
+          if (x < lootPos.x + loot.size && x + placeW > lootPos.x &&
+              y < lootPos.y + loot.size && y + placeH > lootPos.y) {
             valid = false;
             break;
           }
@@ -5012,8 +5138,8 @@ export class Game {
         if (this.enemySystem.boss) allEnemies.push(this.enemySystem.boss);
         for (const enemy of allEnemies) {
           if (enemy.isDead) continue;
-          if (x < enemy.position.x + enemy.size && x + size.w > enemy.position.x &&
-              y < enemy.position.y + enemy.size && y + size.h > enemy.position.y) {
+          if (x < enemy.position.x + enemy.size && x + placeW > enemy.position.x &&
+              y < enemy.position.y + enemy.size && y + placeH > enemy.position.y) {
             valid = false;
             break;
           }
@@ -5023,8 +5149,8 @@ export class Game {
       // Check overlap with interactables
       if (valid) {
         for (const obj of this.mapInteractables) {
-          if (x < obj.x + obj.w && x + size.w > obj.x &&
-              y < obj.y + obj.h && y + size.h > obj.y) {
+          if (x < obj.x + obj.w && x + placeW > obj.x &&
+              y < obj.y + obj.h && y + placeH > obj.y) {
             valid = false;
             break;
           }
@@ -5082,6 +5208,98 @@ export class Game {
     const exitZone = { x: exitPixel.x - 80, y: exitPixel.y - 80, w: 160, h: 160 };
     const playerMargin = 120;
     const { cols, rows } = getBiomeGridDimensions(this.world);
+    const vaultTreeDef = OBSTACLE_TYPES.ancientTree
+      ? {
+          ...OBSTACLE_TYPES.ancientTree,
+          spriteSources: [
+            "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeB_01.png",
+            "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeB_02.png",
+            "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeB_03.png",
+            "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeB_04.png",
+          ],
+        }
+      : null;
+    const vaultRockDef = OBSTACLE_TYPES.giantRock
+      ? {
+          ...OBSTACLE_TYPES.giantRock,
+          spriteSources: [
+            "assets/Environments/1. OpenWorld/4.SingleObj/Special/monC_01.png",
+            "assets/Environments/1. OpenWorld/4.SingleObj/Special/monC_02.png",
+          ],
+        }
+      : null;
+    const rectOverlapsVaultCircle = (x, y, w, h, vaultZone) => {
+      if (!vaultZone) return false;
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      return Math.hypot(cx - vaultZone.cx, cy - vaultZone.cy) <= vaultZone.radius + tileSize;
+    };
+    const overlapsExistingObstacle = (x, y, w, h) =>
+      this.obstacles.some((o) =>
+        x < o.position.x + o.size.w && x + w > o.position.x && y < o.position.y + o.size.h && y + h > o.position.y
+      );
+    const tryPlaceBiomeObstacle = (typeDef, inner, vaultZone = null, maxAttempts = 60) => {
+      if (!typeDef) return false;
+      const size = typeDef.size;
+      const placeW = typeDef.placementSize ? typeDef.placementSize.w : size.w;
+      const placeH = typeDef.placementSize ? typeDef.placementSize.h : size.h;
+      if (inner.w < placeW || inner.h < placeH) return false;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const x = inner.x + Math.random() * Math.max(0, inner.w - placeW);
+        const y = inner.y + Math.random() * Math.max(0, inner.h - placeH);
+        const gx = Math.floor(x / tileSize);
+        const gy = Math.floor(y / tileSize);
+        if (tileGrid && (gy < 0 || gy >= tileGrid.length || gx < 0 || gx >= tileGrid[0].length || tileGrid[gy][gx] === WALL)) continue;
+        if (
+          x < this.player.position.x + playerMargin + placeW &&
+          x + placeW > this.player.position.x - playerMargin &&
+          y < this.player.position.y + playerMargin + placeH &&
+          y + placeH > this.player.position.y - playerMargin
+        ) continue;
+        if (x < exitZone.x + exitZone.w && x + placeW > exitZone.x && y < exitZone.y + exitZone.h && y + placeH > exitZone.y) continue;
+        if (vaultZone && rectOverlapsVaultCircle(x, y, placeW, placeH, vaultZone)) continue;
+        if (overlapsExistingObstacle(x, y, placeW, placeH)) continue;
+        if (this.overlapsTileWall(x, y, placeW, placeH)) continue;
+        this.obstacles.push(new Obstacle(x, y, typeDef));
+        return true;
+      }
+      return false;
+    };
+    const tryPlaceVaultPerimeterObstacle = (typeDef, inner, vaultZone, options = {}) => {
+      if (!typeDef || !vaultZone) return false;
+      const size = typeDef.size;
+      const placeW = typeDef.placementSize ? typeDef.placementSize.w : size.w;
+      const placeH = typeDef.placementSize ? typeDef.placementSize.h : size.h;
+      if (inner.w < placeW || inner.h < placeH) return false;
+      const maxAttempts = options.maxAttempts ?? 100;
+      const minRadius = Math.max(vaultZone.radius + (options.minOffset ?? 20), placeW * 0.35);
+      const maxRadius = Math.max(minRadius, vaultZone.radius + (options.maxOffset ?? 72));
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = minRadius + Math.random() * (maxRadius - minRadius);
+        const centerX = vaultZone.cx + Math.cos(angle) * radius;
+        const centerY = vaultZone.cy + Math.sin(angle) * radius;
+        const x = centerX - placeW / 2;
+        const y = centerY - placeH / 2;
+        if (x < inner.x || y < inner.y || x + placeW > inner.x + inner.w || y + placeH > inner.y + inner.h) continue;
+        const gx = Math.floor(x / tileSize);
+        const gy = Math.floor(y / tileSize);
+        if (tileGrid && (gy < 0 || gy >= tileGrid.length || gx < 0 || gx >= tileGrid[0].length || tileGrid[gy][gx] === WALL)) continue;
+        if (
+          x < this.player.position.x + playerMargin + placeW &&
+          x + placeW > this.player.position.x - playerMargin &&
+          y < this.player.position.y + playerMargin + placeH &&
+          y + placeH > this.player.position.y - playerMargin
+        ) continue;
+        if (x < exitZone.x + exitZone.w && x + placeW > exitZone.x && y < exitZone.y + exitZone.h && y + placeH > exitZone.y) continue;
+        if (rectOverlapsVaultCircle(x, y, placeW, placeH, vaultZone)) continue;
+        if (overlapsExistingObstacle(x, y, placeW, placeH)) continue;
+        if (this.overlapsTileWall(x, y, placeW, placeH)) continue;
+        this.obstacles.push(new Obstacle(x, y, typeDef));
+        return true;
+      }
+      return false;
+    };
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
@@ -5105,38 +5323,32 @@ export class Game {
         for (let i = 0; i < count; i++) {
           const typeDef = (archetype === BIOME_ARCHETYPE.WOODS && treeDef) ? treeDef : availableTypes[Math.floor(Math.random() * availableTypes.length)];
           const size = typeDef.size;
+          const placeW = typeDef.placementSize ? typeDef.placementSize.w : size.w;
+          const placeH = typeDef.placementSize ? typeDef.placementSize.h : size.h;
           let valid = false;
           let x = 0;
           let y = 0;
           const maxAttempts = archetype === BIOME_ARCHETYPE.WOODS ? 80 : 30;
           for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            x = inner.x + Math.random() * Math.max(0, inner.w - size.w);
-            y = inner.y + Math.random() * Math.max(0, inner.h - size.h);
+            x = inner.x + Math.random() * Math.max(0, inner.w - placeW);
+            y = inner.y + Math.random() * Math.max(0, inner.h - placeH);
             const gx = Math.floor(x / tileSize);
             const gy = Math.floor(y / tileSize);
             if (tileGrid && (gy < 0 || gy >= tileGrid.length || gx < 0 || gx >= tileGrid[0].length || tileGrid[gy][gx] === WALL)) continue;
-            if (x < this.player.position.x + playerMargin + size.w && x + size.w > this.player.position.x - playerMargin &&
-                y < this.player.position.y + playerMargin + size.h && y + size.h > this.player.position.y - playerMargin) continue;
-            if (x < exitZone.x + exitZone.w && x + size.w > exitZone.x && y < exitZone.y + exitZone.h && y + size.h > exitZone.y) continue;
+            if (x < this.player.position.x + playerMargin + placeW && x + placeW > this.player.position.x - playerMargin &&
+                y < this.player.position.y + playerMargin + placeH && y + placeH > this.player.position.y - playerMargin) continue;
+            if (x < exitZone.x + exitZone.w && x + placeW > exitZone.x && y < exitZone.y + exitZone.h && y + placeH > exitZone.y) continue;
             let overlap = false;
             for (const o of this.obstacles) {
-              if (x < o.position.x + o.size.w && x + size.w > o.position.x && y < o.position.y + o.size.h && y + size.h > o.position.y) { overlap = true; break; }
+              if (x < o.position.x + o.size.w && x + placeW > o.position.x && y < o.position.y + o.size.h && y + placeH > o.position.y) { overlap = true; break; }
             }
             if (overlap) continue;
-            if (this.overlapsTileWall(x, y, size.w, size.h)) continue;
+            if (this.overlapsTileWall(x, y, placeW, placeH)) continue;
             valid = true;
             break;
           }
           if (valid) {
             const obstacle = new Obstacle(x, y, typeDef);
-            if (typeDef.id === 'ancientTree') {
-              const treeVariants = [
-                { row: 26, col: 'a' },
-                { row: 26, col: 'b' },
-                { row: 26, col: 'c' }
-              ];
-              obstacle.treeTile = treeVariants[Math.floor(Math.random() * treeVariants.length)];
-            }
             this.obstacles.push(obstacle);
           }
         }
@@ -5190,6 +5402,32 @@ export class Game {
         if (valid) this.obstacles.push(new Obstacle(x, y, ruinPillarDef));
       }
     }
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        if (data.grid[row][col] !== BIOME_ARCHETYPE.VAULT) continue;
+        const bounds = getBiomeCellBounds(this.world, col, row);
+        const margin = this.world.wallThickness + 40;
+        const inner = {
+          x: bounds.x + margin,
+          y: bounds.y + margin,
+          w: Math.max(0, bounds.w - 2 * margin),
+          h: Math.max(0, bounds.h - 2 * margin),
+        };
+        const vaultZone = (this.world.vaultZones || []).find(
+          (zone) => zone.cx >= bounds.x && zone.cx <= bounds.x + bounds.w && zone.cy >= bounds.y && zone.cy <= bounds.y + bounds.h
+        ) || null;
+        const treeCount = 3 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < treeCount; i++) {
+          if (!tryPlaceVaultPerimeterObstacle(vaultTreeDef, inner, vaultZone, { maxAttempts: 120, minOffset: 18, maxOffset: 70 })) {
+            tryPlaceBiomeObstacle(vaultTreeDef, inner, vaultZone, 80);
+          }
+        }
+        if (!tryPlaceVaultPerimeterObstacle(vaultRockDef, inner, vaultZone, { maxAttempts: 140, minOffset: 28, maxOffset: 88 })) {
+          tryPlaceBiomeObstacle(vaultRockDef, inner, vaultZone, 100);
+        }
+      }
+    }
   }
 
   spawnSubAreas(mapId) {
@@ -5224,6 +5462,8 @@ export class Game {
     this.cameraShakeAmount = 0;
     this.dashActive = false;
     this.dashTrail = [];
+    this.slideMoveActive = false;
+    this.slideMoveTimer = 0;
     const lootQual = targetMap.lootQuality;
     this.lootSystem.setMapLootQuality(lootQual);
     this.lootSystem.setDifficulty(this.difficulty);
@@ -6012,7 +6252,7 @@ export class Game {
       ? this.getPillarDashCost(1, { source: "input" })
       : 1;
     const pillarInfiniteDash = typeof this.isPillarInfiniteDashCharges === "function" && this.isPillarInfiniteDashCharges();
-    if (this.dashActive || (!pillarInfiniteDash && (this.dashCharges || 0) < dashCost)) return;
+    if (this.dashActive || this.slideMoveActive || (!pillarInfiniteDash && (this.dashCharges || 0) < dashCost)) return;
     if (this.stunTimer > 0) return;
     const as = this.player?.attackMoveState;
     if (as?.active && as.t < as.duration * 0.5) return;
@@ -6069,9 +6309,25 @@ export class Game {
     playSfx("playerDash");
   }
 
+  /**
+   * Cancel dash and slide in the dash direction: speed multiplier goes from 200% to 100% of current
+   * walk speed (`player.speed`) over 0.5s. Triggered by a Ctrl press (edge) while dashing.
+   */
+  sliding() {
+    if (!this.dashActive || !this.player) return;
+    this.slideMoveDirection.set(this.dashDirection.x, this.dashDirection.y);
+    this.slideMoveTimer = 0.5;
+    this.slideMoveActive = true;
+    this.dashActive = false;
+    this.dashTimer = 0;
+    this.dashTrail = [];
+    this.continuousMoveTime = 0;
+  }
+
   tryStartSprint() {
     if (this.gameOver || this.paused || this.levelUpChoices) return;
     if (!this.player || this.player.isSprinting) return;
+    if (this.input.isCrouchHeld()) return;
     if (this.stunTimer > 0) return;
     if ((this.dashCharges || 0) < 1) return;
 
@@ -6198,6 +6454,7 @@ export class Game {
     }
     if (this.playerAttackTimer > 0) return;
     if (this.dashActive) return;
+    if (this.slideMoveActive) return;
     if (this.bladeDashActive) return;
     if (this.dashStrikeState) return;
     if (this.backfireDashState) return;
@@ -7079,6 +7336,9 @@ export class Game {
         if (attackTypeForDamage === "projectile" && shotElement === "lightning") maxTotalShot = Math.min(999999, maxTotalShot + 1);
         const useHomingForShot = seekerHoming || this.hasUpgradeCard("homing") || seeking;
         const homingTarget = useHomingForShot ? this.getNearestEnemy(centerX, centerY, 800) : null;
+        const projectileAnimatedSprite = attackTypeForDamage === "projectile"
+          ? getElementalShotAnimatedSprite(shotElement)
+          : null;
         if (isWind) {
           const angleRad = Math.atan2(dy, dx);
           const visualPayload = {
@@ -7087,6 +7347,7 @@ export class Game {
             shape: 'rect',
             width: windRectW,
             height: windRectH,
+            animatedSprite: projectileAnimatedSprite,
             alpha: 0.32,
             coreAlpha: 0.7
           };
@@ -7137,6 +7398,7 @@ export class Game {
               elementalState: shotElement,
               shape: 'circle',
               radius: r,
+              animatedSprite: projectileAnimatedSprite,
               alpha: shotElement === 'wind' ? 0.35 : 1
             }
           });
@@ -7208,6 +7470,7 @@ export class Game {
         canSteer,
         sniperPierceFalloff: sniperFalloff,
         forceHoming: seekerHoming,
+        animatedSprite: attackTypeForDamage === "projectile" ? getElementalShotAnimatedSprite(entityElement) : null,
         ...(attackTypeForDamage === "projectile" && entityElement === "lightning" ? this.getLightningProjectileZigzagProfile() : {}),
         ...(attackTypeForDamage === "projectile" ? { elementalState: entityElement } : {})
       });
@@ -7250,6 +7513,30 @@ export class Game {
       if (proj.isExpired()) continue;
       if (proj._spawn) continue;
 
+      const spawnAnimatedProjectileImpact = (impactX = null, impactY = null) => {
+        if (!proj.impactAnimatedSprite) return;
+        const w = proj.rectWidth ?? proj.size ?? PLAYER_PROJECTILE_SIZE;
+        const h = proj.rectHeight ?? proj.size ?? PLAYER_PROJECTILE_SIZE;
+        const sprite = { ...proj.impactAnimatedSprite };
+        const duration = Math.max(
+          0.05,
+          Number(sprite.duration) || (
+            sprite.loop === false
+              ? sprite.frameCount / Math.max(1, sprite.fps)
+              : 0.25
+          )
+        );
+        this.skillEffects.push({
+          type: "animatedSpriteImpact",
+          x: Number.isFinite(impactX) ? impactX : proj.position.x + w / 2,
+          y: Number.isFinite(impactY) ? impactY : proj.position.y + h / 2,
+          angleRad: Math.atan2(proj.velocity?.y || 0, proj.velocity?.x || 1),
+          animatedSprite: sprite,
+          t: 0,
+          duration
+        });
+      };
+
       let swirlConsumed = false;
       if (proj.attackType === "projectile" && (proj.elementalState === "fire" || proj.elementalState === "lightning")) {
         const evoEnv = this.getProjectileShotEvolutionOverrides?.()?.environment;
@@ -7276,6 +7563,7 @@ export class Game {
       if (swirlConsumed) continue;
 
       let hit = false;
+      let impactPoint = null;
       const applyHit = (enemy, dmg) => {
         proj.hitEnemyIds.add(enemy.id);
         const damageMult = proj.currentDamageMult != null ? proj.currentDamageMult : 1;
@@ -7290,6 +7578,10 @@ export class Game {
           useDmg = Math.round(useDmg * 2);
           enemy.soulSiphonMarkedUntil = 0;
         }
+        impactPoint = {
+          x: enemy.position.x + enemy.size / 2,
+          y: enemy.position.y + enemy.size / 2
+        };
         this.dealDamageToEnemy(enemy, useDmg, {
           skillId: proj.attackType || this.attackType,
           attackType: proj.attackType || this.attackType,
@@ -7670,6 +7962,7 @@ export class Game {
       }
 
       if (hitObstacle) {
+        spawnAnimatedProjectileImpact();
         continue; // Projectile destroyed by obstacle/wall
       }
 
@@ -7692,6 +7985,7 @@ export class Game {
         }
       }
       if (hit && !proj.ghost) {
+        spawnAnimatedProjectileImpact();
         continue;
       }
 
@@ -7707,10 +8001,15 @@ export class Game {
             sourceType: "player_basic_attack",
             reason: "projectile_totem_hit"
           });
+          impactPoint = {
+            x: totem.position.x + totem.size / 2,
+            y: totem.position.y + totem.size / 2
+          };
           if (!proj.ghost) break;
         }
       }
       if (hit && !proj.ghost) {
+        spawnAnimatedProjectileImpact(impactPoint?.x, impactPoint?.y);
         continue;
       }
 
@@ -7737,6 +8036,7 @@ export class Game {
         }
       }
       const keep = !proj.isExpired() && (!hit || (!proj.piercing || proj.piercesRemaining > 0));
+      if (!keep && hit) spawnAnimatedProjectileImpact(impactPoint?.x, impactPoint?.y);
       if (keep) surviving.push(proj);
     }
     this.playerProjectiles = surviving.concat(toAdd);
@@ -8217,7 +8517,8 @@ export class Game {
         const enemyTarget = canTargetPlayer
           ? player
           : { position: { x: enemy.position.x, y: enemy.position.y }, size: enemy.size || player.size };
-        enemy.update(dt, enemyTarget, this.time, globalSlow, 400, this);
+        const crouchDetMult = this.input.isCrouchHeld() ? PLAYER_CROUCH_DETECTION_RANGE_MULT : 1;
+        enemy.update(dt, enemyTarget, this.time, globalSlow, 400 * crouchDetMult, this);
         this.updateSmallMimicBehavior(enemy, dt);
         this.updateLargeMimicBehavior(enemy, dt);
         this.updateGhostBehavior(enemy, dt);
@@ -8343,7 +8644,8 @@ export class Game {
       const enemyTarget = canTargetPlayer
         ? player
         : { position: { x: enemy.position.x, y: enemy.position.y }, size: enemy.size || player.size };
-      enemy.update(dt, enemyTarget, this.time, globalSlow, this.viewWidth / 4, this);
+      const crouchDetMult = this.input.isCrouchHeld() ? PLAYER_CROUCH_DETECTION_RANGE_MULT : 1;
+      enemy.update(dt, enemyTarget, this.time, globalSlow, (this.viewWidth / 4) * crouchDetMult, this);
       this.updateSmallMimicBehavior(enemy, dt);
       this.updateLargeMimicBehavior(enemy, dt);
       this.updateGhostBehavior(enemy, dt);
@@ -9250,7 +9552,6 @@ export class Game {
             const chance = Math.min(1, 0.15 * stacks);
             if (Math.random() < chance) {
               this.cuteSpiritCompanion.charge = Math.min(this.cuteSpiritCompanion.charge + 1, 10);
-              this.cuteSpiritCompanion.chargePulseUntil = this.time + 0.2;
             }
           }
         }
@@ -11407,6 +11708,7 @@ export class Game {
         x: px, y: py, vx: (dirX / dist) * speed, vy: (dirY / dist) * speed,
         mult: mult * chargeMult, radius: 60, t: 0, mods: modList || mods,
         maxRange: 360, distanceTraveled: 0,
+        animatedSprite: getSkillEffectAnimatedSprite('fireball'),
         slot, modList: modList || mods, sacrificeMult, skillId, skillMults
       };
       if (modList && modList.includes("orbiting")) {
@@ -11428,6 +11730,7 @@ export class Game {
         x: px, y: py, vx: (dirX / dist) * speed, vy: (dirY / dist) * speed,
         mult: mult * chargeMult, pierces: 5, t: 0, mods: modList || mods,
         maxRange: 600, distanceTraveled: 0,
+        animatedSprite: getSkillEffectAnimatedSprite('iceShard'),
         slot, modList: modList || mods, sacrificeMult, skillId, skillMults
       };
       if (modList && modList.includes("orbiting")) {
@@ -11627,7 +11930,7 @@ export class Game {
       this.damageSkillsUsedThisRun.add("escapePlan");
       this.skillEffects.push({
         type: "escapePlan",
-        t: 0, teleportDelay: 0.2, teleportRadius: 50, maxTeleports: 8, teleportIndex: 0, safeRadius: 60,
+        t: 0, teleportDelay: 0.2, teleportRadius: 200, maxTeleports: 1, teleportIndex: 0, safeRadius: 100,
         slot, modList: mods, sacrificeMult, skillId, skillMults
       });
     } else if (skillId === "hauntingGhostCharges") {
@@ -12122,7 +12425,6 @@ export class Game {
       10,
       this.cuteSpiritCompanion.charge + chargesToGrant
     );
-    this.cuteSpiritCompanion.chargePulseUntil = this.time + 0.2;
   }
 
   /**
@@ -12217,7 +12519,7 @@ export class Game {
    * Evolution profile can change beam mode (original, fast_channel, delayed_shot, cursor_area).
    */
   updateSoulSiphonChannel(dt) {
-    if (this.dashActive || this.bladeDashActive || this.knightSlideActive || this.dashStrikeState || this.backfireDashState) return;
+    if (this.dashActive || this.slideMoveActive || this.bladeDashActive || this.knightSlideActive || this.dashStrikeState || this.backfireDashState) return;
     const profile = this.getSoulSiphonProfile();
     const beamMode = profile.beamMode || "channel";
     const mods = profile.beamMods || {};
@@ -12456,7 +12758,6 @@ export class Game {
               }
             }
           }
-          spirit.chargePulseUntil = this.time + 0.2;
         }
       }
       if ((profile.links || {}).autoSpiritSupportOnAttack && spirit.charge >= 1 && (this.soulSiphonAutoFireballIcdUntil || 0) <= this.time) {
@@ -12467,13 +12768,38 @@ export class Game {
           const tx = nearest.position.x + nearest.size / 2;
           const ty = nearest.position.y + nearest.size / 2;
           const baseDmg = Math.max(1, Math.round((this.currentStats?.attack || 10) * 0.4));
-          const proj = new PlayerProjectile(spirit.position.x, spirit.position.y, tx, ty, baseDmg, { speedMult: 0.8 });
-          proj.attackType = "soulSiphon";
-          proj._fromSpirit = true;
-          this.playerProjectiles.push(proj);
+          spirit.playAttackAnimation?.('fireball');
+          this.playerProjectiles.push(
+            this.createSoulSiphonSpiritFireballProjectile(spirit.position.x, spirit.position.y, tx, ty, baseDmg, { speedMult: 0.8 })
+          );
         }
       }
     }
+  }
+
+  createSoulSiphonSpiritFireballProjectile(sx, sy, tx, ty, damage, options = {}) {
+    const speedMult = (Number.isFinite(options.speedMult) ? options.speedMult : 0.8) * 0.5;
+    const animatedSpriteOverrides = {
+      drawWidth: 36 * 3,
+      drawHeight: 29 * 3,
+      ...(options.animatedSpriteOverrides || {})
+    };
+    const impactAnimatedSpriteOverrides = {
+      drawWidth: 44 * 3,
+      drawHeight: 35 * 3,
+      ...(options.impactAnimatedSpriteOverrides || {})
+    };
+    const proj = new PlayerProjectile(sx, sy, tx, ty, damage, {
+      speedMult,
+      sizeMult: 3,
+      trailStyle: "faint_afterimage",
+      trailLife: 0.5,
+      animatedSprite: getSoulSiphonSpiritFireballAnimatedSprite(animatedSpriteOverrides),
+      impactAnimatedSprite: getSoulSiphonSpiritFireballImpactAnimatedSprite(impactAnimatedSpriteOverrides)
+    });
+    proj.attackType = "soulSiphon";
+    proj._fromSpirit = true;
+    return proj;
   }
 
   /**
@@ -12501,6 +12827,7 @@ export class Game {
     const extraFireballs = Math.min(1, twinStacks);
 
     if (pick === "ground_slam") {
+      spirit.playAttackAnimation?.('ground_slam');
       const sx = spirit.position.x;
       const sy = spirit.position.y;
       const links = profile.links || {};
@@ -12530,16 +12857,16 @@ export class Game {
       const sy = spirit.position.y;
       const nearest = this.getNearestEnemy(sx, sy, 500);
       if (nearest) {
+        spirit.playAttackAnimation?.('fireball');
         const tx = nearest.position.x + nearest.size / 2;
         const ty = nearest.position.y + nearest.size / 2;
         const baseDmg = Math.max(1, Math.round((this.currentStats?.attack || 10) * 0.4 * fireballMult));
         const count = 1 + extraFireballs;
         for (let i = 0; i < count; i++) {
           const jitter = (i - (count - 1) / 2) * 10;
-          const proj = new PlayerProjectile(sx, sy, tx + jitter, ty, baseDmg, { speedMult: 0.8 });
-          proj.attackType = "soulSiphon";
-          proj._fromSpirit = true;
-          this.playerProjectiles.push(proj);
+          this.playerProjectiles.push(
+            this.createSoulSiphonSpiritFireballProjectile(sx, sy, tx + jitter, ty, baseDmg, { speedMult: 0.8 })
+          );
         }
       }
     } else {
@@ -12592,6 +12919,7 @@ export class Game {
     }
     const baseDmg = Math.max(1, Math.round((this.currentStats?.attack || 10) * 0.35));
     const spreadDeg = 12;
+    spirit.playAttackAnimation?.('fireball');
     for (let i = 0; i < 6; i++) {
       const angleOffset = (i - 2.5) * (spreadDeg * Math.PI / 180);
       const dx = tx - sx;
@@ -12601,10 +12929,9 @@ export class Game {
       const angle = baseAngle + angleOffset;
       const ox = sx + Math.cos(angle) * Math.min(dist, 150);
       const oy = sy + Math.sin(angle) * Math.min(dist, 150);
-      const proj = new PlayerProjectile(sx, sy, ox, oy, baseDmg, { speedMult: 0.85 });
-      proj.attackType = "soulSiphon";
-      proj._fromSpirit = true;
-      this.playerProjectiles.push(proj);
+      this.playerProjectiles.push(
+        this.createSoulSiphonSpiritFireballProjectile(sx, sy, ox, oy, baseDmg, { speedMult: 0.85 })
+      );
     }
   }
 
@@ -12630,6 +12957,7 @@ export class Game {
     const baseDmg = Math.round((this.currentStats?.attack || 10) * (0.20 + Math.random() * 0.1) / 3);
     const profile = this.getSoulSiphonProfile();
     const radius = (profile.links?.beamAreaScalesSpiritSlam ? (profile.beamMods?.coverageMult ?? 1) : 1) * 35;
+    spirit.playAttackAnimation?.('ground_slam');
     for (let step = 0; step < 3; step++) {
       const t = (step + 1) / 3;
       const x = sx + (ax - sx) * t + (Math.random() - 0.5) * 40;
@@ -13319,7 +13647,7 @@ export class Game {
         const maxAttempts = 25;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
           const angle = Math.random() * Math.PI * 2;
-          const distance = Math.random() * teleportRadius;
+          const distance = teleportRadius;
           const nx = originCx + Math.cos(angle) * distance;
           const ny = originCy + Math.sin(angle) * distance;
           const candPx = Math.max(margin, Math.min(nx - this.player.size / 2, maxPx));
@@ -13335,8 +13663,26 @@ export class Game {
           this.dealDamageToEnemy(e, dmg, { isSkill: true, skillSlot: eff.slot, modList: eff.modList });
         }
         eff.teleportIndex++;
-        if (hit.length === 0) continue;
-        surviving.push(eff);
+        if (hit.length > 0 && eff.slot != null) {
+          this.skillCooldowns[eff.slot] = 0;
+          if (Array.isArray(this.skillCurrentCharges) && Array.isArray(this.skillMaxCharges)) {
+            this.skillCurrentCharges[eff.slot] = Math.max(
+              1,
+              this.skillMaxCharges?.[eff.slot] || this.getSkillMaxChargesForSlot?.(eff.slot, eff.skillId) || 1
+            );
+          }
+          this.skillCascadeFlashUntil = this.skillCascadeFlashUntil || {};
+          this.skillCascadeFlashUntil[eff.slot] = this.time + 0.3;
+          onSkillReadyRefillFocus(this, eff.slot);
+          onRingSkillCooldownRestored(this, eff.slot);
+          if (typeof this.requestPillarCooldownRefresh === "function") {
+            this.requestPillarCooldownRefresh({
+              slot: eff.slot,
+              skillId: eff.skillId,
+              source: "escapePlanNearbyRefund"
+            });
+          }
+        }
       } else if (eff.type === "hauntingGhost") {
         eff.t += dt;
         if (eff.t >= eff.duration) {
@@ -13570,14 +13916,15 @@ export class Game {
         if (eff.t >= eff.delay && !eff.done) {
           eff.done = true;
           let dmg = eff.damage ?? 10;
+          const slamRadius = eff.radius ?? 35;
           if (eff._slamDoubleSingleTarget) {
-            const inRadius = this.enemiesInRadius(eff.x, eff.y, eff.radius ?? 35);
+            const inRadius = this.enemiesInRadius(eff.x, eff.y, slamRadius);
             if (inRadius.length === 1) dmg *= 2;
           }
           createHitbox(PLAYER_PULSE_CIRCLE_DEF, {
             x: eff.x,
             y: eff.y,
-            radius: eff.radius ?? 35,
+            radius: slamRadius,
             createdAt: this.time,
             faction: 'player',
             ownerId: 'player',
@@ -13585,6 +13932,16 @@ export class Game {
             durationMs: 60,
             stunDuration: 0.2,
             _fromSpiritSlam: true
+          });
+          this.skillEffects.push({
+            type: "animatedSpriteImpact",
+            x: eff.x,
+            y: eff.y,
+            animatedSprite: getSoulSiphonSpiritGroundSlamAnimatedSprite({
+              drawWidth: Math.max(72, slamRadius * 2.6),
+              drawHeight: Math.max(96, slamRadius * 3.2)
+            }),
+            t: 0
           });
         }
         if (eff.t >= (eff.duration ?? 0.3)) continue;
@@ -14396,16 +14753,6 @@ export class Game {
         ctx.lineWidth = 2;
         ctx.strokeRect(-rectW / 2, -rectH / 2, rectW, rectH);
         ctx.restore();
-      } else if (eff.type === "spiritGroundPulse") {
-        const sx = eff.x + ox; const sy = eff.y + oy;
-        const progress = eff.delay ? Math.min(1, eff.t / eff.delay) : 1;
-        const r = (eff.radius || 35) * (0.3 + 0.7 * progress);
-        const alpha = 0.3 + 0.4 * Math.sin(this.time * 10);
-        ctx.strokeStyle = `rgba(200, 180, 255, ${alpha})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(sx, sy, r, 0, Math.PI * 2);
-        ctx.stroke();
       }
     }
 
@@ -14734,6 +15081,14 @@ export class Game {
 
   interactWithMapObject(obj) {
     if (obj.type === "nodeExitPortal") {
+      if (this.exitTransitionCooldown > 0) return;
+      this.exitTransitionCooldown = 0.6;
+      // Ensure no extraction/inventory lock state survives node transitions.
+      this.extractionSelectionMode = false;
+      if (this.extractionSelectedIds) this.extractionSelectedIds.clear();
+      if (this.inventoryOverlayOpen) this.closeInventoryOverlay();
+      this.victoryPortal = null;
+      this.nearVictoryPortal = false;
       this.nodeX = obj.targetNodeX;
       this.nodeY = obj.targetNodeY;
       this.enterNode();
@@ -16017,9 +16372,16 @@ export class Game {
     const actors = [];
     for (const obstacle of this.obstacles || []) {
       if (!obstacle || obstacle.destroyed) continue;
+      const oh = obstacle.size?.h || 0;
+      let sortY = obstacle.position.y + oh;
+      if (obstacle.type === "ancientTree") {
+        const r = Number(obstacle.typeDef?.ySortHeightRatio);
+        const frac = Number.isFinite(r) && r >= 0 ? r : 1.2;
+        sortY = obstacle.position.y + oh * frac;
+      }
       actors.push({
-        sortY: obstacle.position.y + (obstacle.size?.h || 0),
-        draw: () => obstacle.draw(ctx, this.camera)
+        sortY,
+        draw: () => obstacle.draw(ctx, this.camera, this)
       });
     }
     for (const b of this.breakables || []) {
@@ -16103,6 +16465,62 @@ export class Game {
         draw: () => spirit.draw(ctx, this.camera, this.time)
       });
     }
+    const cosmeticGroundLayer = this.world?.cosmeticFloor?.groundLayer || null;
+    const shrubLayer = cosmeticGroundLayer?.shrubLayer || null;
+    if (shrubLayer?.sheetImage?.complete) {
+      const shrubPlacements = getVisibleOpenWorldShrubPlacements(cosmeticGroundLayer, this.camera);
+      for (const placement of shrubPlacements) {
+        actors.push({
+          sortY: placement.sortY ?? (placement.y + placement.h),
+          draw: () => {
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            ctx.filter = placement.brightness && placement.brightness !== 1
+              ? `brightness(${placement.brightness})`
+              : 'none';
+            ctx.drawImage(
+              shrubLayer.sheetImage,
+              placement.sx,
+              placement.sy,
+              placement.sw,
+              placement.sh,
+              Math.round(placement.x - this.camera.position.x),
+              Math.round(placement.y - this.camera.position.y),
+              placement.w,
+              placement.h
+            );
+            ctx.filter = 'none';
+            ctx.restore();
+          }
+        });
+      }
+    }
+    const boulderLayer = cosmeticGroundLayer?.boulderLayer || null;
+    if (Array.isArray(boulderLayer?.placements) && boulderLayer.placements.length) {
+      const boulderPlacements = getVisibleOpenWorldBoulderPlacements(cosmeticGroundLayer, this.camera);
+      for (const placement of boulderPlacements) {
+        if (!placement.image?.complete) continue;
+        actors.push({
+          sortY: placement.y + placement.h,
+          draw: () => {
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(
+              placement.image,
+              placement.sx,
+              placement.sy,
+              placement.sw,
+              placement.sh,
+              Math.round(placement.x - this.camera.position.x),
+              Math.round(placement.y - this.camera.position.y),
+              placement.w,
+              placement.h
+            );
+            ctx.restore();
+          }
+        });
+      }
+    }
     if (this.player) {
       const shadowHeistInvis = this.shadowHeistInvisUntil != null && this.time < this.shadowHeistInvisUntil;
       actors.push({
@@ -16112,7 +16530,7 @@ export class Game {
             ctx.save();
             ctx.globalAlpha = 0.45;
           }
-          this.player.draw(ctx, this.camera, this.dashActive, this.gameOver, this.knightSlideActive);
+          this.player.draw(ctx, this.camera, this.dashActive, this.gameOver, this.knightSlideActive || this.slideMoveActive);
           if (shadowHeistInvis) ctx.restore();
         }
       });
@@ -16138,11 +16556,12 @@ export class Game {
 
   drawRunRouteMapOverlay(ctx) {
     if (!this.runMapNodes || !this.enableRunRouteGraph) return;
+    const gridSize = this.getRunRouteGridSize();
     const size = 16;
     const gap = 8;
     const step = size + gap;
-    const width = GRID_SIZE * size + (GRID_SIZE - 1) * gap;
-    const height = GRID_SIZE * size + (GRID_SIZE - 1) * gap;
+    const width = gridSize * size + (gridSize - 1) * gap;
+    const height = gridSize * size + (gridSize - 1) * gap;
     const panelW = width + 16;
     const panelH = height + 92;
     const baseX = Math.floor((this.viewWidth - panelW) / 2) + 8;
@@ -16158,13 +16577,13 @@ export class Game {
       if (tag === NODE_TAGS.EXTRACTION) return "EX";
       return "";
     };
-    for (let y = 0; y < GRID_SIZE; y++) {
-      for (let x = 0; x < GRID_SIZE; x++) {
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
         const node = this.runMapNodes?.[y]?.[x];
         if (!node) continue;
         const cx = baseX + x * step;
         const cy = baseY + y * step;
-        if (x < GRID_SIZE - 1) {
+        if (x < gridSize - 1) {
           const nx = baseX + (x + 1) * step;
           ctx.strokeStyle = "rgba(148, 163, 184, 0.6)";
           ctx.lineWidth = 2;
@@ -16173,7 +16592,7 @@ export class Game {
           ctx.lineTo(nx, cy + size / 2);
           ctx.stroke();
         }
-        if (y < GRID_SIZE - 1) {
+        if (y < gridSize - 1) {
           const ny = baseY + (y + 1) * step;
           ctx.strokeStyle = "rgba(148, 163, 184, 0.6)";
           ctx.lineWidth = 2;

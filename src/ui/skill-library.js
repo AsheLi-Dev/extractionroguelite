@@ -36,8 +36,9 @@ const DEMO_SKILL_LIBRARY_IDS = new Set([
 ]);
 
 function getVisibleSkillDefs() {
-  if (!DEMO_BUILD) return SKILL_DEFS;
-  return SKILL_DEFS.filter((s) => DEMO_SKILL_LIBRARY_IDS.has(String(s?.id || "")));
+  const standardVisibleSkills = SKILL_DEFS.filter((s) => !s?.heroOnly);
+  if (!DEMO_BUILD) return standardVisibleSkills;
+  return standardVisibleSkills.filter((s) => DEMO_SKILL_LIBRARY_IDS.has(String(s?.id || "")));
 }
 
 function findVisibleSkillDefById(skillId) {

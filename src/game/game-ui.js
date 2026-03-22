@@ -37,6 +37,30 @@ export function getSkillChargeDisplay(game, slot) {
 
 export function applyGameUIMixin(Game) {
   Object.assign(Game.prototype, {
+    getSkillUiRefs(slot) {
+      if (!this._skillUiRefs) this._skillUiRefs = [];
+      if (!this._skillUiRefs[slot]) {
+        const slotEl = document.querySelector(`.skill-slot[data-slot="${slot}"]`);
+        if (!slotEl) return null;
+        this._skillUiRefs[slot] = {
+          slotEl,
+          iconEl: document.getElementById(`skill-icon-${slot}`),
+          nameEl: document.getElementById(`skill-name-${slot}`),
+          cdEl: document.getElementById(`skill-cd-${slot}`),
+          chargeCountEl: slotEl.querySelector(".skill-charge-count"),
+          stackEl: slotEl.querySelector(".skill-empower-stacks"),
+          iconSkillId: undefined,
+          lastIconSrc: undefined,
+          lastNameText: undefined,
+          lastChargeText: undefined,
+          lastChargeDisplay: undefined,
+          lastTitle: undefined,
+          lastCooldownBackground: undefined
+        };
+      }
+      return this._skillUiRefs[slot];
+    },
+
     consumeSnack() {
       if (!this.runSnackId) return false;
       const uses = Math.max(0, Number(this.snackUsesRemaining) || 0);
@@ -200,68 +224,95 @@ export function applyGameUIMixin(Game) {
     },
 
     updateSkillUI() {
-      const keys = ["1", "2", "3", "4"];
+      const availableSlots = this.tutorialMode ? 4 : getAvailableSkillSlots();
       for (let i = 0; i < 4; i++) {
-        const iconEl = document.getElementById(`skill-icon-${i}`);
-        const nameEl = document.getElementById(`skill-name-${i}`);
-        const cdEl = document.getElementById(`skill-cd-${i}`);
-        const slotEl = document.querySelector(`.skill-slot[data-slot="${i}"]`);
-        if (!slotEl) continue;
+        const refs = this.getSkillUiRefs(i);
+        if (!refs) continue;
+        const { slotEl, iconEl, nameEl, cdEl, chargeCountEl, stackEl } = refs;
         const skillId = this.skills[i];
         const def = skillId ? SKILL_DEFS.find((s) => s.id === skillId) : null;
-        // In tutorial mode, unlock all 4 skill slots
-        const availableSlots = this.tutorialMode ? 4 : getAvailableSkillSlots();
         if (i >= availableSlots) {
           slotEl.classList.add("locked");
           slotEl.title = "";
           if (iconEl) {
-            iconEl.innerHTML = "";
-            iconEl.textContent = "LOCK";
+            if (refs.iconSkillId !== "__locked__") {
+              iconEl.replaceChildren(document.createTextNode("LOCK"));
+              refs.iconSkillId = "__locked__";
+              refs.lastIconSrc = null;
+            }
           }
-          if (nameEl) nameEl.textContent = `Beat Diff ${SKILL_SLOT_UNLOCK[i + 1]}`;
+          const lockedText = `Beat Diff ${SKILL_SLOT_UNLOCK[i + 1]}`;
+          if (nameEl && refs.lastNameText !== lockedText) {
+            nameEl.textContent = lockedText;
+            refs.lastNameText = lockedText;
+          }
         } else {
           slotEl.classList.remove("locked");
           const chargeInfo = getSkillChargeDisplay(this, i);
           slotEl.classList.toggle("skill-no-charge", !!chargeInfo && !chargeInfo.hasCharge);
-          let chargeCountEl = slotEl.querySelector(".skill-charge-count");
-          if (!chargeCountEl) {
-            chargeCountEl = document.createElement("span");
-            chargeCountEl.className = "skill-charge-count";
-            slotEl.appendChild(chargeCountEl);
-          }
           if (chargeInfo) {
-            chargeCountEl.textContent = chargeInfo.max != null ? `${chargeInfo.count}/${chargeInfo.max}` : String(chargeInfo.count);
-            chargeCountEl.style.display = "block";
+            const chargeText = chargeInfo.max != null ? `${chargeInfo.count}/${chargeInfo.max}` : String(chargeInfo.count);
+            if (chargeCountEl && refs.lastChargeText !== chargeText) {
+              chargeCountEl.textContent = chargeText;
+              refs.lastChargeText = chargeText;
+            }
+            if (chargeCountEl && refs.lastChargeDisplay !== "block") {
+              chargeCountEl.style.display = "block";
+              refs.lastChargeDisplay = "block";
+            }
           } else {
-            chargeCountEl.style.display = "none";
+            if (chargeCountEl && refs.lastChargeDisplay !== "none") {
+              chargeCountEl.style.display = "none";
+              refs.lastChargeDisplay = "none";
+            }
+            refs.lastChargeText = "";
           }
           if (iconEl) {
-            iconEl.innerHTML = "";
             if (def?.illustration) {
-              const img = document.createElement("img");
-              img.className = "skill-slot-icon-img";
-              img.src = def.illustration;
-              img.alt = `${def.name} icon`;
-              iconEl.appendChild(img);
+              if (refs.iconSkillId !== skillId || refs.lastIconSrc !== def.illustration) {
+                const img = document.createElement("img");
+                img.className = "skill-slot-icon-img";
+                img.src = def.illustration;
+                img.alt = `${def.name} icon`;
+                iconEl.replaceChildren(img);
+                refs.iconSkillId = skillId;
+                refs.lastIconSrc = def.illustration;
+              }
             } else {
-              iconEl.textContent = "";
+              if (refs.iconSkillId !== skillId || iconEl.childNodes.length > 0 || iconEl.textContent !== "") {
+                iconEl.replaceChildren();
+                refs.iconSkillId = skillId;
+                refs.lastIconSrc = null;
+              }
             }
           }
           let nameText = def ? def.name : "Empty";
           const tagsLine = def?.tags?.length ? `Tags: ${def.tags.join("  ")}` : "";
-          slotEl.title = def ? `${def.name}\n${def.desc || ""}${tagsLine ? `\n${tagsLine}` : ""}` : "";
+          const titleText = def ? `${def.name}\n${def.desc || ""}${tagsLine ? `\n${tagsLine}` : ""}` : "";
+          if (refs.lastTitle !== titleText) {
+            slotEl.title = titleText;
+            refs.lastTitle = titleText;
+          }
           if (def && def.category === "aura" && this.activeAuras.has(skillId)) {
             nameText += ` (ON)`;
             if (def.auraUpkeep) nameText += ` -${(def.auraUpkeep * 100).toFixed(1)}% HP/s`;
           }
-          if (nameEl) nameEl.textContent = nameText;
+          if (nameEl && refs.lastNameText !== nameText) {
+            nameEl.textContent = nameText;
+            refs.lastNameText = nameText;
+          }
           const empowerStacks = this.empowerStacks?.[i] || 0;
           const cascadeFlash = this.skillCascadeFlashUntil?.[i] != null && this.time < this.skillCascadeFlashUntil[i];
           slotEl.classList.toggle("skill-cascade-flash", !!cascadeFlash);
-          const stackEl = slotEl.querySelector(".skill-empower-stacks");
           if (stackEl) {
-            stackEl.textContent = empowerStacks > 0 ? String(empowerStacks) : "";
-            stackEl.style.display = empowerStacks > 0 ? "block" : "none";
+            const stackText = empowerStacks > 0 ? String(empowerStacks) : "";
+            if (stackEl.textContent !== stackText) {
+              stackEl.textContent = stackText;
+            }
+            const stackDisplay = empowerStacks > 0 ? "block" : "none";
+            if (stackEl.style.display !== stackDisplay) {
+              stackEl.style.display = stackDisplay;
+            }
           }
         }
         const isCharging = this.skillChargeSlot === i;
@@ -274,14 +325,22 @@ export function applyGameUIMixin(Game) {
           const chargeDur = Math.min(2, this.time - this.skillChargeStartTime);
           pct = chargeDur / 2;
           if (cdEl) {
-            cdEl.style.background = `conic-gradient(#eab308 0deg, #f59e0b ${pct * 360}deg, transparent ${pct * 360}deg)`;
+            const background = `conic-gradient(#eab308 0deg, #f59e0b ${pct * 360}deg, transparent ${pct * 360}deg)`;
+            if (refs.lastCooldownBackground !== background) {
+              cdEl.style.background = background;
+              refs.lastCooldownBackground = background;
+            }
           }
         } else {
           const mods = getModsForSkillSlot(this, i);
           const effectiveBaseCd = baseCd + (mods.includes("amplify") ? 0.5 : 0);
           pct = !isAura && effectiveBaseCd > 0 ? Math.min(1, cd / (effectiveBaseCd * this.getSkillCooldownMult(skillId))) : 0;
           if (cdEl) {
-            cdEl.style.background = pct > 0 ? `conic-gradient(#374151 0deg, #374151 ${pct * 360}deg, transparent ${pct * 360}deg)` : "none";
+            const background = pct > 0 ? `conic-gradient(#374151 0deg, #374151 ${pct * 360}deg, transparent ${pct * 360}deg)` : "none";
+            if (refs.lastCooldownBackground !== background) {
+              cdEl.style.background = background;
+              refs.lastCooldownBackground = background;
+            }
           }
         }
         slotEl.classList.toggle("aura-active", isAura && this.activeAuras.has(skillId));

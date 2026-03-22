@@ -7,9 +7,16 @@ import { getBgmMuted, setBgmMuted, startBgm } from "../audio.js";
 export function applyGameInputMixin(Game) {
   Object.assign(Game.prototype, {
     getWorldPositionFromScreen(clientX, clientY) {
-      const rect = this.canvas.getBoundingClientRect();
-      const viewX = ((clientX - rect.left) / rect.width) * this.viewWidth;
-      const viewY = ((clientY - rect.top) / rect.height) * this.viewHeight;
+      const left = Number(this.canvasScreenLeft) || 0;
+      const top = Number(this.canvasScreenTop) || 0;
+      const width = Number(this.canvasScreenWidth) || this.canvas?.clientWidth || this.canvas?.width || 1;
+      const height = Number(this.canvasScreenHeight) || this.canvas?.clientHeight || this.canvas?.height || 1;
+      const right = left + width;
+      const bottom = top + height;
+      const clampedX = Math.max(left, Math.min(clientX, right));
+      const clampedY = Math.max(top, Math.min(clientY, bottom));
+      const viewX = ((clampedX - left) / width) * this.viewWidth;
+      const viewY = ((clampedY - top) / height) * this.viewHeight;
       return {
         x: this.camera.position.x + viewX,
         y: this.camera.position.y + viewY
@@ -25,9 +32,12 @@ export function applyGameInputMixin(Game) {
       
       // Handle pause menu button clicks
       if (this.paused) {
-        const rect = this.canvas.getBoundingClientRect();
-        const x = ((e.clientX - rect.left) / rect.width) * this.viewWidth;
-        const y = ((e.clientY - rect.top) / rect.height) * this.viewHeight;
+        const left = Number(this.canvasScreenLeft) || 0;
+        const top = Number(this.canvasScreenTop) || 0;
+        const width = Number(this.canvasScreenWidth) || this.canvas?.clientWidth || this.canvas?.width || 1;
+        const height = Number(this.canvasScreenHeight) || this.canvas?.clientHeight || this.canvas?.height || 1;
+        const x = ((e.clientX - left) / width) * this.viewWidth;
+        const y = ((e.clientY - top) / height) * this.viewHeight;
         
         if (this.pauseResumeButton) {
           if (x >= this.pauseResumeButton.x && x <= this.pauseResumeButton.x + this.pauseResumeButton.w &&

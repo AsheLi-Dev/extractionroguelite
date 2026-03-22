@@ -1,0 +1,24 @@
+[package]
+name = "extract-da-panda"
+version = "0.1.0"
+description = "Desktop wrapper for Extract Da Panda"
+authors = ["jon"]
+license = ""
+repository = ""
+edition = "2021"
+rust-version = "1.77.2"
+
+[package.metadata]
+name = "extract-da-panda"
+
+[lib]
+name = "extract_da_panda_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

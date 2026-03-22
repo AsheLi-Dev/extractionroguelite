@@ -1,3 +1,5 @@
+import { assetUrl } from "./utils.js";
+
 /**
  * Simple SFX playback. Paths relative to project root (index.html).
  * Uses Web Audio API so playbackRate (pitch) is actually applied.
@@ -81,7 +83,7 @@ function loadBuffer(soundId) {
   if (!path || bufferCache[soundId]) return loadPromises[soundId] || Promise.resolve(bufferCache[soundId]);
   if (!loadPromises[soundId]) {
     const c = getContext();
-    const url = path.includes(" ") ? path.replace(/ /g, "%20") : path;
+    const url = assetUrl(path);
     loadPromises[soundId] = fetch(url)
       .then((r) => { if (!r.ok) throw new Error(`SFX ${soundId}: ${r.status}`); return r.arrayBuffer(); })
       .then((ab) => c.decodeAudioData(ab))
@@ -148,7 +150,7 @@ export function isEnabled() {
 
 function getBgmAudio() {
   if (!bgmAudio) {
-    bgmAudio = new Audio(BGM_PATH);
+    bgmAudio = new Audio(assetUrl(BGM_PATH));
     bgmAudio.loop = true;
     bgmAudio.volume = bgmVolume;
     bgmAudio.preload = "auto";

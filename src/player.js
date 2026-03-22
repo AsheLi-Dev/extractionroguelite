@@ -10,6 +10,7 @@ export class Player {
     this.speed = 44; // 20% of original 220
     this.isSprinting = false;
     this.sprintTimer = 0;
+    this.isCrouching = false;
     this.color = "#ffff4d";
     
     // Animation properties
@@ -89,7 +90,9 @@ export class Player {
     };
     
     const idleBase = 'assets/images/player/idle';
-    const idleDown = this._loadIdleFromSpriteSheet(idleBase, 'idle_down.png', 160, 128, 9);
+    const idleDown = this._loadIdleFromSpriteSheet(idleBase, 'idle_down.png', 160, 128, 9, () => {
+      this._syncSizeFromIdleDownFirstFrame();
+    });
     const idleUp = this._loadIdleFromSpriteSheet(idleBase, 'idle_up.png', 160, 128, 10);
     const idleSide = this._loadIdleFromSpriteSheet(idleBase, 'idle_side.png', 160, 128, 10);
     const runBase = 'assets/images/player/run';
@@ -187,6 +190,48 @@ export class Player {
     this.RECOVERY_HOLD_MIN = RECOVERY_HOLD_MIN;
     this.RECOVERY_HOLD_MAX = RECOVERY_HOLD_MAX;
     this.RECOVERY_HOLD_RATIO = RECOVERY_HOLD_RATIO;
+
+    queueMicrotask(() => this._syncSizeFromIdleDownFirstFrame());
+  }
+
+  /**
+   * Sets collision footprint (`size`) and sprite draw size from the first frame of `idle.down`
+   * (strip or per-frame). `size` is max(drawW, drawH) so wall/collision code keeps a square box.
+   */
+  _syncSizeFromIdleDownFirstFrame() {
+    const entry = this.spriteSets?.idle?.down;
+    if (!entry?.sheet) return;
+
+    const sheet = entry.sheet;
+    const cropTop = sheet.cropTop || 0;
+    const frames = Math.max(1, sheet.frames | 0);
+
+    let fw = Math.max(1, sheet.frameWidth | 0);
+    let contentH = Math.max(1, sheet.frameHeight - cropTop);
+
+    if (entry.images && entry.images.length) {
+      const img0 = entry.images[0];
+      if (!img0?.complete || !img0.naturalWidth) return;
+      fw = img0.naturalWidth;
+      const nh = img0.naturalHeight;
+      sheet.frameWidth = fw;
+      sheet.frameHeight = nh;
+      contentH = Math.max(1, nh - cropTop);
+    } else if (entry.image) {
+      if (!entry.image.complete || !entry.image.naturalWidth) return;
+      const nw = entry.image.naturalWidth;
+      const nh = entry.image.naturalHeight;
+      fw = Math.max(1, Math.floor(nw / frames));
+      sheet.frameWidth = fw;
+      sheet.frameHeight = nh;
+      contentH = Math.max(1, nh - cropTop);
+    } else {
+      return;
+    }
+
+    this.drawWidth = fw;
+    this.drawHeight = contentH;
+    this.size = Math.max(fw, contentH);
   }
   
   /**
@@ -386,8 +431,14 @@ export class Player {
     const loadEntry = (filename, frames = defaultFrames, fw = frameSize.width, fh = frameSize.height) => {
       const sheet = { frameWidth: fw, frameHeight: fh, frames, cropTop };
       const state = { image: new Image(), sheet, loaded: false };
-      state.image.onload = () => { state.loaded = true; };
-      state.image.onerror = () => { console.warn(`Failed to load character sprite: ${base}/${filename}`); state.loaded = true; };
+      state.image.onload = () => {
+        state.loaded = true;
+        this._syncSizeFromIdleDownFirstFrame();
+      };
+      state.image.onerror = () => {
+        console.warn(`Failed to load character sprite: ${base}/${filename}`);
+        state.loaded = true;
+      };
       state.image.src = `${base}/${filename}`;
       return state;
     };
@@ -476,15 +527,7 @@ export class Player {
         for (const d of ['left', 'right', 'left_down', 'left_up', 'right_down', 'right_up']) this.spriteSets.slide[d] = this.spriteSets.slide[d] || loadEntry(overrides.slide_side, slideFrames);
       }
     }
-    if (character.id === 'knight') {
-      const knightScale = 1.5;
-      this.drawWidth = Math.round((this.size / 2) * knightScale);
-      this.drawHeight = Math.round((this.size / 3) * knightScale);
-    }
     if (character.id === 'reaper') {
-      const reaperScale = 0.6;
-      this.drawWidth = Math.round(120 * reaperScale);
-      this.drawHeight = Math.round(120 * reaperScale);
       const dirs = ['down', 'up', 'left', 'right', 'left_down', 'left_up', 'right_down', 'right_up'];
       for (const d of dirs) {
         this.spriteSets.attack[d] = this.spriteSets.idle.down || this.spriteSets.idle[d];

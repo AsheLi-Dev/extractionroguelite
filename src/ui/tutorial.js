@@ -65,7 +65,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 8,
     title: "Kill the miniboss",
-    message: "Defeat the Dragon miniboss to open extraction",
+    message: "Defeat the Dragon miniboss to open the route forward",
     highlight: "boss",
     action: "killBoss",
     completed: false
@@ -73,7 +73,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 9,
     title: "Map Navigation",
-    message: "Find the exit to move to the next map",
+    message: "Use a route portal to move to the next map",
     highlight: "exit",
     action: "reachExit",
     completed: false
@@ -81,7 +81,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 10,
     title: "Extract",
-    message: "Enter the extraction portal and press E to leave with your loot",
+    message: "Reach the extraction node, then enter the portal and press E to leave with your loot",
     highlight: "victoryPortal",
     action: "extract",
     completed: false
@@ -150,9 +150,7 @@ export class TutorialSystem {
 
     const step = this.steps[this.currentStep];
     const titleEl = document.getElementById("tutorial-title");
-    const messageEl = document.getElementById("tutorial-message");
     const stepIndicatorEl = document.getElementById("tutorial-step-indicator");
-    const skipBtn = document.getElementById("tutorial-skip");
 
     if (titleEl) titleEl.textContent = step.title;
     if (stepIndicatorEl) stepIndicatorEl.textContent = `Step ${step.id} of ${this.steps.length}`;
@@ -378,11 +376,6 @@ export class TutorialSystem {
       this.game.spawnTutorialChestNearPlayer(3);
     }
 
-    // After miniboss (step 8); ensure extract step always has a portal
-    if (step.id === 8 && typeof this.game.spawnExtractionPortalNearPlayer === "function" && !this.game.victoryPortal) {
-      this.game.spawnExtractionPortalNearPlayer();
-    }
-
     // Spawn enemy after step 2 (Dash) completes
     if (step.id === 2 && this.game.player && this.game.enemySystem) {
       const playerX = this.game.player.position.x;
@@ -445,10 +438,6 @@ export class TutorialSystem {
       "Tutorial Complete!",
       "You know how to fight, loot, search, and extract. Good luck on your runs!"
     );
-  }
-
-  skip() {
-    this.complete();
   }
 
   // Called from game to track player actions
@@ -567,9 +556,11 @@ export class TutorialSystem {
       ctx.stroke();
     }
 
-    if (step.highlight === "exit" && this.game.currentMap?.exits) {
-      // Highlight exit
-      const exit = this.game.currentMap.exits[0];
+    if (step.highlight === "exit") {
+      const exitPortal = this.game.nodeExitPortals?.[0];
+      const mapExit = this.game.currentMap?.exits?.[0];
+      const exit = exitPortal || mapExit;
+      if (exit) {
       const ex = exit.x - camera.position.x;
       const ey = exit.y - camera.position.y;
       const pulse = 0.5 + Math.sin(this.game.time * 4) * 0.3;
@@ -577,6 +568,7 @@ export class TutorialSystem {
       ctx.strokeStyle = `rgba(139, 92, 246, ${pulse})`;
       ctx.lineWidth = 4;
       ctx.strokeRect(ex, ey, exit.w, exit.h);
+      }
     }
 
     if (step.highlight === "boss") {

@@ -1,4 +1,4 @@
-import { Vec2 } from '../utils.js';
+import { Vec2, assetUrl } from '../utils.js';
 
 // Shared tile atlas for all tiles
 let tileAtlas = null;
@@ -28,14 +28,14 @@ function loadTileAtlas() {
     console.warn('Failed to load tile atlas');
     tileAtlasLoaded = false;
   };
-  tileAtlas.src = 'assets/Environments/tiles.png';
+  tileAtlas.src = assetUrl('assets/Environments/tiles.png');
   return tileAtlas;
 }
 
 // Parse tiles.txt to build coordinate lookup
 async function parseTilesFile() {
   try {
-    const response = await fetch('assets/Environments/tiles.txt');
+    const response = await fetch(assetUrl('assets/Environments/tiles.txt'));
     const text = await response.text();
     const lines = text.split('\n');
     

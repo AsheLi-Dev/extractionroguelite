@@ -1,6 +1,6 @@
 import { Vec2 } from '../utils.js';
 import { pointToSegmentDist } from '../utils.js';
-import { getWallCollisionRect, getObstacleCollisionRect, obstacleIntersectsRect } from '../utils.js';
+import { getWallCollisionRect, getObstacleCollisionRect, obstacleIntersectsRect, assetUrl } from '../utils.js';
 import { getHumanSquadTypeDef, HUMAN_SQUAD_ENEMY_IDS } from '../data/human-squad-data.js';
 import {
   createHumanSquadAnimState,
@@ -345,7 +345,7 @@ function getCachedSpriteImage(cache, path, warningLabel) {
   image.onerror = () => {
     console.warn(`Failed to load ${warningLabel}: ${path}`);
   };
-  image.src = path;
+  image.src = assetUrl(path);
   cache.set(path, image);
   return image;
 }
@@ -1366,7 +1366,7 @@ function loadEnemySpriteAtlas() {
     console.warn('Failed to load enemy sprite atlas');
     enemySpriteAtlasLoaded = false;
   };
-  enemySpriteAtlas.src = 'assets/Enemies/monsters.png';
+  enemySpriteAtlas.src = assetUrl('assets/Enemies/monsters.png');
   return enemySpriteAtlas;
 }
 
@@ -1380,7 +1380,7 @@ function loadAffixIconAtlas() {
     console.warn("Failed to load affix icon atlas");
     affixIconAtlasLoaded = false;
   };
-  affixIconAtlas.src = "assets/UI/icons64x64.png";
+  affixIconAtlas.src = assetUrl("assets/UI/icons64x64.png");
   return affixIconAtlas;
 }
 

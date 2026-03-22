@@ -212,6 +212,31 @@
   background: rgba(15, 23, 42, 0.95);
 }
 
+/* Instantaneous smoothed FPS (top-right of scaled game viewport) */
+.game-fps-counter {
+  position: fixed;
+  z-index: 45;
+  min-width: 10rem;
+  padding: 4px 10px;
+  font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  white-space: pre-line;
+  color: #a5b4fc;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(129, 140, 248, 0.45);
+  border-radius: 6px;
+  pointer-events: none;
+  user-select: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.game-fps-counter.hidden {
+  display: none !important;
+}
+
 /* Build log */
 .build-log-toggle {
   position: fixed;

@@ -1,6 +1,26 @@
 import { Vec2, obstacleIntersectsRect } from '../utils.js';
 import { drawTile, drawTileByName, isTileAtlasLoaded } from './tile-system.js';
 
+/** @type {HTMLCanvasElement | null} */
+let treeRadialScratch = null;
+
+function getTreeRadialScratch(w, h) {
+  if (!treeRadialScratch) treeRadialScratch = document.createElement('canvas');
+  if (treeRadialScratch.width !== w || treeRadialScratch.height !== h) {
+    treeRadialScratch.width = w;
+    treeRadialScratch.height = h;
+  }
+  return treeRadialScratch;
+}
+
+/** Min distance from point (px,py) to axis-aligned rect. */
+function distPointToRect(px, py, rx, ry, rw, rh) {
+  if (rw <= 0 || rh <= 0) return Infinity;
+  const cx = Math.max(rx, Math.min(px, rx + rw));
+  const cy = Math.max(ry, Math.min(py, ry + rh));
+  return Math.hypot(px - cx, py - cy);
+}
+
 export class Obstacle {
   constructor(x, y, typeDef) {
     this.id = `obstacle_${Date.now()}_${Math.random()}`;
@@ -20,10 +40,21 @@ export class Obstacle {
       this._spriteImage.onload = () => {
         const nw = this._spriteImage.naturalWidth;
         const nh = this._spriteImage.naturalHeight;
-        this.size = { w: nw, h: nh };
+        const ws =
+          (this.type === "giantRock" || this.type === "ancientTree") &&
+          Number.isFinite(typeDef.worldScale) &&
+          typeDef.worldScale > 0
+            ? typeDef.worldScale
+            : 1;
+        this.size = {
+          w: Math.max(1, Math.round(nw * ws)),
+          h: Math.max(1, Math.round(nh * ws)),
+        };
       };
       this._spriteImage.src = src;
       this._spriteFlipH = Math.random() < 0.5;
+      if (this.type === "giantRock") this._giantRockSpriteSrc = src;
+      if (this.type === "ancientTree") this._ancientTreeSpriteSrc = src;
     }
   }
 
@@ -92,42 +123,161 @@ export class Obstacle {
     }
   }
 
-  draw(ctx, camera) {
+  /**
+   * Ancient tree only: when the player is behind the tree (Y-sort: tree draws on top), multiply
+   * sprite alpha by a radial mask centered on the player (near player → min alpha, at radius → max).
+   * Otherwise draws the tree normally. Bakes horizontal flip into scratch.
+   */
+  _drawAncientTreePlayerCircleFade(ctx, img, screenX, screenY, dw, dh, camera, game, spriteFlipH) {
+    const p = game?.player;
+    const nw = img.naturalWidth;
+    const nh = img.naturalHeight;
+    if (!p || !nw || !nh) {
+      this._drawSpriteSimple(ctx, img, screenX, screenY, dw, dh, nw, nh, spriteFlipH);
+      return;
+    }
+
+    const ps = Math.max(1, p.size || 0);
+    const pSort = p.position.y + ps;
+    const th = this.size.h || 0;
+    const tr = Number(this.typeDef?.ySortHeightRatio);
+    const yFrac = Number.isFinite(tr) && tr >= 0 ? tr : 1.2;
+    const treeSort = this.position.y + th * yFrac;
+    if (pSort >= treeSort) {
+      this._drawSpriteSimple(ctx, img, screenX, screenY, dw, dh, nw, nh, spriteFlipH);
+      return;
+    }
+
+    const pcxW = p.position.x + ps / 2;
+    const pcyW = p.position.y + ps / 2;
+    const R = Math.max(
+      8,
+      Number.isFinite(Number(this.typeDef.canopyFadeRadius)) ? Number(this.typeDef.canopyFadeRadius) : 130
+    );
+    const aMin = Math.min(
+      1,
+      Math.max(0, Number.isFinite(Number(this.typeDef.canopyFadeMinAlpha)) ? Number(this.typeDef.canopyFadeMinAlpha) : 0.4)
+    );
+    const aMax = Math.min(
+      1,
+      Math.max(0, Number.isFinite(Number(this.typeDef.canopyFadeMaxAlpha)) ? Number(this.typeDef.canopyFadeMaxAlpha) : 1)
+    );
+
+    const minWorldDist = distPointToRect(pcxW, pcyW, this.position.x, this.position.y, this.size.w, this.size.h);
+    if (minWorldDist > R) {
+      this._drawSpriteSimple(ctx, img, screenX, screenY, dw, dh, nw, nh, spriteFlipH);
+      return;
+    }
+
+    const pcx = pcxW - camera.position.x;
+    const pcy = pcyW - camera.position.y;
+    const lx = pcx - screenX;
+    const ly = pcy - screenY;
+
+    const scratch = getTreeRadialScratch(dw, dh);
+    const tctx = scratch.getContext('2d');
+    if (!tctx) {
+      this._drawSpriteSimple(ctx, img, screenX, screenY, dw, dh, nw, nh, spriteFlipH);
+      return;
+    }
+
+    tctx.setTransform(1, 0, 0, 1, 0, 0);
+    tctx.clearRect(0, 0, dw, dh);
+    tctx.imageSmoothingEnabled = false;
+    if (spriteFlipH) {
+      tctx.translate(dw, 0);
+      tctx.scale(-1, 1);
+    }
+    tctx.drawImage(img, 0, 0, nw, nh, 0, 0, dw, dh);
+    tctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    const lo = Math.min(aMin, aMax);
+    const hi = Math.max(aMin, aMax);
+    const g = tctx.createRadialGradient(lx, ly, 0, lx, ly, R);
+    g.addColorStop(0, `rgba(255,255,255,${lo})`);
+    g.addColorStop(1, `rgba(255,255,255,${hi})`);
+
+    tctx.globalCompositeOperation = 'destination-in';
+    tctx.fillStyle = g;
+    tctx.fillRect(0, 0, dw, dh);
+    tctx.globalCompositeOperation = 'source-over';
+
+    ctx.drawImage(scratch, screenX, screenY);
+  }
+
+  _drawSpriteSimple(ctx, img, screenX, screenY, dw, dh, nw, nh, spriteFlipH) {
+    if (spriteFlipH) {
+      ctx.save();
+      const cx = screenX + dw / 2;
+      const cy = screenY + dh / 2;
+      ctx.translate(cx, cy);
+      ctx.scale(-1, 1);
+      ctx.translate(-cx, -cy);
+      ctx.drawImage(img, 0, 0, nw, nh, screenX, screenY, dw, dh);
+      ctx.restore();
+    } else {
+      ctx.drawImage(img, 0, 0, nw, nh, screenX, screenY, dw, dh);
+    }
+  }
+
+  /**
+   * @param {object | null} [game] - Passed for ancient-tree radial alpha vs player (trees only).
+   */
+  draw(ctx, camera, game = null) {
     if (this.destroyed) return;
     
     const sx = Math.floor(this.position.x - camera.position.x);
     const sy = Math.floor(this.position.y - camera.position.y);
-    const scale = this.type === "ruinPillar" ? 1 : 2;
+    const scale =
+      this.type === "ruinPillar" || this.type === "giantRock" || this.type === "ancientTree" ? 1 : 2;
     const drawW = this.size.w * scale;
     const drawH = this.size.h * scale;
     const drawX = sx - (drawW - this.size.w) / 2;
     const drawY = sy - (drawH - this.size.h) / 2;
-    const floorDrawX = this.type === "ruinPillar" ? Math.floor(drawX) : drawX;
-    const floorDrawY = this.type === "ruinPillar" ? Math.floor(drawY) : drawY;
+    const floorDrawX =
+      this.type === "ruinPillar" || this.type === "giantRock" || this.type === "ancientTree"
+        ? Math.floor(drawX)
+        : drawX;
+    const floorDrawY =
+      this.type === "ruinPillar" || this.type === "giantRock" || this.type === "ancientTree"
+        ? Math.floor(drawY)
+        : drawY;
 
-    // Draw shadow (scaled)
     ctx.fillStyle = this.typeDef.shadowColor || "rgba(0, 0, 0, 0.3)";
     ctx.fillRect(floorDrawX + 4, floorDrawY + drawH - 8, drawW, 12);
 
-    if (this.type === "ruinPillar" && this._spriteImage) {
+    if (
+      (this.type === "ruinPillar" ||
+        this.type === "giantRock" ||
+        this.type === "ancientTree") &&
+      this._spriteImage
+    ) {
       if (this._spriteImage.complete && this._spriteImage.naturalWidth) {
         const prevSmoothing = ctx.imageSmoothingEnabled;
         ctx.imageSmoothingEnabled = false;
-        if (this._spriteFlipH) {
-          ctx.save();
-          const centerX = floorDrawX + drawW / 2;
-          const centerY = floorDrawY + drawH / 2;
-          ctx.translate(centerX, centerY);
-          ctx.scale(-1, 1);
-          ctx.translate(-centerX, -centerY);
-          ctx.drawImage(this._spriteImage, floorDrawX, floorDrawY, drawW, drawH);
-          ctx.restore();
+        const img = this._spriteImage;
+        const nw = img.naturalWidth;
+        const nh = img.naturalHeight;
+        if (this.type === "ancientTree" && game?.player) {
+          this._drawAncientTreePlayerCircleFade(
+            ctx,
+            img,
+            floorDrawX,
+            floorDrawY,
+            drawW,
+            drawH,
+            camera,
+            game,
+            this._spriteFlipH
+          );
         } else {
-          ctx.drawImage(this._spriteImage, floorDrawX, floorDrawY, drawW, drawH);
+          this._drawSpriteSimple(ctx, img, floorDrawX, floorDrawY, drawW, drawH, nw, nh, this._spriteFlipH);
         }
         ctx.imageSmoothingEnabled = prevSmoothing;
       } else {
-        ctx.fillStyle = this.typeDef.color || "#5a5a6a";
+        ctx.fillStyle =
+          this.typeDef.color ||
+          (this.type === "giantRock" ? "#4a5568" : this.type === "ancientTree" ? "#2d5016" : "#5a5a6a");
         ctx.fillRect(floorDrawX, floorDrawY, drawW, drawH);
       }
       return;
@@ -141,42 +291,11 @@ export class Obstacle {
       } else if (this.type === "bonePile") {
         drawTileByName(ctx, "corpse", drawX, drawY, drawW);
         return;
-      } else if (this.type === "giantRock") {
-        drawTileByName(ctx, "large rock", drawX, drawY, drawW);
-        return;
-      } else if (this.type === "ancientTree") {
-        if (this.treeTile && this.treeTile.row && this.treeTile.col) {
-          drawTile(ctx, this.treeTile.row, this.treeTile.col, drawX, drawY, drawH);
-        } else {
-          drawTileByName(ctx, "tree", drawX, drawY, drawH);
-        }
-        return;
       }
     }
 
     // Draw obstacle based on type (fallback if tiles not available)
-    if (this.type === "giantRock") {
-      ctx.fillStyle = this.typeDef.color;
-      ctx.fillRect(drawX, drawY, drawW, drawH);
-      ctx.strokeStyle = "#2d3748";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(drawX, drawY, drawW, drawH);
-      ctx.fillStyle = "#374151";
-      ctx.fillRect(drawX + 16, drawY + 16, 24, 24);
-      ctx.fillRect(drawX + 88, drawY + 40, 20, 20);
-    } else if (this.type === "ancientTree") {
-      ctx.fillStyle = "#4a5a2a";
-      ctx.fillRect(drawX + drawW / 2 - 16, drawY + drawH - 48, 32, 48);
-      ctx.fillStyle = this.typeDef.canopyColor || "#1a3d0a";
-      ctx.beginPath();
-      ctx.arc(drawX + drawW / 2, drawY + 40, 56, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#2d5016";
-      ctx.beginPath();
-      ctx.arc(drawX + drawW / 2 - 16, drawY + 30, 40, 0, Math.PI * 2);
-      ctx.arc(drawX + drawW / 2 + 16, drawY + 30, 40, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (this.type === "lavaRock") {
+    if (this.type === "lavaRock") {
       ctx.fillStyle = this.typeDef.color;
       ctx.fillRect(drawX, drawY, drawW, drawH);
       const glow = 0.3 + Math.sin(Date.now() / 500) * 0.2;

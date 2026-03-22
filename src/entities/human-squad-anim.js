@@ -2,6 +2,7 @@
 // States: idle, run, attack, heal (monk only). Non-loop states call onComplete when done.
 
 import { HUMAN_SQUAD_SHEET_PATHS, HUMAN_SQUAD_ANIM_DEFAULTS } from "../data/human-squad-data.js";
+import { assetUrl } from "../utils.js";
 
 const sheetCache = {};
 let loadCallbacks = [];
@@ -51,7 +52,7 @@ export function loadHumanSquadSheets(callback) {
     img.onerror = () => {
       onOneLoad();
     };
-    img.src = path;
+    img.src = assetUrl(path);
   });
 }
 

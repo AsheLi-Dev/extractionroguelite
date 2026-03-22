@@ -1,6 +1,7 @@
 import { Vec2 } from '../utils.js';
 import { drawTile, drawTileByName, isTileAtlasLoaded } from '../entities/tile-system.js';
 import { generateBlockerMap, WALL, PRESET_SMALL, PRESET_MEDIUM, PRESET_LARGE, PRESET_BIOME, generateCorridorCell, stampRect, mulberry32 } from '../map-gen-blockers.js';
+import { drawOpenWorldGroundBase, drawOpenWorldGroundDetails } from './openworld-ground.js';
 import {
   LOST_CAMP_TILE_DATA,
   LOST_CAMP_OBJECTS,
@@ -1211,6 +1212,7 @@ export class World {
     this.tileGrid = null;
     this.tileSize = 32;
     this.tileWallRects = null;
+    this.cosmeticFloor = null;
     this._cropTileByGrid = null;
   }
 
@@ -1574,6 +1576,13 @@ export class World {
     const viewRight = viewLeft + camera.viewWidth;
     const viewBottom = viewTop + camera.viewHeight;
     const blockerAtlasReady = this.blockerChunkAtlas?.complete && this.blockerChunkAtlas?.naturalWidth > 0;
+    const cosmeticGroundLayer = this.cosmeticFloor?.groundLayer || null;
+    const canDrawCosmeticGroundBase = !!cosmeticGroundLayer?.baseCanvas;
+    const canDrawTileAtlas = isTileAtlasLoaded();
+
+    if (canDrawCosmeticGroundBase) {
+      drawOpenWorldGroundBase(ctx, cosmeticGroundLayer, ox, oy, camera);
+    }
 
     for (let gy = startGy; gy < endGy; gy++) {
       for (let gx = startGx; gx < endGx; gx++) {
@@ -1585,47 +1594,68 @@ export class World {
         const inBlockerChunk = blockerAtlasReady && this.blockerChunkTileSet && this.blockerChunkTileSet.has(`${gx},${gy}`);
         if (isWall && !inBlockerChunk) {
           const isTop = gy === 0 || (gy > 0 && this.tileGrid[gy - 1][gx] !== 1);
-          if (isTileAtlasLoaded()) {
+          if (canDrawTileAtlas) {
             drawTile(ctx, isTop ? wallTopTile.row : wallSideTile.row, isTop ? wallTopTile.col : wallSideTile.col, screenX, screenY, tileSize);
           } else {
             ctx.fillStyle = this.wallColor;
             ctx.fillRect(screenX, screenY, tileSize, tileSize);
           }
         } else {
-          if (isTileAtlasLoaded()) {
+          if (canDrawCosmeticGroundBase) {
+            // Base floor already drawn from the prerendered world-space canvas.
+          } else if (canDrawTileAtlas) {
             const variation = Math.floor((gx + gy) % 3);
             const col = String.fromCharCode(floorTile.col.charCodeAt(0) + variation);
             drawTile(ctx, floorTile.row, col, screenX, screenY, tileSize);
-            if (!inBlockerChunk) {
-              const scatter = this._getFloorScatterTile(gx, gy);
-              if (scatter) {
-                drawTile(ctx, scatter.row, scatter.col, screenX, screenY, tileSize);
-              }
-              const cropScatter = this._getCropScatterTile(gx, gy);
-              if (cropScatter) {
-                drawTile(ctx, cropScatter.tile.row, cropScatter.tile.col, screenX + cropScatter.xOffset, screenY - 5, tileSize);
-              }
-            }
           } else {
             ctx.fillStyle = this.floorColor;
             ctx.fillRect(screenX, screenY, tileSize, tileSize);
           }
-          if (!inBlockerChunk && this.cobblestonePathTiles && this.cobblestonePathAtlas?.complete && this.cobblestonePathVariants?.length) {
-            const variantIndex = this.cobblestonePathTiles.get(`${gx},${gy}`);
-            if (variantIndex != null) {
-              const v = this.cobblestonePathVariants[variantIndex] || this.cobblestonePathVariants[0];
-              const drawSize = Math.round(tileSize * 0.75);
-              const margin = (tileSize - drawSize) / 2;
-              ctx.save();
-              ctx.imageSmoothingEnabled = false;
-              ctx.drawImage(
-                this.cobblestonePathAtlas,
-                v.sx, v.sy, 32, 32,
-                screenX + margin, screenY + margin, drawSize, drawSize
-              );
-              ctx.imageSmoothingEnabled = true;
-              ctx.restore();
+        }
+      }
+    }
+
+    if (cosmeticGroundLayer?.detailCanvas) {
+      drawOpenWorldGroundDetails(ctx, cosmeticGroundLayer, ox, oy, camera);
+    }
+
+    if (!canDrawCosmeticGroundBase) {
+      for (let gy = startGy; gy < endGy; gy++) {
+        for (let gx = startGx; gx < endGx; gx++) {
+          const worldX = gx * tileSize;
+          const worldY = gy * tileSize;
+          const screenX = Math.round(worldX + ox);
+          const screenY = Math.round(worldY + oy);
+          const isWall = this.tileGrid[gy][gx] === 1;
+          const inBlockerChunk = blockerAtlasReady && this.blockerChunkTileSet && this.blockerChunkTileSet.has(`${gx},${gy}`);
+          if (isWall && !inBlockerChunk) continue;
+
+          if (!inBlockerChunk && canDrawTileAtlas) {
+            const scatter = this._getFloorScatterTile(gx, gy);
+            if (scatter) {
+              drawTile(ctx, scatter.row, scatter.col, screenX, screenY, tileSize);
             }
+            const cropScatter = this._getCropScatterTile(gx, gy);
+            if (cropScatter) {
+              drawTile(ctx, cropScatter.tile.row, cropScatter.tile.col, screenX + cropScatter.xOffset, screenY - 5, tileSize);
+            }
+          }
+          if (!inBlockerChunk && this.cobblestonePathTiles && this.cobblestonePathAtlas?.complete && this.cobblestonePathVariants?.length) {
+              const variantIndex = this.cobblestonePathTiles.get(`${gx},${gy}`);
+              if (variantIndex != null) {
+                const v = this.cobblestonePathVariants[variantIndex] || this.cobblestonePathVariants[0];
+                const drawSize = Math.round(tileSize * 0.75);
+                const margin = (tileSize - drawSize) / 2;
+                ctx.save();
+                ctx.imageSmoothingEnabled = false;
+                ctx.drawImage(
+                  this.cobblestonePathAtlas,
+                  v.sx, v.sy, 32, 32,
+                  screenX + margin, screenY + margin, drawSize, drawSize
+                );
+                ctx.imageSmoothingEnabled = true;
+                ctx.restore();
+              }
           }
         }
       }

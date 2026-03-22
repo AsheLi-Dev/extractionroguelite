@@ -554,9 +554,21 @@ function updateHunterShotAndHomingSkull(game, eff, dt, surviving) {
   surviving.push(eff);
 }
 
+function updateAnimatedSpriteImpact(_game, eff, _dt, surviving) {
+  const sprite = eff?.animatedSprite || {};
+  const duration = Math.max(
+    0.05,
+    Number(eff?.duration) || (Math.max(1, Number(sprite.frameCount) || 1) / Math.max(1, Number(sprite.fps) || 12))
+  );
+  eff.duration = duration;
+  if (eff.t >= duration) return;
+  surviving.push(eff);
+}
+
 export const SKILL_EFFECT_UPDATE_HANDLERS = {
   fireball: updateFireball,
   iceShard: updateIceShard,
+  animatedSpriteImpact: updateAnimatedSpriteImpact,
   assimilativeOrb: updateAssimilativeOrb,
   iceRain: updateIceRain,
   spiritBanner: updateSpiritBanner,

@@ -41,6 +41,11 @@ export class Input {
     return new Vec2(x, y);
   }
 
+  /** Held Ctrl — used for crouch / stealth in the main run. */
+  isCrouchHeld() {
+    return this.keys.has("control");
+  }
+
   destroy() {
     if (this._signal) return;
     if (this._onKeyDown) window.removeEventListener("keydown", this._onKeyDown);

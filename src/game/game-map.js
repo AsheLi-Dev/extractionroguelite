@@ -22,17 +22,30 @@ import { Totem } from '../entities/totem.js';
 import { mulberry32 } from '../map-gen-blockers.js';
 import { LOST_CAMP_TILESET } from '../data/lost-camp-data.js';
 import { setMinimapWorld } from '../ui/minimap.js';
+import { buildOpenWorldCosmeticFloor } from '../data/openworld-ground.js';
 
 export function applyGameMapMixin(Game) {
   Object.assign(Game.prototype, {
     getMapDefById(mapId) {
       if (isRestRoomMapId(mapId)) return REST_ROOM_MAP_DEF;
-      return MAP_DEFS.find((m) => m.id === mapId) || null;
+      const requestedMap = MAP_DEFS.find((m) => m.id === mapId) || null;
+      const forestMap = MAP_DEFS.find((m) => m.id === 1) || requestedMap;
+      if (!requestedMap || !forestMap) return requestedMap;
+      return {
+        ...requestedMap,
+        name: forestMap.name,
+        floorColor: forestMap.floorColor,
+        floorPattern: forestMap.floorPattern,
+        wallColor: forestMap.wallColor,
+        wallAccent: forestMap.wallAccent,
+      };
     },
 
     shouldUseBiomeMapGeneration(mapId, options = {}) {
       const bossMapId = MAP_DEFS[MAP_DEFS.length - 1]?.id;
-      if (options?.tutorial === true) return false;
+      // Keep the initial tutorial map on classic generation, but allow
+      // tutorial route-node transitions to load regular biome maps.
+      if (options?.tutorial === true && this.enableRunRouteGraph !== true) return false;
       if (isRestRoomMapId(mapId)) return false;
       const numericMapId = Number(mapId);
       if (!Number.isFinite(numericMapId)) return false;
@@ -78,6 +91,34 @@ export function applyGameMapMixin(Game) {
       world.lostCampAtlas = new Image();
       world.lostCampAtlas.src = LOST_CAMP_TILESET.image;
       return world;
+    },
+
+    resolveOpenWorldGroundTypeForMap(mapDef = this.currentMap) {
+      return mapDef?.floorPattern === "grass" ? "grassA" : null;
+    },
+
+    queueOpenWorldCosmeticFloorBuild(world = this.world, seed = this.proceduralSeed, mapDef = this.currentMap) {
+      if (!world) return Promise.resolve(null);
+      const groundTypeId = this.resolveOpenWorldGroundTypeForMap(mapDef);
+      if (!world.archetypeGrid || !groundTypeId) {
+        world.cosmeticFloor = null;
+        return Promise.resolve(null);
+      }
+      const targetWorld = world;
+      targetWorld.cosmeticFloor = null;
+      const buildPromise = buildOpenWorldCosmeticFloor(targetWorld, seed, groundTypeId)
+        .then((cosmeticFloor) => {
+          if (this.world === targetWorld) {
+            targetWorld.cosmeticFloor = cosmeticFloor;
+          }
+          return cosmeticFloor;
+        })
+        .catch((error) => {
+          console.warn('Failed to build OpenWorld cosmetic floor', error);
+          return null;
+        });
+      this.pendingOpenWorldCosmeticFloor = buildPromise;
+      return buildPromise;
     },
 
     shouldVisitRestRoomBeforeMap(targetMapId, spawnSide) {
@@ -413,7 +454,19 @@ export function applyGameMapMixin(Game) {
           treeTile: obs.treeTile ? { row: obs.treeTile.row, col: obs.treeTile.col } : null,
           destroyed: obs.destroyed,
           triggered: obs.triggered,
-          meltTimer: obs.meltTimer
+          meltTimer: obs.meltTimer,
+          ...(obs.type === "giantRock"
+            ? {
+                giantRockSpriteSrc: obs._giantRockSpriteSrc,
+                giantRockFlipH: obs._spriteFlipH,
+              }
+            : {}),
+          ...(obs.type === "ancientTree"
+            ? {
+                ancientTreeSpriteSrc: obs._ancientTreeSpriteSrc,
+                ancientTreeFlipH: obs._spriteFlipH,
+              }
+            : {}),
         })),
         breakables: (this.breakables || []).map(b => ({
           id: b.id,
@@ -493,6 +546,26 @@ export function applyGameMapMixin(Game) {
         obstacle.destroyed = obsData.destroyed;
         obstacle.triggered = obsData.triggered || false;
         obstacle.meltTimer = obsData.meltTimer;
+        if (obsData.type === "giantRock") {
+          if (typeof obsData.giantRockSpriteSrc === "string" && obsData.giantRockSpriteSrc) {
+            obstacle._giantRockSpriteSrc = obsData.giantRockSpriteSrc;
+            obstacle._spriteImage.src = obsData.giantRockSpriteSrc;
+          }
+          if (obsData.size?.w != null && obsData.size?.h != null) {
+            obstacle.size = { w: obsData.size.w, h: obsData.size.h };
+          }
+          if (typeof obsData.giantRockFlipH === "boolean") obstacle._spriteFlipH = obsData.giantRockFlipH;
+        }
+        if (obsData.type === "ancientTree") {
+          if (typeof obsData.ancientTreeSpriteSrc === "string" && obsData.ancientTreeSpriteSrc) {
+            obstacle._ancientTreeSpriteSrc = obsData.ancientTreeSpriteSrc;
+            obstacle._spriteImage.src = obsData.ancientTreeSpriteSrc;
+          }
+          if (obsData.size?.w != null && obsData.size?.h != null) {
+            obstacle.size = { w: obsData.size.w, h: obsData.size.h };
+          }
+          if (typeof obsData.ancientTreeFlipH === "boolean") obstacle._spriteFlipH = obsData.ancientTreeFlipH;
+        }
         return obstacle;
       }).filter(Boolean);
 
@@ -1326,14 +1399,6 @@ export function applyGameMapMixin(Game) {
             continue;
           }
           const obstacle = new Obstacle(x, y, typeDef);
-          if (typeDef.id === "ancientTree") {
-            const treeVariants = [
-              { row: 26, col: "a" }, // sapling
-              { row: 26, col: "b" }, // small tree
-              { row: 26, col: "c" } // tree
-            ];
-            obstacle.treeTile = treeVariants[Math.floor(Math.random() * treeVariants.length)];
-          }
           this.obstacles.push(obstacle);
           spawned++;
         }
@@ -1598,6 +1663,8 @@ export function applyGameMapMixin(Game) {
         this.tutorialSystem.onReachExit();
       }
 
+      this.clearMapTransitionLocks?.();
+
       // Save current map's enemy state and environmental elements before leaving (if we were on a map)
       if (this.currentMapStateKey !== undefined && this.currentMapStateKey !== null) {
         this.saveMapEnemyState(this.currentMapStateKey);
@@ -1625,6 +1692,7 @@ export function applyGameMapMixin(Game) {
         }
         if (this.enemySystem) this.enemySystem.world = this.world;
         if (this.lootSystem) this.lootSystem.world = this.world;
+        void this.queueOpenWorldCosmeticFloorBuild(this.world, seed, targetMap);
       } else {
         this.world.setTheme(targetMap);
       }

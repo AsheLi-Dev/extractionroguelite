@@ -1,4 +1,6 @@
 import { drawMagicProjectile, getMagicProjectileDrawOptions } from './magic-projectile-renderer.js';
+import { drawAnimatedSpriteFrame, getAnimatedSpriteFrameIndex } from './animated-sprite.js';
+import { getResolvedAnimatedSpriteConfig } from './animated-sprite-presets.js';
 
 const WIND_PROJECTILE_TRAIL_LIFE = 0.7;
 const WIND_PROJECTILE_TRAIL_MAX_POINTS = 30;
@@ -11,44 +13,6 @@ const ENEMY_PROJECTILE_TRAIL_MAX_POINTS = 8;
 const ENEMY_PROJECTILE_TRAIL_MIN_STEP = 2;
 
 const projectileSpriteCache = new Map();
-const ANIMATED_PROJECTILE_SPRITE_PRESETS = {
-  ghostOrb: {
-    path: 'assets/Projectiles/sprGhostOrb.png',
-    frameWidth: 18,
-    frameHeight: 12,
-    frameCount: 8,
-    fps: 12,
-    loop: true,
-    rotateWithVelocity: true,
-    baseAngleRad: 0,
-    anchorX: 0.5,
-    anchorY: 0.5
-  },
-  firebolt: {
-    path: 'assets/Projectiles/sprFirebolt.png',
-    frameWidth: 12,
-    frameHeight: 5,
-    frameCount: 5,
-    fps: 14,
-    loop: true,
-    rotateWithVelocity: true,
-    baseAngleRad: 0,
-    anchorX: 0.5,
-    anchorY: 0.5
-  },
-  acidProjectile: {
-    path: 'assets/Projectiles/sprAcidProjectile.png',
-    frameWidth: 20,
-    frameHeight: 12,
-    frameCount: 10,
-    fps: 12,
-    loop: true,
-    rotateWithVelocity: true,
-    baseAngleRad: 0,
-    anchorX: 0.5,
-    anchorY: 0.5
-  }
-};
 
 function getProjectileSprite(path) {
   if (!path) return null;
@@ -58,39 +22,6 @@ function getProjectileSprite(path) {
     projectileSpriteCache.set(path, img);
   }
   return projectileSpriteCache.get(path);
-}
-
-function resolveAnimatedSpritePreset(animatedSprite) {
-  if (typeof animatedSprite === 'string') {
-    return ANIMATED_PROJECTILE_SPRITE_PRESETS[animatedSprite] || null;
-  }
-  const presetId = animatedSprite?.preset;
-  if (!presetId) return null;
-  return ANIMATED_PROJECTILE_SPRITE_PRESETS[presetId] || null;
-}
-
-function normalizeAnimatedSpriteConfig(animatedSprite, hitbox, options = {}) {
-  const preset = resolveAnimatedSpritePreset(animatedSprite);
-  const source = preset ? { ...preset, ...(typeof animatedSprite === 'object' ? animatedSprite : {}) } : animatedSprite;
-  if (!source?.path) return null;
-  const radius = Math.max(0, Number(options.radius ?? hitbox?.radius) || 0);
-  const defaultDrawSize = Math.max(1, radius * 2);
-  return {
-    path: source.path,
-    frameWidth: Math.max(1, Number(source.frameWidth) || 0),
-    frameHeight: Math.max(1, Number(source.frameHeight) || 0),
-    frameCount: Math.max(1, Number(source.frameCount) || 1),
-    fps: Math.max(1, Number(source.fps) || 12),
-    loop: source.loop !== false,
-    rotateWithVelocity: source.rotateWithVelocity !== false,
-    baseAngleRad: Number(source.baseAngleRad) || 0,
-    anchorX: Number.isFinite(source.anchorX) ? source.anchorX : 0.5,
-    anchorY: Number.isFinite(source.anchorY) ? source.anchorY : 0.5,
-    drawWidth: Math.max(1, Number(source.drawWidth) || defaultDrawSize),
-    drawHeight: Math.max(1, Number(source.drawHeight) || defaultDrawSize),
-    offsetForward: Number(source.offsetForward) || 0,
-    offsetLateral: Number(source.offsetLateral) || 0
-  };
 }
 
 function getAnimatedProjectileDrawPoint(state, hitbox, visual) {
@@ -110,40 +41,20 @@ function advanceProjectileVisualAnimation(visual, dt) {
   const sprite = visual?.animatedSprite;
   if (!sprite) return;
   visual.animElapsed = (visual.animElapsed || 0) + dt;
-  const rawFrame = Math.floor(visual.animElapsed * sprite.fps);
-  visual.animFrameIndex = sprite.loop
-    ? rawFrame % sprite.frameCount
-    : Math.min(sprite.frameCount - 1, rawFrame);
+  visual.animFrameIndex = getAnimatedSpriteFrameIndex(visual.animElapsed, sprite);
 }
 
 function drawAnimatedProjectileSprite(ctx, centerX, centerY, angle, visual) {
   const sprite = visual?.animatedSprite;
   const image = visual?.animatedSpriteImage;
-  if (!sprite || !image || !image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) return false;
-  const frameIndex = Math.max(0, Math.min(sprite.frameCount - 1, Number(visual.animFrameIndex) || 0));
-  const srcX = frameIndex * sprite.frameWidth;
-  const srcY = 0;
-  const destW = sprite.drawWidth;
-  const destH = sprite.drawHeight;
-  const drawX = -destW * sprite.anchorX;
-  const drawY = -destH * sprite.anchorY;
-  ctx.save();
-  ctx.imageSmoothingEnabled = false;
-  ctx.translate(centerX, centerY);
-  ctx.rotate(angle);
-  ctx.drawImage(
+  return drawAnimatedSpriteFrame(ctx, {
     image,
-    srcX,
-    srcY,
-    sprite.frameWidth,
-    sprite.frameHeight,
-    drawX,
-    drawY,
-    destW,
-    destH
-  );
-  ctx.restore();
-  return true;
+    sprite,
+    centerX,
+    centerY,
+    angle,
+    frameIndex: Number(visual?.animFrameIndex) || 0
+  });
 }
 
 function getTrailDefaults(element) {
@@ -205,7 +116,10 @@ export function createHitboxProjectileVisual(state, hitbox, options = {}) {
   const height = Number.isFinite(options.height) ? options.height : Number(hitbox.height) || 0;
   const radius = Number.isFinite(options.radius) ? options.radius : Number(hitbox.radius) || 0;
   const defaults = getTrailDefaults(element);
-  const animatedSprite = normalizeAnimatedSpriteConfig(options.animatedSprite, hitbox, { radius });
+  const animatedSprite = getResolvedAnimatedSpriteConfig(options.animatedSprite, {
+    defaultDrawWidth: width > 0 ? width : Math.max(1, radius * 2),
+    defaultDrawHeight: height > 0 ? height : Math.max(1, radius * 2)
+  });
   const trailEnabled = options.trailEnabled ?? (faction === 'enemy' ? !(options.spritePath || animatedSprite) : false);
   const visual = {
     kind: 'projectile',
@@ -440,27 +354,31 @@ export function drawHitboxProjectileVisuals(state, ctx, hitboxes) {
     const sy = hitbox.y - camY;
     const el = visual.elementalState || 'fire';
     const alpha = Number.isFinite(visual.alpha) ? visual.alpha : (el === 'wind' ? 0.35 : 1);
+    const radius = Math.max(1, visual.radius || Number(hitbox.radius) || 4);
+    const diameter = radius * 2;
+    const angle = Number.isFinite(visual.angle) ? visual.angle : Math.atan2(hitbox.dirY || 0, hitbox.dirX || 1);
+    const spritePoint = (visual.animatedSprite || visual.spriteImage)
+      ? getAnimatedProjectileDrawPoint(state, hitbox, visual)
+      : null;
 
-    if (visual.faction === 'enemy') {
-      const radius = Math.max(1, visual.radius || Number(hitbox.radius) || 4);
-      const diameter = radius * 2;
-      const angle = Number.isFinite(visual.angle) ? visual.angle : Math.atan2(hitbox.dirY || 0, hitbox.dirX || 1);
-      if (visual.animatedSprite) {
-        const point = getAnimatedProjectileDrawPoint(state, hitbox, visual);
-        const drawAngle = (visual.animatedSprite.rotateWithVelocity ? angle : 0) + (visual.animatedSprite.baseAngleRad || 0);
-        if (drawAnimatedProjectileSprite(ctx, point.x - camX, point.y - camY, drawAngle, visual)) {
-          continue;
-        }
-      }
-      if (visual.spriteImage && visual.spriteImage.complete && visual.spriteImage.naturalWidth > 0 && visual.spriteImage.naturalHeight > 0) {
-        ctx.save();
-        ctx.imageSmoothingEnabled = false;
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.drawImage(visual.spriteImage, -radius, -radius, diameter, diameter);
-        ctx.restore();
+    if (visual.animatedSprite && spritePoint) {
+      const drawAngle = (visual.animatedSprite.rotateWithVelocity ? angle : 0) + (visual.animatedSprite.baseAngleRad || 0);
+      if (drawAnimatedProjectileSprite(ctx, spritePoint.x - camX, spritePoint.y - camY, drawAngle, visual)) {
         continue;
       }
+    }
+
+    if (visual.spriteImage && spritePoint && visual.spriteImage.complete && visual.spriteImage.naturalWidth > 0 && visual.spriteImage.naturalHeight > 0) {
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.translate(spritePoint.x - camX, spritePoint.y - camY);
+      ctx.rotate(angle);
+      ctx.drawImage(visual.spriteImage, -radius, -radius, diameter, diameter);
+      ctx.restore();
+      continue;
+    }
+
+    if (visual.faction === 'enemy') {
       if (visual.magicStyle) {
         const base = visual.magicStyle.preset != null ? visual.magicStyle.preset : visual.magicStyle;
         const trailPositions = (visual.trail || []).map((p) => ({

@@ -62,3 +62,16 @@ export function generateRunMap() {
 
   return nodes;
 }
+
+export function generateTutorialRunMap() {
+  return [
+    [
+      { x: 0, y: 0, type: NODE_TYPES.SAFE, tag: null, visited: false, biomeMapId: 0 },
+      { x: 1, y: 0, type: NODE_TYPES.SAFE, tag: null, visited: false, biomeMapId: 1 },
+    ],
+    [
+      { x: 0, y: 1, type: NODE_TYPES.SAFE, tag: null, visited: false, biomeMapId: 2 },
+      { x: 1, y: 1, type: NODE_TYPES.SAFE, tag: NODE_TAGS.EXTRACTION, visited: false, biomeMapId: 3 },
+    ],
+  ];
+}

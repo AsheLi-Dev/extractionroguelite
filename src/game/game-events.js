@@ -22,6 +22,7 @@ import { META_ATTRIBUTES } from '../data/character-attributes.js';
 export function applyGameEventsMixin(Game) {
   Object.assign(Game.prototype, {
     tryTriggerEvent() {
+      if (this.tutorialMode) return;
       // Require at least 3 maps visited before events can trigger
       if (this.visitedMaps.size < 3) return;
       if (this.eventsOccurredThisRun.size >= EVENT_DEFS.length) return;
@@ -913,6 +914,9 @@ export function applyGameEventsMixin(Game) {
 
     interactWithMapObject(obj) {
       if (obj.type === "nodeExitPortal") {
+        if (this.exitTransitionCooldown > 0) return;
+        this.exitTransitionCooldown = 0.6;
+        this.clearMapTransitionLocks?.();
         this.nodeX = obj.targetNodeX;
         this.nodeY = obj.targetNodeY;
         this.enterNode?.();

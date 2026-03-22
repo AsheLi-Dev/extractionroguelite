@@ -8,6 +8,8 @@
  * - Shared rendering logic should go into helpers/modules (avoid copy/paste).
  */
 
+import { drawAnimatedSpriteFrame, getAnimatedSpriteImage } from '../vfx/animated-sprite.js';
+
 let loyalDragonIdleImage = null;
 
 function getLoyalDragonIdleImage() {
@@ -112,7 +114,65 @@ function drawHunterShot(game, ctx, eff, ox, oy) {
   ctx.stroke();
 }
 
+function drawAnimatedSkillProjectile(ctx, eff, ox, oy) {
+  const sprite = eff?.animatedSprite;
+  if (!sprite?.path) return false;
+  const image = getAnimatedSpriteImage(sprite.path);
+  const angle = Math.atan2(Number(eff?.vy) || 0, Number(eff?.vx) || 1);
+  return drawAnimatedSpriteFrame(ctx, {
+    image,
+    sprite,
+    centerX: (Number(eff?.x) || 0) + ox,
+    centerY: (Number(eff?.y) || 0) + oy,
+    angle: (sprite.rotateWithVelocity ? angle : 0) + (sprite.baseAngleRad || 0),
+    elapsed: eff?.t || 0
+  });
+}
+
+function drawFireball(game, ctx, eff, ox, oy) {
+  if (drawAnimatedSkillProjectile(ctx, eff, ox, oy)) return;
+  const sx = eff.x + ox;
+  const sy = eff.y + oy;
+  const r = 14 + 4 * Math.sin(game.time * 8);
+  const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+  g.addColorStop(0, '#fff3a0');
+  g.addColorStop(0.5, '#f97316');
+  g.addColorStop(1, '#dc2626');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(sx, sy, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawIceShard(_game, ctx, eff, ox, oy) {
+  if (drawAnimatedSkillProjectile(ctx, eff, ox, oy)) return;
+  const sx = eff.x + ox;
+  const sy = eff.y + oy;
+  ctx.fillStyle = 'rgba(147, 197, 253, 0.9)';
+  ctx.beginPath();
+  ctx.arc(sx, sy, 8, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawAnimatedSpriteImpact(_game, ctx, eff, ox, oy) {
+  const sprite = eff?.animatedSprite;
+  if (!sprite?.path) return;
+  const image = getAnimatedSpriteImage(sprite.path);
+  const angle = Number(eff?.angleRad) || 0;
+  drawAnimatedSpriteFrame(ctx, {
+    image,
+    sprite,
+    centerX: (Number(eff?.x) || 0) + ox,
+    centerY: (Number(eff?.y) || 0) + oy,
+    angle: (sprite.rotateWithVelocity ? angle : 0) + (sprite.baseAngleRad || 0),
+    elapsed: eff?.t || 0
+  });
+}
+
 export const SKILL_EFFECT_DRAW_HANDLERS = {
+  fireball: drawFireball,
+  iceShard: drawIceShard,
+  animatedSpriteImpact: drawAnimatedSpriteImpact,
   assimilativeOrb: drawAssimilativeOrb,
   spiritBanner: drawSpiritBanner,
   loyalDragons: drawLoyalDragons,

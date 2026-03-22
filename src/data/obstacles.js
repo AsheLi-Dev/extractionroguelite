@@ -5,7 +5,22 @@ export const OBSTACLE_TYPES = {
     maps: [0, 1, 2, 3, 4], // All maps
     blocksMovement: true,
     blocksProjectiles: true,
-    size: { w: 64, h: 64 },
+    /** Draw + collision footprint vs natural PNG (rockAA_* 143×148 at 1.0). */
+    worldScale: 0.5,
+    size: { w: 72, h: 74 },
+    placementSize: { w: 72, h: 74 },
+    /** Hitbox = this fraction of sprite w/h, bottom-centered. */
+    collisionScale: 0.7,
+    spriteSources: [
+      "assets/Environments/1. OpenWorld/4.SingleObj/Decorative/Rocks/rockAA_01.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Decorative/Rocks/rockAA_02.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Decorative/Rocks/rockAA_03.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Decorative/Rocks/rockAA_04.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Decorative/Rocks/rockAA_05.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Decorative/Rocks/rockAA_06.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Decorative/Rocks/rockAA_07.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Decorative/Rocks/rockAA_08.png",
+    ],
     color: "#4a5568",
     shadowColor: "rgba(0, 0, 0, 0.3)"
   },
@@ -15,7 +30,31 @@ export const OBSTACLE_TYPES = {
     maps: [0, 1], // Dungeon, Forest
     blocksMovement: true,
     blocksProjectiles: true,
-    size: { w: 48, h: 80 },
+    /** Draw + collision footprint vs natural PNG (treeBB_* 228×295 at 1.0). */
+    worldScale: 0.5,
+    size: { w: 114, h: 148 },
+    placementSize: { w: 114, h: 148 },
+    /** Hitbox = these fractions of sprite w/h, bottom-centered. */
+    collisionWidthRatio: 0.3,
+    collisionHeightRatio: 0.1,
+    /** Nudge hitbox up from sprite bottom (world px). */
+    collisionLiftPx: 32,
+    /** World px: from player center, tree alpha lerps from `canopyFadeMinAlpha` to `canopyFadeMaxAlpha`. */
+    canopyFadeRadius: 130,
+    canopyFadeMinAlpha: 0.4,
+    canopyFadeMaxAlpha: 1,
+    /** Depth for Y-sort: `position.y + size.h * this` (may be >1 to push anchor below sprite foot). */
+    ySortHeightRatio: 1.2,
+    spriteSources: [
+      "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeBB_01.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeBB_02.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeBB_03.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeBB_04.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeBB_05.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeBB_06.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeBB_07.png",
+      "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeBB_08.png",
+    ],
     color: "#2d5016",
     canopyColor: "#1a3d0a",
     shadowColor: "rgba(0, 0, 0, 0.4)"

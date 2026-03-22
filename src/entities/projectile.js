@@ -1,5 +1,7 @@
-import { Vec2, clamp, lerp, obstacleIntersectsRect } from '../utils.js';
+import { Vec2, clamp, lerp, obstacleIntersectsRect, assetUrl } from '../utils.js';
 import { drawMagicProjectile, getMagicProjectileDrawOptions } from '../vfx/magic-projectile-renderer.js';
+import { drawAnimatedSpriteFrame, getAnimatedSpriteImage } from '../vfx/animated-sprite.js';
+import { getResolvedAnimatedSpriteConfig } from '../vfx/animated-sprite-presets.js';
 
 export const PLAYER_PROJECTILE_SPEED = 520;
 export const PLAYER_PROJECTILE_SIZE = 8;
@@ -7,6 +9,8 @@ export const PLAYER_PROJECTILE_MAX_DIST = 1400;
 export const PLAYER_PROJECTILE_TRAIL_LEN = 8;
 export const WIND_PROJECTILE_TRAIL_LEN = 16;
 export const WIND_PROJECTILE_TRAIL_LIFE = 0.35;
+export const FAINT_AFTERIMAGE_TRAIL_LEN = 12;
+export const FAINT_AFTERIMAGE_TRAIL_LIFE = 0.5;
 
 const enemyProjectileSpriteCache = new Map();
 
@@ -15,7 +19,7 @@ function getEnemyProjectileSprite(path) {
   if (!key) return null;
   if (enemyProjectileSpriteCache.has(key)) return enemyProjectileSpriteCache.get(key);
   const img = new Image();
-  img.src = key;
+  img.src = assetUrl(key);
   enemyProjectileSpriteCache.set(key, img);
   return img;
 }
@@ -35,6 +39,9 @@ export class PlayerProjectile {
     if (options.overdrive) this.damage = this.damage * 3;
     this.elementalState = options.elementalState ?? "fire";
     this.trailPositions = [];
+    this.trailStyle = options.trailStyle || null;
+    this.trailLife = Math.max(0.05, Number(options.trailLife) || (this.trailStyle === "faint_afterimage" ? FAINT_AFTERIMAGE_TRAIL_LIFE : 1));
+    this.trailMaxPoints = Math.max(1, Math.floor(Number(options.trailMaxPoints) || (this.trailStyle === "faint_afterimage" ? FAINT_AFTERIMAGE_TRAIL_LEN : PLAYER_PROJECTILE_TRAIL_LEN)));
     this.sparks = []; // Sparks particles array
     this.distanceTraveled = 0;
     this.hitEnemyIds = new Set();
@@ -80,6 +87,17 @@ export class PlayerProjectile {
       this.rectWidth = null;
       this.rectHeight = null;
     }
+    this.spritePath = options.spritePath || null;
+    this.spriteImage = this.spritePath ? getEnemyProjectileSprite(this.spritePath) : null;
+    this.animatedSprite = getResolvedAnimatedSpriteConfig(options.animatedSprite, {
+      defaultDrawWidth: this.rectWidth ?? this.size,
+      defaultDrawHeight: this.rectHeight ?? this.size
+    });
+    this.animatedSpriteImage = this.animatedSprite ? getAnimatedSpriteImage(this.animatedSprite.path) : null;
+    this.impactAnimatedSprite = getResolvedAnimatedSpriteConfig(options.impactAnimatedSprite, {
+      defaultDrawWidth: this.rectWidth ?? this.size,
+      defaultDrawHeight: this.rectHeight ?? this.size
+    });
   }
 
   update(dt, game = null) {
@@ -97,6 +115,21 @@ export class PlayerProjectile {
         trailPoint.age = (trailPoint.age || 0) + dt;
       }
       while (this.trailPositions.length > 0 && (this.trailPositions[0].age || 0) >= (this.trailPositions[0].life || WIND_PROJECTILE_TRAIL_LIFE)) {
+        this.trailPositions.shift();
+      }
+    } else if (this.trailStyle === "faint_afterimage") {
+      this.trailPositions.push({
+        x: this.position.x,
+        y: this.position.y,
+        age: 0,
+        life: this.trailLife
+      });
+      if (this.trailPositions.length > this.trailMaxPoints) this.trailPositions.shift();
+      for (let i = 0; i < this.trailPositions.length; i++) {
+        const trailPoint = this.trailPositions[i];
+        trailPoint.age = (trailPoint.age || 0) + dt;
+      }
+      while (this.trailPositions.length > 0 && (this.trailPositions[0].age || 0) >= (this.trailPositions[0].life || this.trailLife)) {
         this.trailPositions.shift();
       }
     } else {
@@ -349,70 +382,140 @@ export class PlayerProjectile {
 
     // Draw trail afterimages (oldest to newest)
     if (el !== "wind") {
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      ctx.imageSmoothingEnabled = false;
-      const trailN = this.trailPositions.length;
-      for (let i = 0; i < trailN; i++) {
-        const t = this.trailPositions[i];
-        const trailSx = Math.floor(t.x - camera.position.x);
-        const trailSy = Math.floor(t.y - camera.position.y);
-        const progress = (i + 1) / trailN;
-        const alpha = progress * 0.35;
-        const sizeMul = lerp(0.6, 1.0, progress);
-        const trailW = (isRect ? this.rectWidth : this.size) * sizeMul;
-        const trailH = (isRect ? this.rectHeight : this.size) * sizeMul;
-        const trailCx = trailSx + (isRect ? this.rectWidth : this.size) / 2;
-        const trailCy = trailSy + (isRect ? this.rectHeight : this.size) / 2;
+      if (this.trailStyle === "faint_afterimage") {
+        const trailN = this.trailPositions.length;
+        if (trailN > 0) {
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          ctx.imageSmoothingEnabled = false;
+          for (let i = 0; i < trailN; i++) {
+            const t = this.trailPositions[i];
+            const life = Number(t.life) || this.trailLife;
+            const age = Number(t.age) || 0;
+            const fade = Math.max(0, 1 - age / life);
+            if (fade <= 0) continue;
+            const alpha = fade * fade * 0.12;
+            const trailSx = Math.floor(t.x - camera.position.x);
+            const trailSy = Math.floor(t.y - camera.position.y);
+            const trailCx = trailSx + (isRect ? this.rectWidth : this.size) / 2;
+            const trailCy = trailSy + (isRect ? this.rectHeight : this.size) / 2;
+            if (this.animatedSprite && this.animatedSpriteImage) {
+              ctx.save();
+              ctx.globalAlpha = alpha;
+              drawAnimatedSpriteFrame(ctx, {
+                image: this.animatedSpriteImage,
+                sprite: this.animatedSprite,
+                centerX: trailCx,
+                centerY: trailCy,
+                angle: (this.animatedSprite.rotateWithVelocity ? angle : 0) + (this.animatedSprite.baseAngleRad || 0),
+                elapsed: Math.max(0, this.flightTime - age)
+              });
+              ctx.restore();
+              continue;
+            }
+            ctx.save();
+            ctx.translate(trailCx, trailCy);
+            ctx.rotate(angle);
+            ctx.scale(scaleX, scaleY);
+            ctx.fillStyle = `rgba(${colors.trail}, ${alpha})`;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, this.size / 2, this.size / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+          ctx.restore();
+        }
+      } else {
         ctx.save();
-        ctx.translate(trailCx, trailCy);
-        ctx.rotate(angle);
-        if (isRect) {
-          ctx.scale(scaleX * sizeMul, scaleY * sizeMul);
-          ctx.fillStyle = `rgba(${colors.trail}, ${alpha})`;
-          ctx.fillRect(-trailW / 2, -trailH / 2, trailW, trailH);
-        } else {
-          const trailSize = this.size * sizeMul;
-          ctx.scale(scaleX * sizeMul, scaleY * sizeMul);
-          ctx.fillStyle = `rgba(${colors.trail}, ${alpha})`;
-          ctx.beginPath();
-          ctx.ellipse(0, 0, trailSize / 2, trailSize / 2, 0, 0, Math.PI * 2);
-          ctx.fill();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.imageSmoothingEnabled = false;
+        const trailN = this.trailPositions.length;
+        for (let i = 0; i < trailN; i++) {
+          const t = this.trailPositions[i];
+          const trailSx = Math.floor(t.x - camera.position.x);
+          const trailSy = Math.floor(t.y - camera.position.y);
+          const progress = (i + 1) / trailN;
+          const alpha = progress * 0.35;
+          const sizeMul = lerp(0.6, 1.0, progress);
+          const trailW = (isRect ? this.rectWidth : this.size) * sizeMul;
+          const trailH = (isRect ? this.rectHeight : this.size) * sizeMul;
+          const trailCx = trailSx + (isRect ? this.rectWidth : this.size) / 2;
+          const trailCy = trailSy + (isRect ? this.rectHeight : this.size) / 2;
+          ctx.save();
+          ctx.translate(trailCx, trailCy);
+          ctx.rotate(angle);
+          if (isRect) {
+            ctx.scale(scaleX * sizeMul, scaleY * sizeMul);
+            ctx.fillStyle = `rgba(${colors.trail}, ${alpha})`;
+            ctx.fillRect(-trailW / 2, -trailH / 2, trailW, trailH);
+          } else {
+            const trailSize = this.size * sizeMul;
+            ctx.scale(scaleX * sizeMul, scaleY * sizeMul);
+            ctx.fillStyle = `rgba(${colors.trail}, ${alpha})`;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, trailSize / 2, trailSize / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
         }
         ctx.restore();
       }
-      ctx.restore();
     }
 
     // Draw main projectile core with glow
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(angle);
-    ctx.scale(scaleX, scaleY);
-      if (isRect) {
-      ctx.fillStyle = `rgba(${colors.glow}, ${0.6 * windAlpha})`;
-      ctx.fillRect(-w / 2 * 1.2, -h / 2 * 1.2, w * 1.2, h * 1.2);
-      ctx.fillStyle = `rgba(${colors.core}, ${0.9 * windAlpha})`;
-      ctx.fillRect(-w / 2 * 0.7, -h / 2 * 0.7, w * 0.7, h * 0.7);
-    } else {
-      const windFill = el === "wind";
-      ctx.fillStyle = `rgba(${colors.glow}, ${windFill ? (0.2 * windAlpha) : 0.6})`;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, this.size / 2 * 1.2, this.size / 2 * 1.2, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = `rgba(${colors.core}, ${windFill ? (0.7 * windAlpha) : 0.9})`;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, this.size / 2 * 0.7, this.size / 2 * 0.7, 0, 0, Math.PI * 2);
-      ctx.fill();
-      if (el === "fire" && Math.random() < 0.3) {
-        ctx.fillStyle = `rgba(255, 150, 50, 0.4)`;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, this.size / 2 * 0.4, this.size / 2 * 0.4, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    let drewSpriteCore = false;
+    if (this.animatedSprite) {
+      const sprite = this.animatedSprite;
+      if (!Number.isFinite(sprite.drawWidth) || sprite.drawWidth <= 0) sprite.drawWidth = this.rectWidth ?? this.size;
+      if (!Number.isFinite(sprite.drawHeight) || sprite.drawHeight <= 0) sprite.drawHeight = this.rectHeight ?? this.size;
+      const drawAngle = (sprite.rotateWithVelocity ? angle : 0) + (sprite.baseAngleRad || 0);
+      drewSpriteCore = drawAnimatedSpriteFrame(ctx, {
+        image: this.animatedSpriteImage,
+        sprite,
+        centerX: cx,
+        centerY: cy,
+        angle: drawAngle,
+        elapsed: this.flightTime
+      });
+    } else if (this.spriteImage && this.spriteImage.complete && this.spriteImage.naturalWidth > 0 && this.spriteImage.naturalHeight > 0) {
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.drawImage(this.spriteImage, -w / 2, -h / 2, w, h);
+      ctx.restore();
+      drewSpriteCore = true;
     }
-    ctx.restore();
-    ctx.restore();
+
+    if (!drewSpriteCore) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.scale(scaleX, scaleY);
+      if (isRect) {
+        ctx.fillStyle = `rgba(${colors.glow}, ${0.6 * windAlpha})`;
+        ctx.fillRect(-w / 2 * 1.2, -h / 2 * 1.2, w * 1.2, h * 1.2);
+        ctx.fillStyle = `rgba(${colors.core}, ${0.9 * windAlpha})`;
+        ctx.fillRect(-w / 2 * 0.7, -h / 2 * 0.7, w * 0.7, h * 0.7);
+      } else {
+        const windFill = el === "wind";
+        ctx.fillStyle = `rgba(${colors.glow}, ${windFill ? (0.2 * windAlpha) : 0.6})`;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, this.size / 2 * 1.2, this.size / 2 * 1.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(${colors.core}, ${windFill ? (0.7 * windAlpha) : 0.9})`;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, this.size / 2 * 0.7, this.size / 2 * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (el === "fire" && Math.random() < 0.3) {
+          ctx.fillStyle = `rgba(255, 150, 50, 0.4)`;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, this.size / 2 * 0.4, this.size / 2 * 0.4, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
     
     // Draw sparks
     ctx.save();

@@ -10,6 +10,8 @@ This file tracks attribution and license status for visual assets used by the ga
 - BDragon1727
 - Helton Yan
 - xDeviruchi
+- pimen
+- Frostwindz
 
 ## How to use
 - Add one row for every art asset or sprite sheet used in the project.

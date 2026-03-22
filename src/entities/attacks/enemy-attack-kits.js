@@ -52,7 +52,7 @@ export const ENEMY_ATTACK_KITS = {
           randomSpreadDeg: 30,
           color: "#a855f7",
           size: 10,
-          animatedSprite: { preset: "ghostOrb" },
+          animatedSprite: { preset: "darkOrb" },
           useHitbox: true
         },
         recover: 0.5,
@@ -210,7 +210,7 @@ export const ENEMY_ATTACK_KITS = {
           retargetOnBurst: true,
           color: "#1b102c",
           size: 16,
-          animatedSprite: { preset: "ghostOrb" },
+          animatedSprite: { preset: "darkOrb" },
           useHitbox: true
         },
         recover: 0.2,

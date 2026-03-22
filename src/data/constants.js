@@ -45,6 +45,14 @@ export const PLAYER_WALL_COLLISION_INSET = 10;
 /** Scale factor for player collision rect (width/height). 1 = original size, 0.7 = 30% smaller. */
 export const PLAYER_HITBOX_SCALE = 0.7;
 
+/** While holding Ctrl (crouch): multiply final move speed by this (30% slower than normal). */
+export const PLAYER_CROUCH_MOVE_SPEED_MULT = 0.7;
+/**
+ * While crouching, enemy `detectionRange` passed to `Enemy.update` is multiplied by this.
+ * Also scales alerted range (3× detection) because it is derived from the same argument.
+ */
+export const PLAYER_CROUCH_DETECTION_RANGE_MULT = 0.5;
+
 export function getXpForSkillLevel(level) {
   if (level <= 1) return 0;
   return SKILL_XP_CURVE[Math.min(level, SKILL_XP_CURVE.length - 1)] ?? 75000;
