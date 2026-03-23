@@ -488,7 +488,7 @@ export function applyGameCollisionMixin(Game) {
       const maxY = this.world.height - margin - player.size;
 
       const allEnemies = [...es.enemies, ...(es.boss ? [es.boss] : [])].filter((e) => !e.isDead);
-      const skipPlayerCollision = this.bladeDashActive || this.dashActive || this.knightSlideActive;
+      const skipPlayerCollision = this.bladeDashActive || this.dashActive || this.knightSlideActive || this.slideMoveActive;
       for (let iter = 0; iter < 2; iter++) {
         if (!skipPlayerCollision) {
           for (const enemy of allEnemies) {
@@ -533,7 +533,7 @@ export function applyGameCollisionMixin(Game) {
       const pyo = pi + (pBase - ph) / 2;
       const pSide = Math.max(1, Math.min(pw, ph));
 
-      const isDashingNow = !!(this.dashActive || this.bladeDashActive || this.knightSlideActive || this.dashStrikeState || this.backfireDashState);
+      const isDashingNow = !!(this.dashActive || this.bladeDashActive || this.knightSlideActive || this.slideMoveActive || this.dashStrikeState || this.backfireDashState);
       const overlapsRect = (a, b) => (
         a.x < b.x + b.w &&
         a.x + a.w > b.x &&

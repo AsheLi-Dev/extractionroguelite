@@ -33,7 +33,8 @@ export const MAX_GROUND_CONDITIONS_PER_RUN = 2;
 export const ATTACK_TYPES = [
   { id: "projectile", name: "Elemental Shot", illustration: "assets/UI/Projectile Shot.png", desc: "Fire elemental projectiles (Fire/Wind/Lightning). Build charge for surges that amplify or detonate burn.", tags: ["projectile", "ranged"] },
   { id: "bladeBlast", name: "Blade & Blast", illustration: "assets/UI/Blade Storm.png", desc: "A hybrid blade style that chains cutting strikes into explosive follow-through. Evolves through damage, rhythm, control, and on-hit build paths.", tags: ["melee", "hybrid"] },
-  { id: "soulSiphon", name: "Soul Siphon", illustration: "assets/UI/Projectile Shot.png", desc: "Channel a beam toward the cursor. Kills grant souls; at 10 souls, summon a Spirit that can be charged by the beam and assists you.", tags: ["ranged", "beam"] }
+  { id: "soulSiphon", name: "Soul Siphon", illustration: "assets/UI/Projectile Shot.png", desc: "Channel a beam toward the cursor. Kills grant souls; at 10 souls, summon a Spirit that can be charged by the beam and assists you.", tags: ["ranged", "beam"] },
+  { id: "guardCombo", name: "Guard Combo", illustration: "assets/UI/Shield Bash.png", desc: "A grounded sword-and-shield combo that grows larger while standing still. Reinforced Heavy Slash 2 destroys enemy projectiles.", tags: ["melee"] }
 ];
 
 export function enforceConditionLimits(conditions = [], desiredCount = null) {

@@ -5,6 +5,39 @@
 /** @typedef {'linear'|'burst'|'sustained'|'blink'|'dodge_roll'} DashPattern */
 
 /**
+ * @typedef {Object} DirectionalFolderSpriteProfile
+ * @property {'directional_folder'} kind
+ * @property {string} basePath
+ * @property {Object<string, string>} states
+ * @property {Object<string, number>} frames
+ * @property {Object<string, number>} [loopFrames]
+ * @property {Object<string, number[]>} [loopSequence]
+ * @property {string[]} [attackStates]
+ * @property {string[]} [castStates]
+ * @property {boolean} [mirrorLeftFacing]
+ * @property {'default'|'full_sequence'} [attackTimeline]
+ */
+
+/**
+ * @typedef {Object} DirectionalSpritesheetProfile
+ * @property {'directional_spritesheet'} kind
+ * @property {string} basePath
+ * @property {Object<string, string>} states
+ * @property {Object<string, number>} frames
+ * @property {Object<string, number>} [loopFrames]
+ * @property {Object<string, number[]>} [loopSequence]
+ * @property {string[]} [attackStates]
+ * @property {string[]} [castStates]
+ * @property {number} [rowCount]
+ * @property {boolean} [mirrorLeftFacing]
+ * @property {'default'|'full_sequence'} [attackTimeline]
+ */
+
+/**
+ * @typedef {'melee'|'ranged'|'hybrid'} WeaponArtClass
+ */
+
+/**
  * @typedef {Object} PlayableCharacterDef
  * @property {string} id
  * @property {string} name
@@ -15,6 +48,11 @@
  * @property {{ slot: number, skillId: string }} [uniqueSkill] - Locked skill for this hero (e.g. slot 0 = first skill key)
  * @property {string} [spriteAssetBase] - Base path for sprites (e.g. 'assets/images/player'); if omitted, default player assets used
  * @property {Object} [spriteOverrides] - Optional map of state_direction -> image path for custom sheets
+ * @property {boolean} [mirrorLeftFacing] - When true, left-facing directions are drawn by mirroring right-facing art
+ * @property {DirectionalFolderSpriteProfile | DirectionalSpritesheetProfile} [spriteProfile] - Reusable structured sprite profile
+ * @property {string} [defaultWeaponArt] - Weapon art id this hero starts with / defaults to
+ * @property {WeaponArtClass} [defaultWeaponArtClass] - Compatibility class for cross-hero weapon art usage
+ * @property {boolean} [ownsDefaultWeaponArt] - When true, reaching level 20 on this hero's default weapon art unlocks it for other heroes
  */
 
 /** Default base stats the game uses; character statModifiers multiply these. */
@@ -25,6 +63,118 @@ export const DEFAULT_STAT_BASELINE = {
   attack: 20,
   hazardDamageReduction: 0
 };
+
+export const DIRECTIONAL_FOLDER_PACK_STATES = Object.freeze({
+  idle: 'Idle',
+  walk: 'Walk',
+  run: 'Run',
+  turn180: '180Turn',
+  crouchIdle: 'CrouchIdle',
+  crouchRun: 'CrouchRun',
+  dash: 'Rolling',
+  slide: 'Slide',
+  cast: 'CastSpell',
+  attack: 'Attack1'
+});
+
+export const DIRECTIONAL_SPRITESHEET_ROW_ORDER = Object.freeze([
+  'right',
+  'right_down',
+  'down',
+  'left_down',
+  'left',
+  'left_up',
+  'up',
+  'right_up'
+]);
+
+export const DIRECTIONAL_FOLDER_PACK_FRAMES = Object.freeze({
+  idle: 15,
+  walk: 15,
+  run: 15,
+  turn180: 15,
+  crouchIdle: 15,
+  crouchRun: 15,
+  dash: 15,
+  slide: 15,
+  cast: 15,
+  attack: 15
+});
+
+/**
+ * Creates a standard directional folder sprite profile for heroes that use the same
+ * folder structure as the Dark Mage asset pack.
+ * @param {string} heroFolder
+ * @param {{ baseRoot?: string, states?: Object<string, string>, frames?: Object<string, number>, loopFrames?: Object<string, number>, loopSequence?: Object<string, number[]>, attackStates?: string[], castStates?: string[], mirrorLeftFacing?: boolean, attackTimeline?: 'default'|'full_sequence' }} [options]
+ * @returns {DirectionalFolderSpriteProfile}
+ */
+export function createDirectionalFolderSpriteProfile(heroFolder, options = {}) {
+  const baseRoot = options.baseRoot || 'assets/Heroes/2D HD Character pack';
+  return {
+    kind: 'directional_folder',
+    basePath: `${baseRoot}/${heroFolder}`,
+    states: {
+      ...DIRECTIONAL_FOLDER_PACK_STATES,
+      ...(options.states || {})
+    },
+    frames: {
+      ...DIRECTIONAL_FOLDER_PACK_FRAMES,
+      ...(options.frames || {})
+    },
+    loopFrames: {
+      ...(options.loopFrames || {})
+    },
+    loopSequence: {
+      ...(options.loopSequence || {})
+    },
+    attackStates: Array.isArray(options.attackStates) && options.attackStates.length > 0
+      ? [...options.attackStates]
+      : ['attack'],
+    castStates: Array.isArray(options.castStates) && options.castStates.length > 0
+      ? [...options.castStates]
+      : ['cast'],
+    mirrorLeftFacing: options.mirrorLeftFacing ?? false,
+    attackTimeline: options.attackTimeline || 'full_sequence'
+  };
+}
+
+/**
+ * Creates a standard 8-row directional spritesheet profile. Expected row order:
+ * E, SE, S, SW, W, NW, N, NE.
+ * @param {string} heroFolder
+ * @param {{ baseRoot?: string, states?: Object<string, string>, frames?: Object<string, number>, loopFrames?: Object<string, number>, loopSequence?: Object<string, number[]>, attackStates?: string[], castStates?: string[], mirrorLeftFacing?: boolean, attackTimeline?: 'default'|'full_sequence', rowCount?: number }} [options]
+ * @returns {DirectionalSpritesheetProfile}
+ */
+export function createDirectionalSpritesheetProfile(heroFolder, options = {}) {
+  const baseRoot = options.baseRoot || 'assets/Heroes/2D HD Character pack/Spritesheets/With shadow';
+  return {
+    kind: 'directional_spritesheet',
+    basePath: `${baseRoot}/${heroFolder}`,
+    states: {
+      ...DIRECTIONAL_FOLDER_PACK_STATES,
+      ...(options.states || {})
+    },
+    frames: {
+      ...DIRECTIONAL_FOLDER_PACK_FRAMES,
+      ...(options.frames || {})
+    },
+    loopFrames: {
+      ...(options.loopFrames || {})
+    },
+    loopSequence: {
+      ...(options.loopSequence || {})
+    },
+    attackStates: Array.isArray(options.attackStates) && options.attackStates.length > 0
+      ? [...options.attackStates]
+      : ['attack'],
+    castStates: Array.isArray(options.castStates) && options.castStates.length > 0
+      ? [...options.castStates]
+      : ['cast'],
+    rowCount: options.rowCount || 8,
+    mirrorLeftFacing: options.mirrorLeftFacing ?? false,
+    attackTimeline: options.attackTimeline || 'full_sequence'
+  };
+}
 
 /**
  * Dash speed curve: t in [0, 1] (0 = start, 1 = end of dash). Returns multiplier for speed at that moment.
@@ -56,6 +206,9 @@ export const PLAYABLE_CHARACTERS = [
     id: 'panda',
     name: 'Panda',
     description: 'Balanced fighter. Reliable dash and steady stats.',
+    defaultWeaponArt: 'bladeBlast',
+    defaultWeaponArtClass: 'melee',
+    ownsDefaultWeaponArt: false,
     statModifiers: { maxHealth: 1, defense: 1, speed: 1, attack: 1 },
     dash: {
       duration: 0.2,
@@ -74,6 +227,9 @@ export const PLAYABLE_CHARACTERS = [
     id: 'reaper',
     name: 'Reaper',
     description: 'High risk, high reward. Burst dash and life steal on kill.',
+    defaultWeaponArt: 'bladeBlast',
+    defaultWeaponArtClass: 'melee',
+    ownsDefaultWeaponArt: false,
     statModifiers: { maxHealth: 0.9, defense: 0, speed: 1.1, attack: 1.15 },
     dash: {
       duration: 0.18,
@@ -115,6 +271,9 @@ export const PLAYABLE_CHARACTERS = [
     id: 'strider',
     name: 'Strider',
     description: 'Swift and evasive. Sustained dash and movement speed after dashing.',
+    defaultWeaponArt: 'bladeBlast',
+    defaultWeaponArtClass: 'melee',
+    ownsDefaultWeaponArt: false,
     statModifiers: { maxHealth: 0.95, defense: 0, speed: 1.2, attack: 0.9 },
     dash: {
       duration: 0.28,
@@ -133,6 +292,9 @@ export const PLAYABLE_CHARACTERS = [
     id: 'scavenger',
     name: 'Scavenger',
     description: 'High mobility and attack speed, low health. Vulture\'s Stare punishes wounded foes; Rush bursts speed.',
+    defaultWeaponArt: 'bladeBlast',
+    defaultWeaponArtClass: 'melee',
+    ownsDefaultWeaponArt: false,
     statModifiers: { maxHealth: 0.75, defense: 0, speed: 1.3, attack: 1 },
     dash: {
       duration: 0.2,
@@ -150,7 +312,10 @@ export const PLAYABLE_CHARACTERS = [
   {
     id: 'knight',
     name: 'Knight',
-    description: 'Heavy and dedicated. Slow dodge roll. After 3 consecutive attacks, all attacks deal 125% damage.',
+    description: 'Heavy and dedicated. Slow dodge roll. Standing still fortifies the Knight; moving breaks the stance into a burst of speed.',
+    defaultWeaponArt: 'guardCombo',
+    defaultWeaponArtClass: 'melee',
+    ownsDefaultWeaponArt: true,
     statModifiers: { maxHealth: 1.35, defense: 1.5, speed: 0.75, attack: 1, hazardDamageReduction: 1 },
     dash: {
       duration: 0.38,
@@ -160,32 +325,161 @@ export const PLAYABLE_CHARACTERS = [
     },
     passive: {
       id: 'knight_dedication',
-      name: 'Dedication',
-      description: 'After 3 consecutive basic attacks, all attacks deal 125% damage until combo breaks.'
+      name: 'Bulwark',
+      description: 'After standing still for 2s, gain 30% damage reduction and increased attack speed. Moving removes the stance and grants 30% movement speed for 5s.'
     },
     uniqueSkill: { slot: 0, skillId: 'knight_slide' },
-    spriteAssetBase: 'assets/images/Knight',
-    spriteFrameSize: { width: 120, height: 80 },
-    spriteCropTop: 30, // Crop 30px padding from top of sprite frames
-    spriteFrames: { idle: 10, run: 10, dash: 12, attack_1: 4, attack_2: 6, slide: 8 },
-    spriteOverrides: {
-      idle_down: '_Idle.png',
-      idle_up: '_Idle.png',
-      idle_side: '_Idle.png',
-      run_down: '_Run.png',
-      run_up: '_Run.png',
-      run_side: '_Run.png',
-      dash_down: '_Roll.png',
-      dash_up: '_Roll.png',
-      dash_left: '_Roll.png',
-      dash_right: '_Roll.png',
-      dash_side: '_Roll.png',
-      attack_1: '_Attack.png',
-      attack_2: '_Attack2.png',
-      slide_down: '_Slide.png',
-      slide_up: '_Slide.png',
-      slide_side: '_Slide.png'
-    }
+    spriteProfile: createDirectionalSpritesheetProfile('1Knight', {
+      states: {
+        cast: 'CastSpell',
+        cast2: 'Special1',
+        cast3: 'Special1',
+        cast4: 'Special2',
+        attack: 'Pummel',
+        attack2: 'Melee',
+        attack3: 'Melee2',
+        attack4: 'Kick'
+      },
+      frames: {
+        cast2: 15,
+        cast3: 15,
+        cast4: 15,
+        attack2: 15,
+        attack3: 15,
+        attack4: 15
+      },
+      attackStates: ['attack', 'attack2', 'attack3', 'attack4'],
+      castStates: ['cast', 'cast2', 'cast3', 'cast4']
+    })
+  },
+  {
+    id: 'dark_mage',
+    name: 'Dark Mage',
+    description: 'Fragile caster with brutal damage. Kills ramp damage quickly and Blood Refresh trades life for tempo.',
+    defaultWeaponArt: 'soulSiphon',
+    defaultWeaponArtClass: 'ranged',
+    ownsDefaultWeaponArt: true,
+    statModifiers: { maxHealth: 0.75, defense: 0, speed: 0.85, attack: 1.35 },
+    dash: {
+      duration: 0.2,
+      distanceMult: 0.5,
+      speedBase: 700,
+      pattern: 'linear'
+    },
+    passive: {
+      id: 'dark_mage_blood_power',
+      name: 'Blood Power',
+      description: 'On kill, gain +1% damage for 5s, stacking up to 20%. At 20 stacks, also gain +20% movement speed.'
+    },
+    uniqueSkill: { slot: 0, skillId: 'dark_mage_blood_refresh' },
+    spriteProfile: createDirectionalSpritesheetProfile('Dark Mage', {
+      states: {
+        cast: 'CastSpell',
+        cast2: 'QuickShot',
+        cast3: 'Special1',
+        cast4: 'Special2',
+        attack: 'Attack1',
+        attack2: 'Attack2',
+        attack3: 'Attack3'
+      },
+      frames: {
+        cast2: 15,
+        cast3: 15,
+        cast4: 15,
+        attack2: 15,
+        attack3: 15
+      },
+      attackStates: ['attack', 'attack2', 'attack3'],
+      castStates: ['cast', 'cast2', 'cast3', 'cast4'],
+      loopSequence: {
+        run: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        dash: [0, 1, 2, 12, 13, 14]
+      }
+    })
+  },
+  {
+    id: 'element_mage',
+    name: 'Element Mage',
+    description: 'Low HP, high movement speed, medium attack. Flow powers skills, Focus powers weapon attacks.',
+    defaultWeaponArt: 'projectile',
+    defaultWeaponArtClass: 'ranged',
+    ownsDefaultWeaponArt: true,
+    statModifiers: { maxHealth: 0.7, defense: 0, speed: 1.25, attack: 1 },
+    dash: {
+      duration: 0.2,
+      distanceMult: 0.5,
+      speedBase: 720,
+      pattern: 'linear'
+    },
+    passive: {
+      id: 'element_mage_flow_focus',
+      name: 'Flow and Focus',
+      description: 'Weapon Art hits build Flow (+3% Skill Damage for 2s, up to 30%). Skill hits build Focus (+5% Weapon Damage for 4s, up to 30%). Max Flow grants 10% Cooldown Reduction. Max Focus grants +20% Attack Speed.'
+    },
+    uniqueSkill: { slot: 0, skillId: 'element_mage_spell_art' },
+    spriteProfile: createDirectionalSpritesheetProfile('Element Mage', {
+      states: {
+        cast: 'CastSpell',
+        cast2: 'QuickShot',
+        cast3: 'Special1',
+        cast4: 'Special2',
+        attack: 'Attack1',
+        attack2: 'Attack2',
+        attack3: 'Attack3'
+      },
+      frames: {
+        cast2: 15,
+        cast3: 15,
+        cast4: 15,
+        attack2: 15,
+        attack3: 15
+      },
+      attackStates: ['attack', 'attack2', 'attack3'],
+      castStates: ['cast', 'cast2', 'cast3', 'cast4'],
+      loopSequence: {
+        run: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        dash: [0, 1, 2, 12, 13, 14]
+      }
+    })
+  },
+  {
+    id: 'death_knight',
+    name: 'Death Knight',
+    description: 'A dark melee warlord who grows stronger through death and sacrifice, then ascends into a temporary Dark Lord.',
+    defaultWeaponArt: 'bladeBlast',
+    defaultWeaponArtClass: 'hybrid',
+    ownsDefaultWeaponArt: true,
+    statModifiers: { maxHealth: 0.8, defense: 0, speed: 1.15, attack: 1.05 },
+    dash: {
+      duration: 0.2,
+      distanceMult: 0.5,
+      speedBase: 710,
+      pattern: 'linear'
+    },
+    passive: {
+      id: 'death_knight_dark_ascension',
+      name: 'Dark Ascension',
+      description: 'Gain Dark Essence on kills and heavy HP loss. At 20 stacks, transform into Dark Lord for 10s with +20% movement speed, +20% attack speed, kill-based extension, and one revive at 20% HP.'
+    },
+    uniqueSkill: { slot: 0, skillId: 'death_knight_summon_lich' },
+    spriteProfile: createDirectionalSpritesheetProfile('Death Knight', {
+      states: {
+        cast: 'CastSpell',
+        cast2: 'Special1',
+        cast3: 'Special2',
+        attack: 'Melee',
+        attack2: 'Melee2',
+        attack3: 'Pummel'
+      },
+      frames: {
+        cast2: 15,
+        cast3: 15,
+        attack2: 15,
+        attack3: 15
+      },
+      attackStates: ['attack', 'attack2', 'attack3'],
+      castStates: ['cast', 'cast2', 'cast3']
+    })
   }
 ];
 

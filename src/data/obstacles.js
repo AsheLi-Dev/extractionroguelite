@@ -126,5 +126,16 @@ export const OBSTACLE_TYPES = {
       "assets/Environments/Forest Land/ruin pillars/ruin pillar (5).png",
       "assets/Environments/Forest Land/ruin pillars/ruin pillar (6).png"
     ]
+  },
+  knightStoneWall: {
+    id: "knightStoneWall",
+    name: "Stone Wall",
+    maps: [],
+    blocksMovement: true,
+    blocksProjectiles: true,
+    size: { w: 96, h: 32 },
+    color: "#94a3b8",
+    glowColor: "rgba(226, 232, 240, 0.35)",
+    shadowColor: "rgba(15, 23, 42, 0.35)"
   }
 };

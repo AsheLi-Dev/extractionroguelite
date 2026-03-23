@@ -23,6 +23,8 @@ export function normalizeAnimatedSpriteConfig(animatedSprite, options = {}) {
     frameHeight: Math.max(1, Number(animatedSprite.frameHeight) || 0),
     frameCount: Math.max(1, Math.floor(Number(animatedSprite.frameCount) || 1)),
     startFrame: Math.max(0, Math.floor(Number(animatedSprite.startFrame) || 0)),
+    loopStartFrame: Math.max(0, Math.floor(Number(animatedSprite.loopStartFrame) || 0)),
+    loopFrameCount: Math.max(0, Math.floor(Number(animatedSprite.loopFrameCount) || 0)),
     fps: Math.max(1, Number(animatedSprite.fps) || 12),
     loop: animatedSprite.loop !== false,
     rotateWithVelocity: animatedSprite.rotateWithVelocity !== false,
@@ -42,9 +44,16 @@ export function getAnimatedSpriteFrameIndex(elapsed, sprite) {
   const fps = Math.max(1, Number(sprite?.fps) || 12);
   const frameCount = Math.max(1, Math.floor(Number(sprite?.frameCount) || 1));
   const rawFrame = Math.floor(safeElapsed * fps);
-  return sprite?.loop === false
-    ? Math.min(frameCount - 1, rawFrame)
-    : rawFrame % frameCount;
+  if (sprite?.loop === false) {
+    return Math.min(frameCount - 1, rawFrame);
+  }
+  const loopStartFrame = Math.max(0, Math.floor(Number(sprite?.loopStartFrame) || 0));
+  const loopFrameCount = Math.max(0, Math.floor(Number(sprite?.loopFrameCount) || 0));
+  if (loopFrameCount > 0 && loopStartFrame < frameCount) {
+    if (rawFrame < loopStartFrame) return rawFrame;
+    return loopStartFrame + ((rawFrame - loopStartFrame) % loopFrameCount);
+  }
+  return rawFrame % frameCount;
 }
 
 function getAnimatedSpriteColumns(sprite, image) {

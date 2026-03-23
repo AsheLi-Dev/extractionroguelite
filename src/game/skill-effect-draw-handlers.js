@@ -169,10 +169,48 @@ function drawAnimatedSpriteImpact(_game, ctx, eff, ox, oy) {
   });
 }
 
+function drawElementMageArt(_game, ctx, eff, ox, oy) {
+  const angle = Math.atan2(Number(eff?.dirY) || 0, Number(eff?.dirX) || 1);
+  const centerX = (Number(eff?.x) || 0) + ox;
+  const centerY = (Number(eff?.y) || 0) + oy;
+  const elapsed = Math.max(0, Number(eff?.t) || 0);
+  if (eff?.variant === 'fire') {
+    const total = Math.max(0.01, Number(eff?.duration) || 1);
+    const startDuration = Math.min(0.2, total * 0.25);
+    const endDuration = Math.min(0.25, total * 0.3);
+    const endStart = Math.max(startDuration, total - endDuration);
+    if (elapsed < startDuration && eff.fireStartSprite) {
+      const frameIndex = Math.min(Math.max(1, eff.fireStartSprite.frameCount) - 1, Math.floor((elapsed / Math.max(0.001, startDuration)) * Math.max(1, eff.fireStartSprite.frameCount)));
+      drawAnimatedSpriteFrame(ctx, { image: getAnimatedSpriteImage(eff.fireStartSprite.path), sprite: eff.fireStartSprite, centerX, centerY, angle, frameIndex });
+      return;
+    }
+    if (elapsed >= endStart && eff.fireEndSprite) {
+      const frameIndex = Math.min(Math.max(1, eff.fireEndSprite.frameCount) - 1, Math.floor(((elapsed - endStart) / Math.max(0.001, total - endStart)) * Math.max(1, eff.fireEndSprite.frameCount)));
+      drawAnimatedSpriteFrame(ctx, { image: getAnimatedSpriteImage(eff.fireEndSprite.path), sprite: eff.fireEndSprite, centerX, centerY, angle, frameIndex });
+      return;
+    }
+    if (eff.fireLoopSprite) {
+      drawAnimatedSpriteFrame(ctx, { image: getAnimatedSpriteImage(eff.fireLoopSprite.path), sprite: eff.fireLoopSprite, centerX, centerY, angle, elapsed });
+      return;
+    }
+  }
+  if (eff?.animatedSprite?.path) {
+    drawAnimatedSpriteFrame(ctx, {
+      image: getAnimatedSpriteImage(eff.animatedSprite.path),
+      sprite: eff.animatedSprite,
+      centerX,
+      centerY,
+      angle,
+      elapsed
+    });
+  }
+}
+
 export const SKILL_EFFECT_DRAW_HANDLERS = {
   fireball: drawFireball,
   iceShard: drawIceShard,
   animatedSpriteImpact: drawAnimatedSpriteImpact,
+  elementMageArt: drawElementMageArt,
   assimilativeOrb: drawAssimilativeOrb,
   spiritBanner: drawSpiritBanner,
   loyalDragons: drawLoyalDragons,

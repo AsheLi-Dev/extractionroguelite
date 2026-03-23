@@ -1,5 +1,6 @@
 import { ATTACK_TYPES } from "./conditions.js";
 import { getDemoProgressionMult } from "./constants.js";
+import { PLAYABLE_CHARACTERS, getPlayableCharacterOrDefault } from "./playable-characters.js";
 import {
   getAttackUpgradeDefsForType,
   getAttackUpgradeDefById
@@ -29,7 +30,8 @@ export const WEAPON_ART_TOKENS = Object.freeze({
 const ATTACK_CATEGORY_LAYOUT = Object.freeze({
   projectile: ["damage", "rhythm", "control", "elemental"],
   bladeBlast: ["damage", "rhythm", "control", "onhit"],
-  soulSiphon: ["damage", "rhythm", "control", "spiritcraft"]
+  soulSiphon: ["damage", "rhythm", "control", "spiritcraft"],
+  guardCombo: ["damage", "rhythm", "control", "onhit"]
 });
 
 const CATEGORY_LABELS = Object.freeze({
@@ -86,6 +88,77 @@ const ELEMENTAL_SHOT_SECOND_EVOLUTION_NAMES = Object.freeze({
 });
 
 let _cachedTreeDefs = null;
+
+const WEAPON_ART_SHARE_LEVEL = 20;
+
+function getAttackTypeDef(attackType) {
+  return ATTACK_TYPES.find((entry) => entry.id === attackType) || null;
+}
+
+export function getWeaponArtKind(attackType) {
+  const tags = new Set(getAttackTypeDef(attackType)?.tags || []);
+  if (tags.has("hybrid")) return "hybrid";
+  if (tags.has("melee")) return "melee";
+  return "ranged";
+}
+
+export function getHeroDefaultWeaponArt(heroId) {
+  return getPlayableCharacterOrDefault(heroId)?.defaultWeaponArt || null;
+}
+
+export function getHeroDefaultWeaponArtClass(heroId) {
+  return getPlayableCharacterOrDefault(heroId)?.defaultWeaponArtClass || "melee";
+}
+
+export function getWeaponArtOwnerHeroId(attackType) {
+  return PLAYABLE_CHARACTERS.find((hero) => hero?.ownsDefaultWeaponArt && hero.defaultWeaponArt === attackType)?.id || null;
+}
+
+export function isWeaponArtSharedUnlocked(attackType, progress = null) {
+  const summary = progress || getBasicAttackProgress(attackType);
+  return Math.max(1, Number(summary?.level) || 1) >= WEAPON_ART_SHARE_LEVEL;
+}
+
+export function getWeaponArtShareLevelRequirement() {
+  return WEAPON_ART_SHARE_LEVEL;
+}
+
+export function canHeroUseWeaponArt(heroId, attackType, options = {}) {
+  const safeAttackType = String(attackType || "");
+  if (!safeAttackType || !getAttackTypeDef(safeAttackType)) return false;
+
+  const hero = getPlayableCharacterOrDefault(heroId);
+  const heroDefaultWeaponArt = hero?.defaultWeaponArt || null;
+  if (heroDefaultWeaponArt === safeAttackType) return true;
+
+  const sharedUnlocked = options.sharedUnlocked ?? isWeaponArtSharedUnlocked(safeAttackType, options.progress || null);
+  if (!sharedUnlocked) return false;
+
+  const defaultClass = hero?.defaultWeaponArtClass || "melee";
+  const weaponArtKind = getWeaponArtKind(safeAttackType);
+
+  if (defaultClass === "hybrid") return true;
+  if (weaponArtKind === "hybrid") return true;
+  if (weaponArtKind === "melee") return defaultClass === "melee";
+  return defaultClass === "ranged";
+}
+
+export function getHeroSelectableWeaponArts(heroId, options = {}) {
+  return ATTACK_TYPES
+    .map((entry) => entry.id)
+    .filter((attackType) => canHeroUseWeaponArt(heroId, attackType, options));
+}
+
+export function getHeroWeaponArtFallback(heroId, preferredAttackType = null, options = {}) {
+  if (preferredAttackType && canHeroUseWeaponArt(heroId, preferredAttackType, options)) {
+    return preferredAttackType;
+  }
+  const heroDefaultWeaponArt = getHeroDefaultWeaponArt(heroId);
+  if (heroDefaultWeaponArt && canHeroUseWeaponArt(heroId, heroDefaultWeaponArt, options)) {
+    return heroDefaultWeaponArt;
+  }
+  return getHeroSelectableWeaponArts(heroId, options)[0] || ATTACK_TYPES?.[0]?.id || "projectile";
+}
 
 function getAttackDisplayName(attackType) {
   return ATTACK_TYPES.find((entry) => entry.id === attackType)?.name || attackType;

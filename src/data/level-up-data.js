@@ -174,6 +174,7 @@ export const ATTACK_UPGRADE_DEFS = {
     uniqueUpgrades: [],
     uniquePenalties: []
   },
+  guardCombo: { standardUpgrades: [], standardPenalties: [], uniqueUpgrades: [], uniquePenalties: [] },
   soulSiphon: {
     standardUpgrades: [
       // COMMON (damage)

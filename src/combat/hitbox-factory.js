@@ -82,7 +82,7 @@ export function createHitboxInstance(def, spawn) {
   const innerRadius = Math.max(0, Number(spawn?.innerRadius ?? def?.innerRadius) ?? 0);
   const width = Math.max(0, Number(spawn?.width ?? def?.width) ?? 0);
   const height = Math.max(0, Number(spawn?.height ?? def?.height) ?? 0);
-  const coneAngleRad = Math.max(0, Number(def?.coneAngleRad) ?? Math.PI / 4);
+  const coneAngleRad = Math.max(0, Number(spawn?.coneAngleRad ?? def?.coneAngleRad) ?? Math.PI / 4);
   const durationMs = Math.max(0, Number(spawn?.durationMs ?? def?.durationMs) ?? 100);
   const createdAt = Number(spawn?.createdAt) ?? 0;
   const expiresAt = createdAt + durationMs / 1000;

@@ -565,10 +565,71 @@ function updateAnimatedSpriteImpact(_game, eff, _dt, surviving) {
   surviving.push(eff);
 }
 
+function updateElementMageArt(game, eff, dt, surviving) {
+  eff.x += (Number(eff.vx) || 0) * dt;
+  eff.y += (Number(eff.vy) || 0) * dt;
+  eff.hitIds = eff.hitIds || new Set();
+  const dirX = Number(eff.dirX) || 1;
+  const dirY = Number(eff.dirY) || 0;
+  const halfLength = Math.max(1, Number(eff.length) || 150) * 0.5;
+  const halfWidth = Math.max(1, Number(eff.width) || 84) * 0.5;
+  const targets = [...(game.enemySystem?.enemies || []), ...(game.enemySystem?.boss ? [game.enemySystem.boss] : [])];
+  for (const enemy of targets) {
+    if (!enemy || enemy.isDead || eff.hitIds.has(enemy.id)) continue;
+    const ex = enemy.position.x + enemy.size / 2;
+    const ey = enemy.position.y + enemy.size / 2;
+    const relX = ex - eff.x;
+    const relY = ey - eff.y;
+    const forward = relX * dirX + relY * dirY;
+    const side = relX * (-dirY) + relY * dirX;
+    const enemyRadius = Math.max(12, Number(enemy.size) || 24) * 0.35;
+    if (forward < -halfLength - enemyRadius || forward > halfLength + enemyRadius) continue;
+    if (Math.abs(side) > halfWidth + enemyRadius) continue;
+    eff.hitIds.add(enemy.id);
+    const damage = game.computeSkillDamage(enemy, eff.mult ?? 0.85, eff.slot, {
+      sacrificeMult: eff.sacrificeMult,
+      skillId: eff.skillId,
+      skillMults: eff.skillMults,
+      ringProcDamageMult: eff.ringProcDamageMult
+    });
+    game.dealDamageToEnemy(enemy, damage, {
+      isSkill: true,
+      skillSlot: eff.slot,
+      modList: eff.modList,
+      triggeredCast: !!eff.triggeredCast,
+      allowTriggeredProcs: eff.allowTriggeredProcs === true
+    });
+    if (eff.variant === 'fire') {
+      game.applyBurnToEntity?.(enemy, {
+        duration: 3,
+        magnitude: Math.max(1, Math.round(damage * 0.15)),
+        stacks: 1,
+        maxStacks: 3,
+        sourceId: 'player',
+        sourceType: 'player_skill',
+        reason: 'element_mage_fire_breath'
+      });
+    } else if (eff.variant === 'wind') {
+      const dist = Math.sqrt(relX * relX + relY * relY) || 1;
+      game.moveEntityByWithCollision?.(enemy, (relX / dist) * (eff.knockback ?? 120), (relY / dist) * (eff.knockback ?? 120));
+    } else if (eff.variant === 'lightning') {
+      game.applyStatusToEntity?.(enemy.id, 'stun', {
+        duration: eff.stunDuration ?? 0.5,
+        sourceId: 'player',
+        sourceType: 'player_skill'
+      });
+      mirrorAncestorDebuffToPlayer(game, "stun");
+    }
+  }
+  if (eff.t >= (eff.duration ?? 1)) return;
+  surviving.push(eff);
+}
+
 export const SKILL_EFFECT_UPDATE_HANDLERS = {
   fireball: updateFireball,
   iceShard: updateIceShard,
   animatedSpriteImpact: updateAnimatedSpriteImpact,
+  elementMageArt: updateElementMageArt,
   assimilativeOrb: updateAssimilativeOrb,
   iceRain: updateIceRain,
   spiritBanner: updateSpiritBanner,

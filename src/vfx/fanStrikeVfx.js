@@ -5,6 +5,8 @@
 
 import { lerp, clamp, randRange, randInCone, polarToVec, drawSector, drawTaperedArcStrip, PIXEL_SIZE, snap } from "./primitives.js";
 import { createParticlePool } from "./particlePool.js";
+import { drawAnimatedSpriteFrame, getAnimatedSpriteImage } from "./animated-sprite.js";
+import { getDarkSlashAnimatedSprite } from "./animated-sprite-presets.js";
 
 // ----- config (tune here) -----
 const deg = (x) => (x * Math.PI) / 180;
@@ -53,6 +55,24 @@ const HIT_RING_COLOR = "rgba(255, 200, 100, ";
 const particlePool = createParticlePool(512);
 const activeInstances = [];
 const hitRings = [];
+const DARK_SLASH_SWING_SPRITE = getDarkSlashAnimatedSprite({
+  drawWidth: 440,
+  drawHeight: 440,
+  anchorX: 0.5,
+  anchorY: 0.5,
+  rotateWithVelocity: true,
+  loop: false
+});
+const DARK_SLASH_SWING_IMAGE = getAnimatedSpriteImage(DARK_SLASH_SWING_SPRITE?.path);
+const DARK_SLASH_FRAME_DURATIONS = [
+  0.01,
+  0.01,
+  0.01,
+  0.04,
+  0.04,
+  0.01,
+  0.03
+];
 
 // Woosh particle pool (squares, pixel-art)
 const _wooshPool = [];
@@ -277,16 +297,7 @@ export function updateFanStrikeVfx(dt) {
       activeInstances.splice(i, 1);
       continue;
     }
-
-    if (inst.elapsed >= sweepStart && inst.elapsed <= sweepEnd) {
-      const sweepT = (inst.elapsed - sweepStart) / SWEEP_DURATION;
-      emitWindParticles(inst, dt);
-      emitWooshParticles(inst, dt);
-    }
   }
-
-  particlePool.update(dt);
-  updateWoosh(dt);
   updateHitRings(dt);
 }
 
@@ -361,6 +372,54 @@ function drawSweepArc(ctx, inst, ox, oy) {
   }
 }
 
+function drawSlashSprite(ctx, inst, ox, oy) {
+  const teEnd = inst.telegraph ? TELEGRAPH_DURATION : 0;
+  const sweepStart = teEnd;
+  const sweepEnd = sweepStart + SWEEP_DURATION;
+  if (inst.elapsed < sweepStart || inst.elapsed > sweepEnd + TRAIL_LINGER) return;
+  if (!DARK_SLASH_SWING_SPRITE || !DARK_SLASH_SWING_IMAGE) return;
+
+  const elapsed = clamp(inst.elapsed - sweepStart, 0, SWEEP_DURATION + TRAIL_LINGER);
+  const totalDuration = SWEEP_DURATION + TRAIL_LINGER;
+  const drawScale = Math.max(0.8, (inst.range || 200) / 170);
+  const sprite = {
+    ...DARK_SLASH_SWING_SPRITE,
+    drawWidth: DARK_SLASH_SWING_SPRITE.drawWidth * drawScale,
+    drawHeight: DARK_SLASH_SWING_SPRITE.drawHeight * drawScale
+  };
+  let frameIndex = DARK_SLASH_FRAME_DURATIONS.length - 1;
+  let frameTime = 0;
+  let frameStart = 0;
+  let frameDuration = DARK_SLASH_FRAME_DURATIONS[frameIndex];
+  for (let i = 0; i < DARK_SLASH_FRAME_DURATIONS.length; i++) {
+    const duration = DARK_SLASH_FRAME_DURATIONS[i];
+    frameTime += duration;
+    if (elapsed <= frameTime) {
+      frameIndex = i;
+      frameStart = frameTime - duration;
+      frameDuration = duration;
+      break;
+    }
+  }
+  const baseAlpha = 0.95 * (1 - elapsed / totalDuration * 0.15);
+  const isFinalFrame = frameIndex === DARK_SLASH_FRAME_DURATIONS.length - 1;
+  const frameProgress = frameDuration > 0 ? clamp((elapsed - frameStart) / frameDuration, 0, 1) : 1;
+  const alpha = isFinalFrame ? baseAlpha * (1 - frameProgress) : baseAlpha;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.globalCompositeOperation = "lighter";
+  drawAnimatedSpriteFrame(ctx, {
+    image: DARK_SLASH_SWING_IMAGE,
+    sprite,
+    centerX: inst.x + ox,
+    centerY: inst.y + oy,
+    angle: inst.facingAngle + (sprite.baseAngleRad || 0),
+    frameIndex
+  });
+  ctx.restore();
+}
+
 /**
  * Render all active Fan Strike VFX. Call after world draw, with same camera as rest of game.
  */
@@ -369,14 +428,8 @@ export function renderFanStrikeVfx(ctx, camera) {
   const oy = -camera.position.y;
 
   for (const inst of activeInstances) {
-    drawTelegraph(ctx, inst, ox, oy);
+    drawSlashSprite(ctx, inst, ox, oy);
   }
-  drawWoosh(ctx, camera);
-  for (const inst of activeInstances) {
-    drawSweepArc(ctx, inst, ox, oy);
-  }
-
-  particlePool.draw(ctx, camera, "circle");
 
   for (const r of hitRings) {
     const sx = r.x + ox;

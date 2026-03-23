@@ -57,6 +57,36 @@ function drawAnimatedProjectileSprite(ctx, centerX, centerY, angle, visual) {
   });
 }
 
+function drawAnimatedProjectileAfterimages(ctx, camX, camY, angle, visual) {
+  const sprite = visual?.animatedSprite;
+  const image = visual?.animatedSpriteImage;
+  const trail = visual?.trail || [];
+  if (!sprite || !image || trail.length <= 0) return false;
+  let drew = false;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < trail.length; i++) {
+    const sample = trail[i];
+    const life = Math.max(0.001, Number(sample?.life) || Number(visual?.trailStyle?.life) || 0.18);
+    const age = Math.max(0, Number(sample?.age) || 0);
+    const fade = Math.max(0, 1 - age / life);
+    if (fade <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = fade * fade * 0.35;
+    drew = drawAnimatedSpriteFrame(ctx, {
+      image,
+      sprite,
+      centerX: sample.x - camX,
+      centerY: sample.y - camY,
+      angle,
+      elapsed: Math.max(0, (visual?.animElapsed || 0) - age)
+    }) || drew;
+    ctx.restore();
+  }
+  ctx.restore();
+  return drew;
+}
+
 function getTrailDefaults(element) {
   if (element === 'lightning') {
     return {
@@ -363,6 +393,9 @@ export function drawHitboxProjectileVisuals(state, ctx, hitboxes) {
 
     if (visual.animatedSprite && spritePoint) {
       const drawAngle = (visual.animatedSprite.rotateWithVelocity ? angle : 0) + (visual.animatedSprite.baseAngleRad || 0);
+      if (visual.trailEnabled) {
+        drawAnimatedProjectileAfterimages(ctx, camX, camY, drawAngle, visual);
+      }
       if (drawAnimatedProjectileSprite(ctx, spritePoint.x - camX, spritePoint.y - camY, drawAngle, visual)) {
         continue;
       }

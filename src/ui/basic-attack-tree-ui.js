@@ -7,9 +7,13 @@ import {
   getBasicAttackProgress,
   getBasicAttackTree,
   getBasicAttackTreeSummary,
+  getWeaponArtOwnerHeroId,
+  getWeaponArtShareLevelRequirement,
   getWeaponArtTokenInventory,
-  hasPendingWeaponArtChoices
+  hasPendingWeaponArtChoices,
+  isWeaponArtSharedUnlocked
 } from "../data/basic-attack-progression.js";
+import { getPlayableCharacterOrDefault } from "../data/playable-characters.js";
 import { openWeaponArtDraftOverlay } from "./weapon-art-draft-ui.js";
 
 let selectedAttackType = ATTACK_TYPES?.[0]?.id || "projectile";
@@ -106,6 +110,9 @@ export function renderBasicAttackTree() {
   const summary = getBasicAttackTreeSummary(selectedAttackType);
   const progress = getBasicAttackProgress(selectedAttackType);
   const tokens = getWeaponArtTokenInventory();
+  const ownerHeroId = getWeaponArtOwnerHeroId(selectedAttackType);
+  const ownerHero = ownerHeroId ? getPlayableCharacterOrDefault(ownerHeroId) : null;
+  const sharedUnlocked = isWeaponArtSharedUnlocked(selectedAttackType, summary);
   const xpPct = summary.maxLevel <= summary.level || summary.xpToNext <= 0
     ? 100
     : Math.max(0, Math.min(100, Math.round((summary.xpInLevel / summary.xpToNext) * 100)));
@@ -128,6 +135,8 @@ export function renderBasicAttackTree() {
     </div>
     <div class="basic-attack-tree-summary-row">
       <span class="basic-attack-tree-summary-stat">${summary.maxLevel <= summary.level ? "Max level" : `${summary.xpInLevel} / ${summary.xpToNext} Weapon Art XP`}</span>
+      <span class="basic-attack-tree-summary-stat">${ownerHero ? `Owner: ${escapeHtml(ownerHero.name)}` : "Owner: Shared"}</span>
+      <span class="basic-attack-tree-summary-stat">${sharedUnlocked ? "Shared unlock: Ready" : `Shared unlock at Lv ${getWeaponArtShareLevelRequirement()}`}</span>
       <span class="basic-attack-tree-summary-stat">Tokens: R ${tokens.refresh || 0} | I ${tokens.insight || 0} | E ${tokens.expansion || 0} | P ${tokens.precision || 0}</span>
     </div>
   `;

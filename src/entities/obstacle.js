@@ -121,6 +121,32 @@ export class Obstacle {
         }
       }
     }
+
+    if (this.type === "knightStoneWall") {
+      if (Number.isFinite(this.expiresAt) && game.time >= this.expiresAt) {
+        this.destroyed = true;
+        return;
+      }
+      const auraRadius = Math.max(0, Number(this.auraRadius) || 96);
+      const slowMagnitude = Math.max(0.05, Math.min(1, Number(this.slowMagnitude) || 0.2));
+      const slowDuration = Math.max(0.05, Number(this.slowDuration) || 0.2);
+      const affectEntity = (entityOrId) => {
+        const entity = entityOrId === 'player' ? game.player : entityOrId;
+        if (!entity || entity.isDead) return;
+        const ex = entity.position.x + ((entity.size?.w ?? entity.size) || 0) / 2;
+        const ey = entity.position.y + ((entity.size?.h ?? entity.size) || 0) / 2;
+        if (distPointToRect(ex, ey, this.position.x, this.position.y, this.size.w, this.size.h) > auraRadius) return;
+        game.applyStatusToEntity(entityOrId === 'player' ? 'player' : entity.id, 'slow', {
+          duration: slowDuration,
+          magnitude: slowMagnitude,
+          sourceId: this.id,
+          sourceType: 'player_skill'
+        });
+      };
+      affectEntity('player');
+      for (const enemy of game.enemySystem?.enemies || []) affectEntity(enemy);
+      if (game.enemySystem?.boss && !game.enemySystem.boss.isDead) affectEntity(game.enemySystem.boss);
+    }
   }
 
   /**
@@ -339,6 +365,26 @@ export class Obstacle {
       ctx.arc(drawX + 16, drawY + 12, 8, 0, Math.PI * 2);
       ctx.arc(drawX + 48, drawY + 16, 8, 0, Math.PI * 2);
       ctx.fill();
+    } else if (this.type === "knightStoneWall") {
+      const glow = 0.18 + Math.sin(Date.now() / 240) * 0.06;
+      ctx.fillStyle = this.typeDef.color;
+      ctx.fillRect(drawX, drawY, drawW, drawH);
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(drawX, drawY, drawW, drawH);
+      ctx.globalAlpha = Math.max(0.08, glow);
+      ctx.fillStyle = this.typeDef.glowColor;
+      ctx.fillRect(drawX + 4, drawY + 4, Math.max(1, drawW - 8), Math.max(1, drawH - 8));
+      ctx.globalAlpha = 1;
+      for (let i = 1; i < 3; i++) {
+        const crackX = drawX + (drawW * i) / 3;
+        ctx.beginPath();
+        ctx.moveTo(crackX, drawY + 3);
+        ctx.lineTo(crackX - 5, drawY + drawH * 0.35);
+        ctx.lineTo(crackX + 4, drawY + drawH * 0.7);
+        ctx.lineTo(crackX - 2, drawY + drawH - 3);
+        ctx.stroke();
+      }
     }
   }
 }

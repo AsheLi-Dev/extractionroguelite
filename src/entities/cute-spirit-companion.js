@@ -14,6 +14,8 @@ const SPIRIT_IDLE_AFTERIMAGE_SEC = 0.2;
 const SPIRIT_IDLE_AFTERIMAGE_ALPHA = 0.22;
 const SPIRIT_IDLE_AFTERIMAGE_OFFSET_MAX = 10;
 const SPIRIT_PLAYER_TELEPORT_DISTANCE = 280;
+const SPIRIT_CHARGE_OVERLAY_ALPHA = 0.5;
+const SPIRIT_CHARGE_OVERLAY_POSITION_VARIATION = 6;
 const SPIRIT_SPRITES = {
   idle: {
     path: 'assets/images/Spirit Soul Siphon/Sprites/Idle.png',
@@ -54,6 +56,17 @@ const SPIRIT_SPRITES = {
     frameHeight: 160,
     frameCount: 10,
     fps: 14,
+    loop: false,
+    rotateWithVelocity: false,
+    anchorX: 0.5,
+    anchorY: 0.5
+  },
+  chargeHit: {
+    path: 'assets/images/Spirit Soul Siphon/Sprites/114.png',
+    frameWidth: 64,
+    frameHeight: 64,
+    frameCount: 12,
+    fps: 24,
     loop: false,
     rotateWithVelocity: false,
     anchorX: 0.5,
@@ -108,6 +121,10 @@ export class CuteSpiritCompanion {
     this.loopAnimationElapsed = 0;
     this.attackAnimationId = null;
     this.attackAnimationElapsed = 0;
+    this.chargeAnimationActive = false;
+    this.chargeAnimationElapsed = 0;
+    this.chargeAnimationOffsetX = 0;
+    this.chargeAnimationOffsetY = 0;
     this.idleAfterimage = null;
   }
 
@@ -189,6 +206,15 @@ export class CuteSpiritCompanion {
         this.attackAnimationElapsed = 0;
       }
     }
+    if (this.chargeAnimationActive) {
+      this.chargeAnimationElapsed += dt;
+      if (this.chargeAnimationElapsed >= getSpiritAttackAnimationDuration('chargeHit')) {
+        this.chargeAnimationActive = false;
+        this.chargeAnimationElapsed = 0;
+        this.chargeAnimationOffsetX = 0;
+        this.chargeAnimationOffsetY = 0;
+      }
+    }
   }
 
   playAttackAnimation(kind) {
@@ -200,6 +226,13 @@ export class CuteSpiritCompanion {
       this.attackAnimationId = 'attackFireball';
       this.attackAnimationElapsed = 0;
     }
+  }
+
+  playChargeAnimation() {
+    this.chargeAnimationActive = true;
+    this.chargeAnimationElapsed = 0;
+    this.chargeAnimationOffsetX = (Math.random() * 2 - 1) * SPIRIT_CHARGE_OVERLAY_POSITION_VARIATION;
+    this.chargeAnimationOffsetY = (Math.random() * 2 - 1) * SPIRIT_CHARGE_OVERLAY_POSITION_VARIATION;
   }
 
   draw(ctx, camera, gameTime = 0) {
@@ -263,6 +296,26 @@ export class CuteSpiritCompanion {
     if (!drewSprite) {
       drawFallbackSpirit(ctx, sx, centerY, this.stage, this.wobblePhase, gameTime);
       return;
+    }
+
+    if (this.chargeAnimationActive) {
+      const chargeSprite = {
+        ...SPIRIT_SPRITES.chargeHit,
+        drawWidth: Math.round(drawSize * 0.3),
+        drawHeight: Math.round(drawSize * 0.3)
+      };
+      const chargeImage = getSpiritSpriteImage('chargeHit');
+      ctx.save();
+      ctx.globalAlpha = SPIRIT_CHARGE_OVERLAY_ALPHA;
+      drawAnimatedSpriteFrame(ctx, {
+        image: chargeImage,
+        sprite: chargeSprite,
+        centerX: sx + this.chargeAnimationOffsetX,
+        centerY: centerY + this.chargeAnimationOffsetY,
+        angle: 0,
+        elapsed: this.chargeAnimationElapsed
+      });
+      ctx.restore();
     }
   }
 }

@@ -31,7 +31,16 @@ import { getFriendSpriteHtml } from './friends-ui.js';
 import { SNACK_TYPES, getSnackById } from '../data/snack.js';
 import { PLAYABLE_CHARACTERS, getPlayableCharacterOrDefault, DEFAULT_PLAYABLE_CHARACTER_ID, DEFAULT_STAT_BASELINE } from '../data/playable-characters.js';
 import { getSkillById } from '../data/skills.js';
-import { hasPendingWeaponArtChoices } from '../data/basic-attack-progression.js';
+import {
+  canHeroUseWeaponArt,
+  getHeroSelectableWeaponArts,
+  getHeroWeaponArtFallback,
+  getWeaponArtKind,
+  getWeaponArtOwnerHeroId,
+  getWeaponArtShareLevelRequirement,
+  isWeaponArtSharedUnlocked,
+  hasPendingWeaponArtChoices
+} from '../data/basic-attack-progression.js';
 import { openWeaponArtDraftOverlay } from './weapon-art-draft-ui.js';
 
 let preRunDifficulty = 1;
@@ -83,6 +92,10 @@ function getDefaultAttackType() {
   return ATTACK_TYPES?.[0]?.id || "projectile";
 }
 
+function getHeroDefaultAttackType(heroId) {
+  return getPlayableCharacterOrDefault(heroId)?.defaultWeaponArt || getDefaultAttackType();
+}
+
 function getDefaultSecondaryAttackType(primary) {
   const firstDifferent = (ATTACK_TYPES || []).find((entry) => entry?.id && entry.id !== primary);
   return firstDifferent?.id || primary;
@@ -94,8 +107,13 @@ function sanitizeAttackType(rawValue, fallback) {
   return valid.has(next) ? next : fallback;
 }
 
-function loadAttackSelectionPrefs() {
-  const primaryFallback = getDefaultAttackType();
+function getAttackSelectionFallbackForHero(heroId, preferredAttackType = null) {
+  const preferred = preferredAttackType || getHeroDefaultAttackType(heroId);
+  return getHeroWeaponArtFallback(heroId, preferred);
+}
+
+function loadAttackSelectionPrefs(heroId = pendingPlayableCharacterId) {
+  const primaryFallback = getAttackSelectionFallbackForHero(heroId);
   try {
     const raw = localStorage.getItem(ATTACK_PREFS_KEY);
     if (!raw) {
@@ -105,12 +123,16 @@ function loadAttackSelectionPrefs() {
       };
     }
     const parsed = JSON.parse(raw);
-    const primary = sanitizeAttackType(parsed?.primary, primaryFallback);
+    const rawByHero = parsed?.byHero && typeof parsed.byHero === "object" ? parsed.byHero : null;
+    const rawPrimary = rawByHero ? rawByHero[heroId] : parsed?.primary;
+    const primary = sanitizeAttackType(rawPrimary, primaryFallback);
+    const safePrimary = canHeroUseWeaponArt(heroId, primary) ? primary : primaryFallback;
     const secondaryFallback = getDefaultSecondaryAttackType(primary);
-    const secondary = sanitizeAttackType(parsed?.secondary, secondaryFallback);
+    const rawSecondary = rawByHero ? rawByHero[`${heroId}:secondary`] : parsed?.secondary;
+    const secondary = sanitizeAttackType(rawSecondary, secondaryFallback);
     return {
-      primary,
-      secondary: secondary === primary ? secondaryFallback : secondary
+      primary: safePrimary,
+      secondary: secondary === safePrimary ? secondaryFallback : secondary
     };
   } catch {
     return {
@@ -120,14 +142,49 @@ function loadAttackSelectionPrefs() {
   }
 }
 
-function saveAttackSelectionPrefs(primary, secondary) {
-  const safePrimary = sanitizeAttackType(primary, getDefaultAttackType());
+function saveAttackSelectionPrefs(heroId, primary, secondary) {
+  const safePrimary = getHeroWeaponArtFallback(
+    heroId,
+    sanitizeAttackType(primary, getHeroDefaultAttackType(heroId))
+  );
   const secondaryFallback = getDefaultSecondaryAttackType(safePrimary);
   const safeSecondary = sanitizeAttackType(secondary, secondaryFallback);
+  let existing = {};
+  try {
+    existing = JSON.parse(localStorage.getItem(ATTACK_PREFS_KEY) || "{}") || {};
+  } catch {
+    existing = {};
+  }
+  const byHero = existing.byHero && typeof existing.byHero === "object" ? existing.byHero : {};
+  byHero[heroId] = safePrimary;
+  byHero[`${heroId}:secondary`] = safeSecondary === safePrimary ? secondaryFallback : safeSecondary;
   localStorage.setItem(ATTACK_PREFS_KEY, JSON.stringify({
+    ...existing,
     primary: safePrimary,
-    secondary: safeSecondary === safePrimary ? secondaryFallback : safeSecondary
+    secondary: byHero[`${heroId}:secondary`],
+    byHero
   }));
+}
+
+function getWeaponArtLockReason(heroId, attackType) {
+  if (canHeroUseWeaponArt(heroId, attackType)) return "";
+  const ownerHeroId = getWeaponArtOwnerHeroId(attackType);
+  const ownerHero = ownerHeroId ? getPlayableCharacterOrDefault(ownerHeroId) : null;
+  if (!isWeaponArtSharedUnlocked(attackType)) {
+    if (ownerHero) {
+      return `Locked until ${ownerHero.name}'s ${ATTACK_TYPES.find((entry) => entry.id === attackType)?.name || attackType} reaches level ${getWeaponArtShareLevelRequirement()}.`;
+    }
+    return `Locked until this weapon art reaches level ${getWeaponArtShareLevelRequirement()}.`;
+  }
+  const weaponArtKind = getWeaponArtKind(attackType);
+  if (weaponArtKind === "hybrid") return "";
+  const heroDefaultClass = getPlayableCharacterOrDefault(heroId)?.defaultWeaponArtClass || "melee";
+  if (weaponArtKind === "melee") {
+    return heroDefaultClass === "hybrid"
+      ? ""
+      : "Only melee-default heroes can equip shared melee weapon arts.";
+  }
+  return "Only ranged-default heroes can equip shared ranged weapon arts.";
 }
 
 function sanitizeBuildUpgradeIds(rawIds, attackType) {
@@ -228,7 +285,7 @@ export function startDemoQuickRun(legacyItems = [], options = {}) {
   pendingSecondaryAttackType = getDefaultSecondaryAttackType(pendingAttackType);
   pendingSelectedUpgradeIds = [];
   dualTechniqueActiveForRun = false;
-  saveAttackSelectionPrefs(pendingAttackType, pendingAttackType);
+  saveAttackSelectionPrefs(pendingPlayableCharacterId, pendingAttackType, pendingAttackType);
 
   confirmSkillSelectAndStart({ ignorePendingWeaponArt: true, useDemoSkillDefaults: true });
 }
@@ -323,6 +380,14 @@ export function renderPreRunScreen() {
       } else {
         skillsEl.innerHTML += `<p class="pre-run-hero-skill-desc">No unique skill</p>`;
       }
+    }
+    const weaponArtEl = detailsPanel.querySelector(".pre-run-hero-details-weapon-art");
+    if (weaponArtEl) {
+      const defaultWeaponArt = ATTACK_TYPES.find((entry) => entry.id === selectedHero.defaultWeaponArt);
+      const classLabel = String(selectedHero.defaultWeaponArtClass || "melee")
+        .charAt(0)
+        .toUpperCase() + String(selectedHero.defaultWeaponArtClass || "melee").slice(1);
+      weaponArtEl.innerHTML = `<h4>Weapon Art</h4><p class="pre-run-hero-skill-name">${escapeHtml(defaultWeaponArt?.name || selectedHero.defaultWeaponArt || "Unknown")}</p><p class="pre-run-hero-skill-desc">${escapeHtml(classLabel)} default weapon art.</p>`;
     }
   }
 
@@ -459,8 +524,9 @@ export function showSkillSelectScreen() {
   if (overlay) overlay.classList.remove("hidden");
   if (preRun) preRun.classList.add("hidden");
   pendingSkillsForRun = [null, null, null, null];
-  const prefs = loadAttackSelectionPrefs();
+  const prefs = loadAttackSelectionPrefs(pendingPlayableCharacterId);
   pendingAttackType = sanitizeAttackType(prefs.primary, getDefaultAttackType());
+  pendingAttackType = getHeroWeaponArtFallback(pendingPlayableCharacterId, pendingAttackType);
   pendingSecondaryAttackType = pendingAttackType;
   pendingSelectedUpgradeIds = [];
   dualTechniqueActiveForRun = false;
@@ -479,6 +545,8 @@ export function renderSkillSelectScreen() {
   const section = attackTypeEl.closest(".skill-select-attack-type-section");
   if (!section) return;
   attackTypeEl.innerHTML = "";
+  const heroId = pendingPlayableCharacterId;
+  const selectableAttackTypes = new Set(getHeroSelectableWeaponArts(heroId));
 
   const renderAttackButton = (atk, selectedId, onSelect, options = {}) => {
     const btn = document.createElement("button");
@@ -491,19 +559,27 @@ export function renderSkillSelectScreen() {
     const tagsPart = Array.isArray(atk.tags) && atk.tags.length > 0
       ? `<span class="skill-select-attack-desc">Tags: ${escapeHtml(atk.tags.join("  "))}</span>`
       : "";
-    btn.innerHTML = `${iconPart}<span class="skill-select-attack-name">${escapeHtml(atk.name)}</span><span class="skill-select-attack-desc">${escapeHtml(atk.desc)}</span>${tagsPart}`;
+    const lockPart = options.lockReason
+      ? `<span class="skill-select-attack-desc">${escapeHtml(options.lockReason)}</span>`
+      : "";
+    btn.innerHTML = `${iconPart}<span class="skill-select-attack-name">${escapeHtml(atk.name)}</span><span class="skill-select-attack-desc">${escapeHtml(atk.desc)}</span>${tagsPart}${lockPart}`;
     btn.addEventListener("click", onSelect);
     return btn;
   };
 
   for (const atk of ATTACK_TYPES) {
+    const disabled = !selectableAttackTypes.has(atk.id);
     attackTypeEl.appendChild(renderAttackButton(atk, pendingAttackType, () => {
+      if (disabled) return;
       pendingAttackType = atk.id;
       renderSkillSelectScreen();
+    }, {
+      disabled,
+      lockReason: disabled ? getWeaponArtLockReason(heroId, atk.id) : ""
     }));
   }
   if (confirmBtn) {
-    confirmBtn.disabled = false;
+    confirmBtn.disabled = !selectableAttackTypes.has(pendingAttackType);
   }
 }
 
@@ -547,6 +623,7 @@ export function confirmSkillSelectAndStart(options = {}) {
     skills[hero.uniqueSkill.slot] = hero.uniqueSkill.skillId;
   }
   saveAttackSelectionPrefs(
+    pendingPlayableCharacterId,
     pendingAttackType,
     pendingAttackType
   );

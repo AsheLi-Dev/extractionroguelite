@@ -92,6 +92,35 @@ export const ANIMATED_SPRITE_PRESETS = {
     drawWidth: 42,
     drawHeight: 42
   },
+  darkSlash: {
+    path: 'assets/Projectiles/DarkSlash.png',
+    frameWidth: 128,
+    frameHeight: 128,
+    frameCount: 8,
+    columns: 4,
+    fps: 20,
+    loop: false,
+    rotateWithVelocity: true,
+    baseAngleRad: Math.PI / 2,
+    anchorX: 0.5,
+    anchorY: 0.5,
+    drawWidth: 72,
+    drawHeight: 72
+  },
+  bladeBlastProjectile: {
+    path: 'assets/Projectiles/Darkness Bolt.png',
+    frameWidth: 16,
+    frameHeight: 16,
+    frameCount: 6,
+    columns: 6,
+    fps: 18,
+    loop: true,
+    rotateWithVelocity: true,
+    anchorX: 0.5,
+    anchorY: 0.5,
+    drawWidth: 24,
+    drawHeight: 24
+  },
   darkOrb: {
     path: 'assets/Projectiles/Dark VFX 01 - 02/Dark VFX 1/Dark VFX 1 (40x32).png',
     frameWidth: 40,
@@ -177,6 +206,14 @@ export function getElementalShotAnimatedSprite(element, overrides = null) {
   if (element === 'fire') return getAnimatedSpritePreset('elementalFireShot', overrides);
   if (element === 'wind') return getAnimatedSpritePreset('windCrescent', overrides);
   return null;
+}
+
+export function getDarkSlashAnimatedSprite(overrides = null) {
+  return getAnimatedSpritePreset('darkSlash', overrides);
+}
+
+export function getBladeBlastProjectileAnimatedSprite(overrides = null) {
+  return getAnimatedSpritePreset('bladeBlastProjectile', overrides);
 }
 
 export function getSkillEffectAnimatedSprite(effectType, overrides = null) {
