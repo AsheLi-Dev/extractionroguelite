@@ -7,6 +7,7 @@
 import { ENEMY_TYPES, Enemy } from '../entities/enemy.js';
 import { EnemyAttackController } from '../entities/attacks/index.js';
 import { drawTile } from '../entities/tile-system.js';
+import { getAnimatedSpritePreset } from '../vfx/animated-sprite-presets.js';
 
 const ENEMY_PROJECTILE_DEF = {
   id: 'enemy_projectile',
@@ -34,6 +35,23 @@ function normalizeDir(x, y) {
 export function applyGameEnemyAttacksMixin(Game) {
   Object.assign(Game.prototype, {
     createEnemyProjectileAttack(spawn, executeOpts = {}, sourceEntity = null, sourceMeta = {}) {
+      const defaultImpactAnimatedSprite = executeOpts?.impactAnimatedSprite === null
+        ? null
+        : (executeOpts?.impactAnimatedSprite ?? getAnimatedSpritePreset('smokeBurstSoft', {
+          drawWidth: Math.max(28, (Number(spawn?.size ?? executeOpts?.size) || 12) * 3.5),
+          drawHeight: Math.max(28, (Number(spawn?.size ?? executeOpts?.size) || 12) * 3.5)
+        }));
+      const spawnEnemyImpactVfx = (world, x, y, angleRad = 0) => {
+        if (!world || !Array.isArray(world.skillEffects) || !defaultImpactAnimatedSprite) return;
+        world.skillEffects.push({
+          type: 'animatedSpriteImpact',
+          x,
+          y,
+          t: 0,
+          angleRad,
+          animatedSprite: { ...defaultImpactAnimatedSprite }
+        });
+      };
       const dir = normalizeDir(spawn?.dirX ?? spawn?.vx, spawn?.dirY ?? spawn?.vy);
       const speed = Number(spawn?.speed) || dir.speed || Number(executeOpts?.speed) || 350;
       const size = Math.max(2, Number(spawn?.size ?? executeOpts?.size) || 12);
@@ -95,6 +113,7 @@ export function applyGameEnemyAttacksMixin(Game) {
         },
         onHit: (attackHitbox, target, world) => {
           if (target?.id !== 'player' || !world) return;
+          spawnEnemyImpactVfx(world, attackHitbox.x, attackHitbox.y, Math.atan2(attackHitbox.dirY || 0, attackHitbox.dirX || 1));
           const source = attackHitbox.sourceEntity || sourceEntity || null;
           if (source) world.lastDamagingEnemy = source;
           let dmgResult = null;
@@ -163,6 +182,9 @@ export function applyGameEnemyAttacksMixin(Game) {
           if (attackHitbox.lichOrbBurst && (reason === 'lifetime' || reason === 'obstacle') && typeof world.spawnLichOrbBurst === 'function') {
             world.spawnLichOrbBurst(attackHitbox);
           }
+          if (reason === 'obstacle') {
+            spawnEnemyImpactVfx(world, attackHitbox.x, attackHitbox.y, Math.atan2(attackHitbox.dirY || 0, attackHitbox.dirX || 1));
+          }
           if (reason === 'obstacle' && attackHitbox.slowZone && world.hazardSystem) {
             world.hazardSystem.addTemporaryPatch('slowZone', attackHitbox.x, attackHitbox.y, attackHitbox.slowRadius ?? 50, attackHitbox.slowDuration ?? 1.5, 0, false, attackHitbox.slowMult ?? 0.6);
           }
@@ -222,9 +244,9 @@ export function applyGameEnemyAttacksMixin(Game) {
       this.enemySystem.enemies.push(enemy);
     },
 
-    addDelayedEnemyImpact(at, x, y, radius, damage, sourceEnemy, slowZone = false, slowDuration = 1.5, attackId = null) {
+    addDelayedEnemyImpact(at, x, y, radius, damage, sourceEnemy, slowZone = false, slowDuration = 1.5, attackId = null, impactAnimatedSprite = null) {
       this.delayedEnemyImpacts = this.delayedEnemyImpacts || [];
-      this.delayedEnemyImpacts.push({ at, x, y, radius, damage, sourceEnemy, slowZone, slowDuration, attackId });
+      this.delayedEnemyImpacts.push({ at, x, y, radius, damage, sourceEnemy, slowZone, slowDuration, attackId, impactAnimatedSprite });
     },
 
     addDelayedEnemyProjectile(at, x, y, vx, vy, damage, size = 12, color = '#a855f7', executeOpts = {}, sourceEnemy = null, opts = {}) {
@@ -401,6 +423,15 @@ export function applyGameEnemyAttacksMixin(Game) {
       const useCircleHitbox = typeof this.spawnEnemyCircleHitbox === 'function';
       this.delayedEnemyImpacts = this.delayedEnemyImpacts.filter((imp) => {
         if (now < imp.at) return true;
+        if (imp.impactAnimatedSprite && Array.isArray(this.skillEffects)) {
+          this.skillEffects.push({
+            type: 'animatedSpriteImpact',
+            x: imp.x,
+            y: imp.y,
+            t: 0,
+            animatedSprite: { ...imp.impactAnimatedSprite }
+          });
+        }
         if (useCircleHitbox) {
           this.spawnEnemyCircleHitbox(imp.sourceEnemy, imp.x, imp.y, imp.radius, imp.damage, imp.attackId || 'enemy_circle', {
             slowZone: imp.slowZone,

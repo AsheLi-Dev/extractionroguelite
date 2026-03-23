@@ -218,6 +218,7 @@ import {
 
 const DASH_CHARGE_ICON_FULL_SRC = "assets/UI/UI_TravelBook_IconEnergy01a.png";
 const DASH_CHARGE_ICON_EMPTY_SRC = "assets/UI/UI_TravelBook_IconEnergy01g.png";
+const Y_SORTED_SKILL_EFFECT_TYPES = new Set(['animatedSpriteImpact', 'enemyBreathVisual']);
 const DESIGN_WIDTH = 640;
 const DESIGN_HEIGHT = 360;
 const CAMERA_VIEW_WIDTH = 499;   // zoomed out 1.2x from 416
@@ -4236,12 +4237,14 @@ export class Game {
       
       this.player.position.set(nx, ny);
 
-      this.dashTrail.push({
-        x: this.player.position.x,
-        y: this.player.position.y,
-        alpha: 1 - (1 - this.dashTimer / this.dashDuration) * 0.8
-      });
-      if (this.dashTrail.length > 12) this.dashTrail.shift();
+      if (this.playableCharacterDef?.id !== "knight") {
+        this.dashTrail.push({
+          x: this.player.position.x,
+          y: this.player.position.y,
+          alpha: 1 - (1 - this.dashTimer / this.dashDuration) * 0.8
+        });
+        if (this.dashTrail.length > 12) this.dashTrail.shift();
+      }
 
       if (this.dashActive && this.dashTimer <= 0) {
         if (this.hasRunTalent("momentum")) {
@@ -15462,6 +15465,7 @@ export class Game {
     }
 
     for (const eff of this.skillEffects) {
+      if (Y_SORTED_SKILL_EFFECT_TYPES.has(eff.type)) continue;
       const drawHandler = SKILL_EFFECT_DRAW_HANDLERS[eff.type];
       if (drawHandler) {
         drawHandler(this, ctx, eff, ox, oy);
@@ -17490,6 +17494,16 @@ export class Game {
 
   drawObstacleHitboxDebug(ctx) {
     if (!this.debugDrawObstacleHitboxes) return;
+    for (const wall of this.world?.tileWallRects || []) {
+      const hb = getWallCollisionRect(wall);
+      const sx = Math.floor(hb.x - this.camera.position.x);
+      const sy = Math.floor(hb.y - this.camera.position.y);
+      ctx.fillStyle = "rgba(37, 99, 235, 0.28)";
+      ctx.fillRect(sx, sy, hb.w, hb.h);
+      ctx.strokeStyle = "rgba(147, 197, 253, 0.95)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx - 0.5, sy - 0.5, hb.w + 1, hb.h + 1);
+    }
     for (const obstacle of this.obstacles || []) {
       if (!obstacle || obstacle.destroyed) continue;
       const hb = getObstacleCollisionRect(obstacle);
@@ -17725,6 +17739,15 @@ export class Game {
 
   drawWorldActorsYSorted(ctx, renderScale = 1) {
     const actors = [];
+    const cam = this.camera?.position;
+    let ox = -(cam?.x ?? 0);
+    let oy = -(cam?.y ?? 0);
+    if (ox === 0 && oy === 0 && this.player) {
+      const px = this.player.position.x + this.player.size / 2;
+      const py = this.player.position.y + this.player.size / 2;
+      ox = -(px - this.viewWidth / 2);
+      oy = -(py - this.viewHeight / 2);
+    }
     for (const obstacle of this.obstacles || []) {
       if (!obstacle || obstacle.destroyed) continue;
       const oh = obstacle.size?.h || 0;
@@ -17895,6 +17918,15 @@ export class Game {
           this.player.draw(ctx, this.camera, this.dashActive, this.gameOver, this.knightSlideActive || this.slideMoveActive);
           if (shadowHeistInvis) ctx.restore();
         }
+      });
+    }
+    for (const eff of this.skillEffects || []) {
+      if (!eff || !Y_SORTED_SKILL_EFFECT_TYPES.has(eff.type)) continue;
+      const drawHandler = SKILL_EFFECT_DRAW_HANDLERS[eff.type];
+      if (!drawHandler) continue;
+      actors.push({
+        sortY: Number.isFinite(eff.sortY) ? eff.sortY : ((Number(eff.y) || 0) + (Number(eff.sortYOffsetY) || 0)),
+        draw: () => drawHandler(this, ctx, eff, ox, oy)
       });
     }
 
@@ -18265,7 +18297,7 @@ export class Game {
       ctx.textAlign = "start";
     }
 
-    if (this.dashTrail.length > 0) {
+    if (this.playableCharacterDef?.id !== "knight" && this.dashTrail.length > 0) {
       ctx.imageSmoothingEnabled = false;
       for (let i = 0; i < this.dashTrail.length; i++) {
         const t = this.dashTrail[i];

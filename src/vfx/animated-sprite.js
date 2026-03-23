@@ -100,6 +100,7 @@ export function drawAnimatedSpriteFrame(ctx, options = {}) {
   ctx.translate(Number(options.centerX) || 0, Number(options.centerY) || 0);
   ctx.rotate(Number(options.angle) || 0);
   if (options.flipX === true) ctx.scale(-1, 1);
+  if (options.flipY === true) ctx.scale(1, -1);
   ctx.drawImage(
     image,
     srcX,

@@ -144,17 +144,17 @@ export function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
-/** Returns collision rect for a wall (e.g. tile wall or obstacle). Optional inset so collision sits inside visible wall. */
+/** Returns collision rect for a wall (e.g. tile wall or obstacle). */
 export function getWallCollisionRect(wall, inset = 4) {
-  const w = wall.w ?? wall.h ?? 16;
-  const h = wall.h ?? wall.w ?? 16;
-  const maxInset = Math.floor(Math.min(w, h) / 2) - 1;
-  const useInset = Math.min(inset, Math.max(0, maxInset));
+  const w = wall?.w ?? wall?.h ?? 32;
+  const h = wall?.h ?? wall?.w ?? 32;
+  const cw = Math.min(32, Math.max(1, w));
+  const ch = Math.min(32, Math.max(1, h));
   return {
-    x: wall.x + useInset,
-    y: wall.y + useInset,
-    w: Math.max(1, w - 2 * useInset),
-    h: Math.max(1, h - 2 * useInset)
+    x: (wall?.x ?? 0) + (w - cw) / 2,
+    y: (wall?.y ?? 0) + (h - ch) / 2,
+    w: cw,
+    h: ch
   };
 }
 

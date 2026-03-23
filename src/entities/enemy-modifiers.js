@@ -144,7 +144,10 @@ export function updateEnemyModifiers(game, enemy, dt) {
       for (let i = 0; i < 8; i++) {
         const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.3;
         const speed = 120;
-        game.spawnEnemyProjectile(ex, ey, Math.cos(angle) * speed, Math.sin(angle) * speed, 6, 8, "#f97316", { lifetime: 4 }, null);
+        game.spawnEnemyProjectile(ex, ey, Math.cos(angle) * speed, Math.sin(angle) * speed, 6, 8, "#f97316", {
+          lifetime: 4,
+          animatedSprite: { preset: "volatileFireball" }
+        }, null);
       }
     }
   }

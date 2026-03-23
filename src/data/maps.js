@@ -41,7 +41,7 @@ export const MAP_WIDTH = 3600;
 export const MAP_HEIGHT = 1350; // 900 * 1.5
 export const WALL_THICKNESS = 32;
 /** Collision margin for outer walls; can be smaller than WALL_THICKNESS so collision matches visible wall sprite. */
-export const WALL_COLLISION_THICKNESS = 16;
+export const WALL_COLLISION_THICKNESS = 24;
 
 /** Blocker chunk spritesheet: one horizontal row of 30×30-tile (960×960 px) chunks for 30×30 blocked spaces. */
 const TILE_SIZE_BLOCKER = 32;

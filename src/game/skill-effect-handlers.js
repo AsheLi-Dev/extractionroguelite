@@ -565,6 +565,13 @@ function updateAnimatedSpriteImpact(_game, eff, _dt, surviving) {
   surviving.push(eff);
 }
 
+function updateEnemyBreathVisual(_game, eff, _dt, surviving) {
+  const duration = Math.max(0.1, Number(eff?.duration) || 0.9);
+  eff.duration = duration;
+  if (eff.t >= duration) return;
+  surviving.push(eff);
+}
+
 function updateElementMageArt(game, eff, dt, surviving) {
   eff.x += (Number(eff.vx) || 0) * dt;
   eff.y += (Number(eff.vy) || 0) * dt;
@@ -786,6 +793,7 @@ export const SKILL_EFFECT_UPDATE_HANDLERS = {
   fireball: updateFireball,
   iceShard: updateIceShard,
   animatedSpriteImpact: updateAnimatedSpriteImpact,
+  enemyBreathVisual: updateEnemyBreathVisual,
   elementMageArt: updateElementMageArt,
   retreatVolley: updateRetreatVolley,
   retreatVolleyArrow: updateRetreatVolleyArrow,

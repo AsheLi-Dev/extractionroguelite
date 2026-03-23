@@ -589,12 +589,35 @@ export function applyGameCollisionMixin(Game) {
       }
 
       // Push player out of procedural tile walls if embedded.
-      const wallX = player.position.x + pxo;
-      const wallY = player.position.y + pyo;
-      if (this.enemySystem?.isOnWall?.(wallX, wallY, pSide)) {
-        const out = this.enemySystem.pushOutOfWalls(wallX, wallY, pSide);
-        player.position.x = Math.max(margin, Math.min(out.x - pxo, maxX));
-        player.position.y = Math.max(margin, Math.min(out.y - pyo, maxY));
+      for (let iter = 0; iter < 12; iter++) {
+        const pRect = { x: player.position.x + pxo, y: player.position.y + pyo, w: pw, h: ph };
+        let pushed = false;
+        for (const wall of this.world?.tileWallRects || []) {
+          const wRect = getWallCollisionRect(wall);
+          if (!overlapsRect(pRect, wRect)) continue;
+
+          const overlapL = (pRect.x + pRect.w) - wRect.x;
+          const overlapR = (wRect.x + wRect.w) - pRect.x;
+          const overlapT = (pRect.y + pRect.h) - wRect.y;
+          const overlapB = (wRect.y + wRect.h) - pRect.y;
+          const minX = Math.min(overlapL, overlapR);
+          const minY = Math.min(overlapT, overlapB);
+          const pCx = pRect.x + pRect.w * 0.5;
+          const pCy = pRect.y + pRect.h * 0.5;
+          const wCx = wRect.x + wRect.w * 0.5;
+          const wCy = wRect.y + wRect.h * 0.5;
+
+          if (minX <= minY) {
+            player.position.x += (pCx < wCx ? -(minX + 0.5) : (minX + 0.5));
+          } else {
+            player.position.y += (pCy < wCy ? -(minY + 0.5) : (minY + 0.5));
+          }
+          player.position.x = Math.max(margin, Math.min(player.position.x, maxX));
+          player.position.y = Math.max(margin, Math.min(player.position.y, maxY));
+          pushed = true;
+          break;
+        }
+        if (!pushed) break;
       }
     },
 

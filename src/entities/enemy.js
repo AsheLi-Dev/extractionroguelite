@@ -100,8 +100,8 @@ const NEW_ENEMY_DATA = [
   {"id":"m_5b_skeleton_archer","name":"Skeleton Archer","atlas":{"row":5,"col":"b"},"archetype":"Skeleton","base":{"size":86,"hp":55,"atk":9,"speed":75,"def":2},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"mid","notes":"Ranged skeleton. Great with Volatile."},
   {"id":"m_5c_lich","name":"Lich","atlas":{"row":5,"col":"c"},"spriteSet":"lich_regular","archetype":"Demon","base":{"size":86,"hp":85,"atk":12,"speed":60,"def":3},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"high","notes":"Caster boss-lite. Great with Lasering."},
   {"id":"m_5d_death_knight","name":"Death Knight","atlas":{"row":5,"col":"d"},"spriteSet":"death_knight_regular","archetype":"Demon","base":{"size":103,"hp":100,"atk":15,"speed":50,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Top-tier melee. Perfect Mini-boss."},
-  {"id":"m_5z_death_bringer","name":"DeathBringer","atlas":{"row":5,"col":"e"},"spriteSet":"death_bringer_regular","archetype":"Demon","base":{"size":103,"hp":90,"atk":12,"speed":55,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Caster with cone melee and delayed ground spell at player."},
-  {"id":"m_5e_zombie","name":"Zombie","atlas":{"row":5,"col":"e"},"archetype":"Slime","base":{"size":86,"hp":70,"atk":8,"speed":55,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Slow tank. Good with Volatile/Orbiting."},
+  {"id":"m_5z_death_bringer","name":"DeathBringer","atlas":{"row":5,"col":"e"},"spriteSet":"death_bringer_regular","archetype":"Demon","base":{"size":206,"hp":90,"atk":12,"speed":55,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Caster with cone melee and delayed ground spell at player."},
+  {"id":"m_5e_zombie","name":"Zombie","atlas":{"row":5,"col":"e"},"spriteSet":"zombie_regular","archetype":"Slime","base":{"size":86,"hp":70,"atk":8,"speed":55,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Slow tank. Good with Volatile/Orbiting."},
   {"id":"m_5g_small_dummy","name":"Small Dummy","atlas":{"row":5,"col":"e"},"spriteSet":"small_dummy_regular","archetype":"Slime","base":{"size":86,"hp":70,"atk":8,"speed":55,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Zombie-equivalent test enemy."},
   {"id":"m_5k_small_dwarfette","name":"Small Dwarfette","atlas":{"row":5,"col":"e"},"spriteSet":"small_dwarfette_regular","archetype":"Slime","base":{"size":86,"hp":70,"atk":8,"speed":55,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Small dummy variant with dash attack."},
   {"id":"m_5l_medium_dwarfette","name":"Medium Dwarfette","atlas":{"row":5,"col":"e"},"spriteSet":"medium_dwarfette_regular","archetype":"Slime","base":{"size":96,"hp":85,"atk":10,"speed":52,"def":2},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Rolling attacker that bounces off walls and obstacles."},
@@ -325,6 +325,7 @@ const vampireArcherSheetCache = new Map();
 const mercenarySheetCache = new Map();
 const deathBringerSheetCache = new Map();
 const dragonSheetCache = new Map();
+const zombieSheetCache = new Map();
 const smallSlimeSheetCache = new Map();
 const mediumSlimeSheetCache = new Map();
 const bigSlimeSheetCache = new Map();
@@ -348,6 +349,14 @@ function getCachedSpriteImage(cache, path, warningLabel) {
   image.src = assetUrl(path);
   cache.set(path, image);
   return image;
+}
+
+function shouldUseMovingAnim(enemy, moved) {
+  const currentState = enemy?.humanAnimState?.state || enemy?.spriteAnimState?.state || "idle";
+  const isCurrentlyMoving = currentState === "move" || currentState === "run";
+  const startThreshold = 0.16;
+  const stopThreshold = 0.04;
+  return isCurrentlyMoving ? moved > stopThreshold : moved > startThreshold;
 }
 
 function getGoblinRegularSheets(variantId) {
@@ -1197,6 +1206,25 @@ function getDragonSheets() {
   };
 }
 
+function getZombieSheets() {
+  const frameW = 80;
+  const frameH = 64;
+  const idleImage = getCachedSpriteImage(zombieSheetCache, "assets/Enemies/Zombie/Mushroom-Idle.png", "Zombie idle sheet");
+  const moveImage = getCachedSpriteImage(zombieSheetCache, "assets/Enemies/Zombie/Mushroom-Run.png", "Zombie move sheet");
+  const attackImage = getCachedSpriteImage(zombieSheetCache, "assets/Enemies/Zombie/Mushroom-Attack.png", "Zombie attack sheet");
+  const deathImage = getCachedSpriteImage(zombieSheetCache, "assets/Enemies/Zombie/Mushroom-Die.png", "Zombie death sheet");
+  const hitImage = getCachedSpriteImage(zombieSheetCache, "assets/Enemies/Zombie/Mushroom-Hit.png", "Zombie hit sheet");
+  const stunImage = getCachedSpriteImage(zombieSheetCache, "assets/Enemies/Zombie/Mushroom-Stun.png", "Zombie stun sheet");
+  return {
+    idle: { image: idleImage, frames: 7, fps: 8, frameW, cropW: frameW, frameH },
+    move: { image: moveImage, frames: 8, fps: 12, frameW, cropW: frameW, frameH },
+    attack: { image: attackImage, frames: 10, fps: 14, frameW, cropW: frameW, frameH },
+    death: { image: deathImage, frames: 15, fps: 12, loop: false, frameW, cropW: frameW, frameH },
+    hit: { image: hitImage, frames: 5, fps: 16, frameW, cropW: frameW, frameH },
+    stun: { image: stunImage, frames: 18, fps: 14, frameW, cropW: frameW, frameH }
+  };
+}
+
 function getSmallSlimeSheets() {
   const img = getCachedSpriteImage(smallSlimeSheetCache, "assets/Enemies/sprSmallSlime.png", "Small Slime sheet");
   const frames = 4;
@@ -1316,6 +1344,10 @@ function preloadDragonSheets() {
   getDragonSheets();
 }
 
+function preloadZombieSheets() {
+  getZombieSheets();
+}
+
 function preloadSmallSlimeSheets() {
   getSmallSlimeSheets();
 }
@@ -1419,6 +1451,7 @@ preloadVampireArcherSheets();
 preloadMercenarySheets();
 preloadDeathBringerSheets();
 preloadDragonSheets();
+preloadZombieSheets();
 preloadSmallSlimeSheets();
 preloadMediumSlimeSheets();
 preloadBigSlimeSheets();
@@ -1998,6 +2031,14 @@ export class Enemy {
     } else if (typeDef.spriteSet === "dragon_regular") {
       this.spriteSheets = getDragonSheets();
       this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "zombie_regular") {
+      this.spriteSheets = getZombieSheets();
+      this.spriteSheetFlipInverted = false;
       this.spriteAnimState = {
         state: "idle",
         timer: 0,
@@ -2643,25 +2684,31 @@ export class Enemy {
         const prevY = this.position.y;
         moveEnemyWithCollision(this, moveX, moveY, game, margin);
         
-        // Update facing direction from player position with 5px dead zone to avoid rapid left/right flipping when player is centered
+        // Update facing direction from player position with a wider dead zone
+        // to avoid rapid left/right flipping when melee enemies hover near center.
         const inAttackState = this.attackCtrl && (this.attackCtrl.state === "windup" || this.attackCtrl.state === "active" || this.attackCtrl.state === "recover" || this._attackRollState || this._cycloneState || this._cycloneEndTimer > 0 || this._frogSpitFlight?.active);
         if (!inAttackState && !(this.enemyTypeId === "m_8f_forest_spirit" && this.forestSpiritSpecial?.active)) {
           const ex = this.position.x + this.size / 2;
-          if (px >= ex + 5) this.facingRight = true;
-          else if (px <= ex - 5) this.facingRight = false;
+          const facingDeadZone = Math.max(16, this.size * 0.12);
+          if (px >= ex + facingDeadZone) this.facingRight = true;
+          else if (px <= ex - facingDeadZone) this.facingRight = false;
         }
         
         const moved = Math.sqrt(
           (this.position.x - prevX) ** 2 +
           (this.position.y - prevY) ** 2
         );
+        const useMovingAnim = shouldUseMovingAnim(this, moved);
         if (this.humanSheets && this.humanAnimState) {
           const inAttack = this.attackCtrl && (this.attackCtrl.state === "windup" || this.attackCtrl.state === "active" || this.attackCtrl.state === "recover");
           const isHeal = this.enemyTypeId === "human_monk" && this.attackCtrl?.currentAttack?.id?.includes("heal");
           if (inAttack && this.humanAnimState.state !== "attack" && this.humanAnimState.state !== "heal") {
             setHumanSquadAnimState(this, isHeal ? "heal" : "attack");
           } else if (!inAttack && this.humanAnimState.state !== "attack" && this.humanAnimState.state !== "heal") {
-            setHumanSquadAnimState(this, moved > 0.1 ? "run" : "idle");
+            const nextHumanState = useMovingAnim ? "run" : "idle";
+            if (this.humanAnimState.state !== nextHumanState) {
+              setHumanSquadAnimState(this, nextHumanState);
+            }
           }
         }
         if (moved > 0.1) {
@@ -2704,6 +2751,8 @@ export class Enemy {
     }
     if (this.spriteSheets && this.spriteAnimState) {
       const specialHealing = this.enemyTypeId === "m_8f_forest_spirit" && this.forestSpiritSpecial?.active;
+      const isStunned = this.stunUntil != null && gameTime < this.stunUntil && this.spriteSheets?.stun;
+      const isZombie = this.enemyTypeId === "m_5e_zombie";
       const inAttack = this.attackCtrl && (
         this.attackCtrl.state === "windup" ||
         this.attackCtrl.state === "active" ||
@@ -2713,6 +2762,7 @@ export class Enemy {
         (this.position.x - this.lastPosition.x) ** 2 +
         (this.position.y - this.lastPosition.y) ** 2
       );
+      const useMovingAnim = shouldUseMovingAnim(this, moved);
       const isDashAttack = !!(inAttack && this.attackCtrl?.currentAttack?.kind === "dash" && this.spriteSheets?.attackDash);
       const isFrogSpitFlight = !!this._frogSpitFlight?.active;
       const isBurpAttack = !!(inAttack && this.attackCtrl?.currentAttack?.kind === "burp_summon" && this.spriteSheets?.attackBurp);
@@ -2727,11 +2777,16 @@ export class Enemy {
       const isInRecoverWithRecoverSheet = !!(inAttack && this.attackCtrl?.state === "recover" && this.spriteSheets?.attackRecover);
       const isDeadWithDeathSheet = !!((this.health <= 0 || this.isDead) && this.spriteSheets?.death);
       const isRockGiant = this.name === "RockGiant" && this.spriteSheets?.healing;
+      const zombieAttackAnimLeadTime = 0.2;
+      const zombieWindupRemaining = this.attackCtrl?.state === "windup" ? Math.max(0, Number(this.attackCtrl?.timer) || 0) : 0;
+      const zombieShowAttackAnim = !isZombie || this.attackCtrl?.state !== "windup" || zombieWindupRemaining <= zombieAttackAnimLeadTime;
       let nextState = "idle";
       if (isRockGiant && this._rockGiantHealing) {
         nextState = "healing";
       } else if (isRockGiant && this._rockGiantHitReaction) {
         nextState = "hit";
+      } else if (isStunned) {
+        nextState = "stun";
       } else if (isRockGiant && inAttack && this.attackCtrl?.currentAttack?.id === "rock_giant_falling_rocks") {
         nextState = "attackA";
       } else if (isRockGiant && inAttack && this.attackCtrl?.currentAttack?.id === "rock_giant_cone") {
@@ -2758,13 +2813,13 @@ export class Enemy {
         nextState = "attackRoll";
       } else if (isRollEnd) {
         nextState = "attackRollEnd";
-      } else if (inAttack) {
+      } else if (inAttack && zombieShowAttackAnim) {
         if (isBurpAttack) nextState = "attackBurp";
         else if (isJumpAttack) nextState = "attackJump";
         else if (isDashAttack) nextState = "attackDash";
         else nextState = "attack";
       } else {
-        nextState = moved > 0.1 ? "move" : "idle";
+        nextState = useMovingAnim ? "move" : "idle";
       }
       if (this.spriteAnimState.state !== nextState) {
         this.spriteAnimState.state = nextState;
@@ -2778,6 +2833,32 @@ export class Enemy {
       if (specialHealing && nextState === "specialHeal") {
         const progress = Math.max(0, Math.min(1, this.forestSpiritSpecial.timer / this.forestSpiritSpecial.duration));
         this.spriteAnimState.frameIndex = Math.min(frames - 1, Math.floor(progress * frames));
+      } else if (isZombie && nextState === "attack" && frames >= 7) {
+        const zombieHoldFrameIndex = Math.min(frames - 1, 6);
+        const zombieRecoverFrameCount = Math.max(0, frames - (zombieHoldFrameIndex + 1));
+        if (this.attackCtrl?.state === "windup") {
+          const windupProgress = Math.max(0, Math.min(1, (zombieAttackAnimLeadTime - zombieWindupRemaining) / zombieAttackAnimLeadTime));
+          this.spriteAnimState.timer = 0;
+          this.spriteAnimState.frameIndex = Math.min(
+            zombieHoldFrameIndex,
+            Math.floor(windupProgress * (zombieHoldFrameIndex + 1))
+          );
+        } else if (this.attackCtrl?.state === "active") {
+          this.spriteAnimState.timer = 0;
+          this.spriteAnimState.frameIndex = zombieHoldFrameIndex;
+        } else if (this.attackCtrl?.state === "recover" && zombieRecoverFrameCount > 0) {
+          const zombieRecoverDuration = Math.max(0.01, Number(this.attackCtrl?.currentAttack?.recover) || 0.35);
+          const recoverRemaining = Math.max(0, Number(this.attackCtrl?.timer) || 0);
+          const recoverProgress = Math.max(0, Math.min(1, 1 - (recoverRemaining / zombieRecoverDuration)));
+          this.spriteAnimState.timer = 0;
+          this.spriteAnimState.frameIndex = Math.min(
+            frames - 1,
+            zombieHoldFrameIndex + 1 + Math.floor(recoverProgress * zombieRecoverFrameCount)
+          );
+        } else {
+          this.spriteAnimState.timer = 0;
+          this.spriteAnimState.frameIndex = zombieHoldFrameIndex;
+        }
       } else if (frames > 1) {
         this.spriteAnimState.timer += dt;
         const frameDuration = 1 / fps;

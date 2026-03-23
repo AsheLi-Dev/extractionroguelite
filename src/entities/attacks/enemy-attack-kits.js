@@ -1113,7 +1113,7 @@ export const ENEMY_ATTACK_KITS = {
         id: "dragon_fire_breath",
         kind: "cone",
         telegraph: { shape: "cone", windup: 0.7, color: "heavy" },
-        execute: { damage: 1.3, range: 520, arc: 75 },
+        execute: { damage: 1.3, range: 250, arc: 75 },
         recover: 0.4,
         cooldown: 3.5,
         minRange: 60,

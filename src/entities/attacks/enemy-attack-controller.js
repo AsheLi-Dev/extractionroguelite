@@ -12,6 +12,58 @@ import {
   getTelegraphColor
 } from './telegraph-renderer.js';
 import { ENEMY_ATTACK_KITS } from './enemy-attack-kits.js';
+import { getAnimatedSpritePreset } from '../../vfx/animated-sprite-presets.js';
+
+function getConeAttackImpactAnimatedSprite(attackId, range) {
+  const drawWidth = Math.max(72, Number(range) || 120);
+  const drawHeight = Math.max(64, drawWidth * 0.7);
+  if (attackId === 'death_knight_cleave') {
+    return getAnimatedSpritePreset('darkSlash', {
+      drawWidth,
+      drawHeight,
+      baseAngleRad: Math.PI / 2
+    });
+  }
+  if (attackId === 'death_bringer_cleave') {
+    return getAnimatedSpritePreset('doubleStrike', {
+      drawWidth,
+      drawHeight
+    });
+  }
+  if (attackId === 'orc_cleave' || attackId === 'rock_giant_cone') {
+    return getAnimatedSpritePreset('downwardSlash', {
+      drawWidth,
+      drawHeight
+    });
+  }
+  if (attackId === 'human_warrior_slash') {
+    return getAnimatedSpritePreset('doubleStrike', {
+      drawWidth: Math.max(64, drawWidth * 0.8),
+      drawHeight: Math.max(56, drawHeight * 0.8)
+    });
+  }
+  return null;
+}
+
+function getCircleAttackImpactAnimatedSprite(attackId, radius) {
+  const drawSize = Math.max(56, (Number(radius) || 70) * 1.8);
+  if (attackId === 'death_bringer_ground_spell' || attackId === 'lich_death_circle') {
+    return getAnimatedSpritePreset('smokeBurstRing', {
+      drawWidth: drawSize,
+      drawHeight: drawSize
+    });
+  }
+  if (attackId === 'giant_spider_web_trap') {
+    return getAnimatedSpritePreset('smokeBurstGround', {
+      drawWidth: Math.max(72, drawSize),
+      drawHeight: Math.max(40, drawSize * 0.6)
+    });
+  }
+  return getAnimatedSpritePreset('smokeBurstSoft', {
+    drawWidth: drawSize,
+    drawHeight: drawSize
+  });
+}
 
 export class EnemyAttackController {
   constructor(enemy) {
@@ -233,6 +285,83 @@ export class EnemyAttackController {
       case "cone": {
         const range = a.execute?.range ?? 80;
         const arc = a.execute?.arc ?? 90;
+        const coneImpactSprite = getConeAttackImpactAnimatedSprite(a.id, range);
+        if (coneImpactSprite && Array.isArray(game.skillEffects)) {
+          game.skillEffects.push({
+            type: 'animatedSpriteImpact',
+            x: ex + dirX * (range * 0.45),
+            y: ey + dirY * (range * 0.45),
+            t: 0,
+            angleRad: dirAngle,
+            flipY: dirX < 0,
+            animatedSprite: coneImpactSprite
+          });
+        }
+        if ((a.id === "dragon_fire_breath" || a.id === "drake_fire_breath") && Array.isArray(game.skillEffects)) {
+          const spriteAspect = 48 / 48;
+          const loopDrawWidth = Math.max(120, range);
+          const loopDrawHeight = loopDrawWidth * spriteAspect;
+          const startDrawWidth = loopDrawWidth * 0.85;
+          const startDrawHeight = startDrawWidth * spriteAspect;
+          const centerX = ex + dirX * (range * 0.5);
+          const centerY = ey + dirY * (range * 0.5) - (loopDrawHeight * 0.22);
+          game.skillEffects.push({
+            type: "enemyBreathVisual",
+            variant: "fire",
+            x: centerX,
+            y: centerY,
+            dirX,
+            dirY,
+            range,
+            arcDeg: arc,
+            t: 0,
+            duration: a.id === "dragon_fire_breath" ? 0.95 : 0.85,
+            fireStartSprite: {
+              path: 'assets/Projectiles/Fire Effect 1/Fire Effect 1/Fire Breath SpriteSheet.png',
+              frameWidth: 48,
+              frameHeight: 48,
+              frameCount: 3,
+              columns: 4,
+              fps: 12,
+              loop: false,
+              rotateWithVelocity: true,
+              anchorX: 0.5,
+              anchorY: 0.5,
+              drawWidth: startDrawWidth,
+              drawHeight: startDrawHeight
+            },
+            fireLoopSprite: {
+              path: 'assets/Projectiles/Fire Effect 1/Fire Effect 1/Fire Breath SpriteSheet.png',
+              frameWidth: 48,
+              frameHeight: 48,
+              frameCount: 4,
+              startFrame: 4,
+              columns: 4,
+              fps: 14,
+              loop: true,
+              rotateWithVelocity: true,
+              anchorX: 0.5,
+              anchorY: 0.5,
+              drawWidth: loopDrawWidth,
+              drawHeight: loopDrawHeight
+            },
+            fireEndSprite: {
+              path: 'assets/Projectiles/Fire Effect 1/Fire Effect 1/Fire Breath SpriteSheet.png',
+              frameWidth: 48,
+              frameHeight: 48,
+              frameCount: 8,
+              startFrame: 8,
+              columns: 4,
+              fps: 18,
+              loop: false,
+              rotateWithVelocity: true,
+              anchorX: 0.5,
+              anchorY: 0.5,
+              drawWidth: loopDrawWidth,
+              drawHeight: loopDrawHeight
+            }
+          });
+        }
         if (typeof game.spawnEnemyConeHitbox === "function") {
           game.spawnEnemyConeHitbox(enemy, ex, ey, dirX, dirY, range, arc, baseDmg, a.id);
           if (a.id !== "banshee_scream") this._applyDebuffs(game, a);
@@ -251,6 +380,7 @@ export class EnemyAttackController {
       }
       case "circle": {
         const r = a.execute?.radius ?? 70;
+        const circleImpactSprite = getCircleAttackImpactAnimatedSprite(a.id, r);
         const delayedCount = a.execute?.delayedCount ?? 1;
         const delay = a.execute?.delay ?? 0;
         const impactX = a.execute?.atTarget ? tx : ex;
@@ -263,9 +393,29 @@ export class EnemyAttackController {
             const ix = impactX + (Math.random() - 0.5) * jitter * 2;
             const iy = impactY + (Math.random() - 0.5) * jitter * 2;
             const atTime = game.time + (count > 1 ? delay * (i + 1) : delay);
-            game.addDelayedEnemyImpact(atTime, ix, iy, r, Math.round(baseDmg / count), enemy, !!a.execute?.slowZone, a.execute?.slowDuration ?? 1.5, useHitbox ? a.id : null);
+            game.addDelayedEnemyImpact(
+              atTime,
+              ix,
+              iy,
+              r,
+              Math.round(baseDmg / count),
+              enemy,
+              !!a.execute?.slowZone,
+              a.execute?.slowDuration ?? 1.5,
+              useHitbox ? a.id : null,
+              circleImpactSprite ? { ...circleImpactSprite } : null
+            );
           }
         } else if (useHitbox) {
+          if (circleImpactSprite && Array.isArray(game.skillEffects)) {
+            game.skillEffects.push({
+              type: 'animatedSpriteImpact',
+              x: impactX,
+              y: impactY,
+              t: 0,
+              animatedSprite: { ...circleImpactSprite }
+            });
+          }
           game.spawnEnemyCircleHitbox(enemy, impactX, impactY, r, baseDmg, a.id, {
             slowZone: !!a.execute?.slowZone,
             slowDuration: a.execute?.slowDuration ?? 2
