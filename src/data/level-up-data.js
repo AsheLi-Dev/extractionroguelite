@@ -142,6 +142,7 @@ export const ATTACK_UPGRADE_DEFS = {
   pulseShot: { standardUpgrades: [], standardPenalties: [], uniqueUpgrades: [], uniquePenalties: [] },
   thrustStrike: { standardUpgrades: [], standardPenalties: [], uniqueUpgrades: [], uniquePenalties: [] },
   dashStrike: { standardUpgrades: [], standardPenalties: [], uniqueUpgrades: [], uniquePenalties: [] },
+  windVolley: { standardUpgrades: [], standardPenalties: [], uniqueUpgrades: [], uniquePenalties: [] },
   bladeBlast: {
     standardUpgrades: [
       { id: "blade_blast_damage", name: "Blade Damage", rarity: "common", category: "damage", description: "Blade & Blast damage +10%.", maxLevel: 5, valueRange: { min: 10, max: 10, percent: true }, buildSelectable: true },

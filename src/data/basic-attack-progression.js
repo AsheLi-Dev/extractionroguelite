@@ -29,6 +29,7 @@ export const WEAPON_ART_TOKENS = Object.freeze({
 
 const ATTACK_CATEGORY_LAYOUT = Object.freeze({
   projectile: ["damage", "rhythm", "control", "elemental"],
+  windVolley: ["damage", "rhythm", "control", "onhit"],
   bladeBlast: ["damage", "rhythm", "control", "onhit"],
   soulSiphon: ["damage", "rhythm", "control", "spiritcraft"],
   guardCombo: ["damage", "rhythm", "control", "onhit"]

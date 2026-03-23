@@ -625,11 +625,171 @@ function updateElementMageArt(game, eff, dt, surviving) {
   surviving.push(eff);
 }
 
+function updateRetreatVolley(game, eff, dt, surviving) {
+  const jumpDuration = Math.max(0.0001, Number(eff.jumpDuration) || Number(eff.duration) || 0.16);
+  const jumpDistance = Math.max(0, Number(eff.jumpDistance) || 0);
+  const lastT = Math.max(0, Number(eff.t) - dt);
+  const prevProgress = Math.max(0, Math.min(1, lastT / jumpDuration));
+  const nextProgress = Math.max(0, Math.min(1, Number(eff.t) / jumpDuration));
+  const movedDistance = (nextProgress - prevProgress) * jumpDistance;
+  if (movedDistance > 0) {
+    game.movePlayerByWithCollision?.(-(Number(eff.dirX) || 0) * movedDistance, -(Number(eff.dirY) || 0) * movedDistance);
+  }
+
+  if (!eff.released && Number(eff.t) >= (Number(eff.releaseTime) || 0.12)) {
+    eff.released = true;
+    const arrowCount = Math.max(1, Math.floor(Number(eff.arrowCount) || 5));
+    const spreadDeg = Math.max(0, Number(eff.spreadDeg) || 24);
+    const origin = game.resolvePlayerAttackOrigin({
+      attackType: eff.skillId || "wind_archer_retreat_volley",
+      mode: "projectile",
+      targetX: (game.lastMouseWorld?.x ?? 0),
+      targetY: (game.lastMouseWorld?.y ?? 0)
+    });
+    const centerX = origin.originX;
+    const centerY = origin.originY;
+    const baseAngle = Math.atan2(Number(eff.dirY) || 0, Number(eff.dirX) || 1);
+    for (let i = 0; i < arrowCount; i++) {
+      const offsetDeg = arrowCount > 1 ? ((i / (arrowCount - 1)) - 0.5) * spreadDeg : 0;
+      const angle = baseAngle + (offsetDeg * Math.PI / 180);
+      const vx = Math.cos(angle) * (Number(eff.projectileSpeed) || 624);
+      const vy = Math.sin(angle) * (Number(eff.projectileSpeed) || 624);
+      game.skillEffects.push({
+        type: "retreatVolleyArrow",
+        x: centerX,
+        y: centerY,
+        vx,
+        vy,
+        dirX: Math.cos(angle),
+        dirY: Math.sin(angle),
+        t: 0,
+        duration: Math.max(0.25, (Number(eff.projectileRange) || 520) / Math.max(1, Number(eff.projectileSpeed) || 624)),
+        maxRange: Number(eff.projectileRange) || 520,
+        distanceTraveled: 0,
+        radius: 16,
+        mult: Number(eff.mult) || 0.55,
+        pierceCount: Math.max(0, Math.floor(Number(eff.pierceCount) || 0)),
+        hitIds: new Set(),
+        slowMult: Number(eff.slowMult) || 0.75,
+        slowDuration: Number(eff.slowDuration) || 2,
+        explosionRadius: Number(eff.explosionRadius) || 52,
+        explosionMult: Number(eff.explosionMult) || 0.35,
+        castId: eff.castId,
+        explodedTargetIds: eff.explodedTargetIds,
+        slot: eff.slot,
+        modList: eff.modList,
+        sacrificeMult: eff.sacrificeMult,
+        skillId: eff.skillId,
+        skillMults: eff.skillMults,
+        animatedSprite: {
+          path: "assets/Projectiles/Wind Effect 01/Wind Effect 01/Wind Breath.png",
+          frameWidth: 48,
+          frameHeight: 32,
+          frameCount: 12,
+          fps: 18,
+          loop: true,
+          drawWidth: 72,
+          drawHeight: 48,
+          rotateWithVelocity: true
+        }
+      });
+    }
+  }
+
+  if (eff.t >= (eff.duration ?? 0.16)) return;
+  surviving.push(eff);
+}
+
+function updateRetreatVolleyArrow(game, eff, dt, surviving) {
+  eff.x += (Number(eff.vx) || 0) * dt;
+  eff.y += (Number(eff.vy) || 0) * dt;
+  eff.distanceTraveled = (eff.distanceTraveled || 0) + (Math.sqrt((eff.vx || 0) * (eff.vx || 0) + (eff.vy || 0) * (eff.vy || 0)) * dt);
+  eff.hitIds = eff.hitIds || new Set();
+  const hit = game.enemiesInRadius(eff.x, eff.y, eff.radius || 16);
+  for (const e of hit) {
+    if (!e || e.isDead || eff.hitIds.has(e.id)) continue;
+    eff.hitIds.add(e.id);
+    const hadSlowBeforeHit = !!(
+      (e.slowUntil || 0) > game.time ||
+      (e.frozenUntil || 0) > game.time ||
+      (e.rootUntil || 0) > game.time ||
+      game.statusManager?.getStatus?.(e.id, "slow")
+    );
+    const dmg = game.computeSkillDamage(e, eff.mult ?? 0.55, eff.slot, {
+      sacrificeMult: eff.sacrificeMult,
+      skillId: eff.skillId,
+      skillMults: eff.skillMults
+    });
+    game.dealDamageToEnemy(e, dmg, {
+      isSkill: true,
+      skillSlot: eff.slot,
+      modList: eff.modList,
+      skillId: eff.skillId,
+      skillInstanceId: eff.castId,
+      sourceType: "player_skill",
+      attackType: eff.skillId
+    });
+    game.applyStatusToEntity?.(e.id, "slow", {
+      duration: eff.slowDuration ?? 2,
+      magnitude: eff.slowMult ?? 0.75,
+      sourceId: "player",
+      sourceType: "player_skill"
+    });
+    mirrorAncestorDebuffToPlayer(game, "slow");
+    if (hadSlowBeforeHit && eff.explodedTargetIds && !eff.explodedTargetIds.has(e.id)) {
+      eff.explodedTargetIds.add(e.id);
+      const ex = e.position.x + e.size / 2;
+      const ey = e.position.y + e.size / 2;
+      const expTargets = game.enemiesInRadius(ex, ey, eff.explosionRadius ?? 52);
+      for (const target of expTargets) {
+        if (!target || target.isDead) continue;
+        const expDmg = game.computeSkillDamage(target, eff.explosionMult ?? 0.35, eff.slot, {
+          sacrificeMult: eff.sacrificeMult,
+          skillId: eff.skillId,
+          skillMults: eff.skillMults
+        });
+        game.dealDamageToEnemy(target, expDmg, {
+          isSkill: true,
+          skillSlot: eff.slot,
+          modList: eff.modList,
+          skillId: eff.skillId,
+          skillInstanceId: eff.castId,
+          sourceType: "player_skill",
+          attackType: eff.skillId,
+          reason: "retreat_volley_slow_explosion"
+        });
+      }
+      game.skillEffects.push({
+        type: "retreatVolleyExplosion",
+        x: ex,
+        y: ey,
+        radius: eff.explosionRadius ?? 52,
+        t: 0,
+        duration: 0.18
+      });
+    }
+    eff.pierceCount = Math.max(0, (eff.pierceCount || 0) - 1);
+    if (eff.pierceCount <= 0) return;
+  }
+  if (tryInteractProjectileWithOrbs(game, { x: eff.x, y: eff.y, size: (eff.radius || 16) * 2, absorbableByOrb: true }, { radius: eff.radius || 16, positionIsCenter: true }).consumed) return;
+  if ((eff.distanceTraveled || 0) >= (eff.maxRange || 520)) return;
+  if (eff.t >= (eff.duration ?? 1)) return;
+  surviving.push(eff);
+}
+
+function updateRetreatVolleyExplosion(_game, eff, _dt, surviving) {
+  if (eff.t >= (eff.duration ?? 0.18)) return;
+  surviving.push(eff);
+}
+
 export const SKILL_EFFECT_UPDATE_HANDLERS = {
   fireball: updateFireball,
   iceShard: updateIceShard,
   animatedSpriteImpact: updateAnimatedSpriteImpact,
   elementMageArt: updateElementMageArt,
+  retreatVolley: updateRetreatVolley,
+  retreatVolleyArrow: updateRetreatVolleyArrow,
+  retreatVolleyExplosion: updateRetreatVolleyExplosion,
   assimilativeOrb: updateAssimilativeOrb,
   iceRain: updateIceRain,
   spiritBanner: updateSpiritBanner,

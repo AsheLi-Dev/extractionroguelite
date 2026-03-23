@@ -294,6 +294,12 @@ export class Game {
     this.bladeBlastTier1EvolutionId = null;
     this.bladeBlastTier2EvolutionId = null;
     this.bladeBlastAttackPhase = 0;
+    this.windArcherMomentum = 0;
+    this.windArcherMomentumStage = 1;
+    this.windArcherLastReleaseStage = 1;
+    this.windArcherLastReleaseAt = 0;
+    this.windArcherVolleyCounter = 0;
+    this.windArcherVolleyHitCounts = new Map();
     this.soulSiphonReaperWindup = 0;
     this.soulSiphonReaperLastFire = 0;
     this.skillChargeSlot = null;
@@ -479,6 +485,8 @@ export class Game {
     this.frenzyAttackCount = 0;
     this.frenzyBuffUntil = 0;
     this.currentStats = { ...this.baseStats };
+    this.windArcherPassiveDefenseBonus = 0;
+    this.windArcherPassiveDefenseBase = Math.max(0, this.currentStats.defense || 0);
     this.currentHealth = this.baseStats.maxHealth;
     this.timeSinceLastHit = 0;
     this.damageFlashTimer = 0; // Timer for red screen flash when player takes damage
@@ -3043,11 +3051,29 @@ export class Game {
       }
     }
     const isPlayerMelee = hitbox?.defId === 'player_fan' || hitbox?.defId === 'player_thrust' || hitbox?.defId === 'soul_siphon_beam';
-    const skillId = hitbox?.defId === 'player_fan' ? 'fanStrike' : hitbox?.defId === 'player_thrust' ? 'thrustStrike' : hitbox?.defId === 'player_pulse' ? 'pulseShot' : hitbox?.defId === 'player_projectile' ? 'projectile' : hitbox?.defId === 'soul_siphon_beam' ? 'soulSiphon' : undefined;
+    const skillId = hitbox?.defId === 'player_fan'
+      ? 'fanStrike'
+      : hitbox?.defId === 'player_thrust'
+        ? 'thrustStrike'
+        : hitbox?.defId === 'player_pulse'
+          ? 'pulseShot'
+          : hitbox?.defId === 'player_projectile'
+            ? (hitbox?.attackType || 'projectile')
+            : hitbox?.defId === 'soul_siphon_beam'
+              ? 'soulSiphon'
+              : undefined;
     const meleeFreeze = Math.max(0, Number(hitbox?.stunDuration) || 0);
     if (hitbox?._fromSpiritSlam && enemy.soulSiphonMarkedUntil != null && this.time < enemy.soulSiphonMarkedUntil) {
       effectiveAmount = Math.round(effectiveAmount * 2);
       enemy.soulSiphonMarkedUntil = 0;
+    }
+    if (hitbox?.attackType === "windVolley" && hitbox?.windVolleySameTargetRule && enemy?.id != null && hitbox?.windVolleyGroupId != null) {
+      const key = `${hitbox.windVolleyGroupId}:${enemy.id}`;
+      const priorHits = this.windArcherVolleyHitCounts.get(key) || 0;
+      if (priorHits > 0) {
+        effectiveAmount = Math.max(1, Math.round((this.computePlayerDamage?.(null) || 1) * 0.2));
+      }
+      this.windArcherVolleyHitCounts.set(key, priorHits + 1);
     }
     this.dealDamageToEnemy(enemy, effectiveAmount, {
       meleeFreeze,
@@ -4009,7 +4035,26 @@ export class Game {
       this.endSprint();
       effectiveSpeed *= PLAYER_CROUCH_MOVE_SPEED_MULT;
     }
+    if (this.playableCharacterDef?.passive?.id === 'wind_archer_slipstream_guard') {
+      const nextDefenseBonus = Math.max(0, Math.min(12, Math.floor(effectiveSpeed * 0.04)));
+      if ((this.windArcherPassiveDefenseBonus || 0) !== nextDefenseBonus) {
+        this.windArcherPassiveDefenseBonus = nextDefenseBonus;
+        if (this.currentStats) {
+          const baseDefense = Math.max(0, Number(this.windArcherPassiveDefenseBase) || 0);
+          this.currentStats.defense = baseDefense + nextDefenseBonus;
+          this.updateStatsUI();
+        }
+      }
+    } else if ((this.windArcherPassiveDefenseBonus || 0) !== 0) {
+      this.windArcherPassiveDefenseBonus = 0;
+      if (this.currentStats) {
+        this.currentStats.defense = Math.max(0, Number(this.windArcherPassiveDefenseBase) || 0);
+        this.updateStatsUI();
+      }
+    }
     this.player.speed = effectiveSpeed;
+    const windArcherMoveStartX = this.player?.position?.x ?? 0;
+    const windArcherMoveStartY = this.player?.position?.y ?? 0;
 
     if (this.playableCharacterDef?.id === 'reaper' && this.player) {
       if (this.reaperHostileUntil != null && this.time >= this.reaperHostileUntil) {
@@ -4080,7 +4125,12 @@ export class Game {
         this.dashCharges = this.dashMaxCharges;
         this.dashRechargeTimer = 0;
       }
-      if (!this.player?.isSprinting && this.dashCharges < this.dashMaxCharges) {
+      if (
+        !this.player?.isSprinting &&
+        !this.dashActive &&
+        !this.slideMoveActive &&
+        this.dashCharges < this.dashMaxCharges
+      ) {
         this.dashRechargeTimer -= dt;
         while (this.dashRechargeTimer <= 0 && this.dashCharges < this.dashMaxCharges) {
           this.dashCharges += 1;
@@ -4472,6 +4522,11 @@ export class Game {
         }
       }
 
+    }
+    if (this.player) {
+      const dxMoved = (this.player.position.x || 0) - windArcherMoveStartX;
+      const dyMoved = (this.player.position.y || 0) - windArcherMoveStartY;
+      this.updateWindArcherMomentum(Math.sqrt(dxMoved * dxMoved + dyMoved * dyMoved), dt);
     }
     if (this.playableCharacterDef?.passive?.id === 'knight_dedication') {
       const axis = this.input?.getAxis?.() || { x: 0, y: 0 };
@@ -5532,6 +5587,12 @@ export class Game {
     this.slideMoveActive = false;
     this.slideMoveTimer = 0;
     this.slideAfterDashWindowUntil = 0;
+    this.windArcherMomentum = 0;
+    this.windArcherMomentumStage = 1;
+    this.windArcherLastReleaseStage = 1;
+    this.windArcherLastReleaseAt = 0;
+    this.windArcherVolleyCounter = 0;
+    this.windArcherVolleyHitCounts = new Map();
     const lootQual = targetMap.lootQuality;
     this.lootSystem.setMapLootQuality(lootQual);
     this.lootSystem.setDifficulty(this.difficulty);
@@ -6601,8 +6662,18 @@ export class Game {
       effectiveCooldown *= Math.max(0.4, ratio);
     }
     if (this.playerAttackTimer > 0) return;
-    if (this.dashActive) return;
-    if (this.slideMoveActive) return;
+    const windVolleyAttack = primaryAttackType === "windVolley";
+    if (this.dashActive && !windVolleyAttack) return;
+    const slideDuration = 0.6;
+    const cancelWindowSec = slideDuration * 0.3;
+    const earlySlideWindVolley = windVolleyAttack && this.slideMoveActive && (this.slideMoveTimer || 0) > cancelWindowSec;
+    if (this.slideMoveActive) {
+      if (!earlySlideWindVolley) {
+        if ((this.slideMoveTimer || 0) > cancelWindowSec) return;
+        this.slideMoveActive = false;
+        this.slideMoveTimer = 0;
+      }
+    }
     if (this.bladeDashActive) return;
     if (this.dashStrikeState) return;
     if (this.backfireDashState) return;
@@ -6619,7 +6690,11 @@ export class Game {
     const dirY = dy / dist;
 
     this.playerAttackTimer = effectiveCooldown;
-    this.player.triggerAttackAnimation(effectiveCooldown, this.time);
+    let attackReleaseDelay = 0;
+    if (!earlySlideWindVolley) {
+      this.player.triggerAttackAnimation(effectiveCooldown, this.time);
+      attackReleaseDelay = Math.max(0, Number(this.player?.getAttackTriggerDelayForFrame?.(6)) || 0);
+    }
     this.continuousMoveTime = 0; // reset movement buildup on attack
 
     const nudge = 0;
@@ -6628,23 +6703,36 @@ export class Game {
     this.player.position.y = Math.max(wallMargin, Math.min(this.player.position.y + dirY * nudge, this.world.height - wallMargin - this.player.size));
 
     const sharedContext = {
-      px,
-      py,
       dirX,
       dirY,
       damageMultiplier: dualDamageMultiplier
     };
-    const primaryExecuted = this.executeBasicAttackByType(primaryAttackType, targetX, targetY, {
-      ...sharedContext,
-      suppressSfx: false,
-      secondary: false
-    });
-    if (dualTechniqueActive && primaryExecuted) {
-      const secondaryExecuted = this.executeBasicAttackByType(secondaryAttackType, targetX, targetY, {
-        ...sharedContext,
-        suppressSfx: true,
-        secondary: true
+    const executeOrQueueAttack = (attackType, suppressSfx, secondary) => {
+      if (attackReleaseDelay <= 0) {
+        return this.executeBasicAttackByType(attackType, targetX, targetY, {
+          ...sharedContext,
+          suppressSfx,
+          secondary
+        });
+      }
+      this.delayedFireQueue = this.delayedFireQueue || [];
+      this.delayedFireQueue.push({
+        kind: "basicAttackRelease",
+        at: this.time + attackReleaseDelay,
+        attackType,
+        targetX,
+        targetY,
+        context: {
+          ...sharedContext,
+          suppressSfx,
+          secondary
+        }
       });
+      return true;
+    };
+    const primaryExecuted = executeOrQueueAttack(primaryAttackType, false, false);
+    if (dualTechniqueActive && primaryExecuted) {
+      const secondaryExecuted = executeOrQueueAttack(secondaryAttackType, true, true);
       if (secondaryExecuted) {
         this.__pillarDualTechniqueLastCast = {
           at: this.time,
@@ -6720,6 +6808,154 @@ export class Game {
     });
   }
 
+  getWindArcherMomentumStage(momentum = this.windArcherMomentum) {
+    const value = Math.max(0, Math.min(1, Number(momentum) || 0));
+    if (value >= 0.68) return 3;
+    if (value >= 0.34) return 2;
+    return 1;
+  }
+
+  updateWindArcherMomentum(distanceMoved = 0, dt = 0) {
+    if (this.attackType !== "windVolley") {
+      this.windArcherMomentum = 0;
+      this.windArcherMomentumStage = 1;
+      if (this.player) this.player.windArcherMomentumStage = 1;
+      return;
+    }
+    const distance = Math.max(0, Number(distanceMoved) || 0);
+    const deltaTime = Math.max(0, Number(dt) || 0);
+    if (distance > 0.01) {
+      this.windArcherMomentum = Math.min(1, (this.windArcherMomentum || 0) + distance / 260);
+    } else {
+      this.windArcherMomentum = Math.max(0, (this.windArcherMomentum || 0) - deltaTime * 0.6);
+    }
+    this.windArcherMomentumStage = this.getWindArcherMomentumStage(this.windArcherMomentum);
+    if (this.player) {
+      this.player.windArcherMomentumStage = this.windArcherMomentumStage;
+      this.player.windArcherMomentum = this.windArcherMomentum;
+    }
+  }
+
+  getPlayerAttackOriginConfig(attackType, mode = "auto") {
+    const resolvedAttackType = String(attackType || "projectile");
+    const attackProfiles = {
+      projectile: { mode: "projectile", forward: 30, lift: -14, lateral: 0 },
+      windVolley: { mode: "projectile", forward: 34, lift: -14, lateral: 0 },
+      bladeBlast: { mode: "projectile", forward: 34, lift: -12, lateral: 0 },
+      backfireShot: { mode: "projectile", forward: 28, lift: -14, lateral: 0 },
+      fanStrike: { mode: "melee", forward: 44, lift: -10, lateral: 0 },
+      thrustStrike: { mode: "melee", forward: 54, lift: -10, lateral: 0 },
+      guardCombo: { mode: "melee", forward: 42, lift: -10, lateral: 0 },
+      dashStrike: { mode: "melee", forward: 36, lift: -10, lateral: 0 }
+    };
+    const defaultProfile = mode === "melee"
+      ? { mode: "melee", forward: 42, lift: -10, lateral: 0 }
+      : { mode: "projectile", forward: 30, lift: -14, lateral: 0 };
+    const baseProfile = attackProfiles[resolvedAttackType] || defaultProfile;
+    const heroOverrides = this.playableCharacterDef?.attackOriginOffsets;
+    const modeOverride = heroOverrides?.[baseProfile.mode];
+    const attackOverride = heroOverrides?.[resolvedAttackType];
+    return {
+      ...baseProfile,
+      ...(modeOverride && typeof modeOverride === "object" ? modeOverride : null),
+      ...(attackOverride && typeof attackOverride === "object" ? attackOverride : null)
+    };
+  }
+
+  resolvePlayerAttackOrigin({
+    attackType,
+    mode = "auto",
+    targetX,
+    targetY,
+    dirX,
+    dirY
+  } = {}) {
+    const centerX = (this.player?.position?.x ?? 0) + (this.player?.size ?? 0) / 2;
+    const centerY = (this.player?.position?.y ?? 0) + (this.player?.size ?? 0) / 2;
+    let aimX = Number.isFinite(dirX) ? Number(dirX) : 0;
+    let aimY = Number.isFinite(dirY) ? Number(dirY) : 0;
+    if (Math.abs(aimX) + Math.abs(aimY) < 0.0001) {
+      const dx = (Number.isFinite(targetX) ? Number(targetX) : centerX) - centerX;
+      const dy = (Number.isFinite(targetY) ? Number(targetY) : centerY) - centerY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 0.0001) {
+        aimX = dx / dist;
+        aimY = dy / dist;
+      } else {
+        const fallback = this.getPlayerMoveDirectionVector?.() || { x: 0, y: 1 };
+        aimX = Number(fallback.x) || 0;
+        aimY = Number(fallback.y) || 1;
+      }
+    } else {
+      const dist = Math.hypot(aimX, aimY) || 1;
+      aimX /= dist;
+      aimY /= dist;
+    }
+    const profile = this.getPlayerAttackOriginConfig(attackType, mode);
+    const perpendicularX = -aimY;
+    const perpendicularY = aimX;
+    const forward = Number(profile.forward) || 0;
+    const lift = Number(profile.lift) || 0;
+    const lateral = Number(profile.lateral) || 0;
+    return {
+      centerX,
+      centerY,
+      dirX: aimX,
+      dirY: aimY,
+      originX: centerX + aimX * forward + perpendicularX * lateral,
+      originY: centerY + aimY * forward + perpendicularY * lateral + lift,
+      profile
+    };
+  }
+
+  performWindVolleyAttack(targetX, targetY, context = {}) {
+    const momentum = Math.max(0, Math.min(1, Number(this.windArcherMomentum) || 0));
+    const stage = this.getWindArcherMomentumStage(momentum);
+    const configs = {
+      1: { count: 1, damageMult: 0.7, speedMult: 1.0, pierce: 0, spreadDeg: 0, trailLife: 0.14, trailMaxPoints: 6 },
+      2: { count: 2, damageMult: 0.8, speedMult: 1.15, pierce: 1, spreadDeg: 9, trailLife: 0.18, trailMaxPoints: 8 },
+      3: { count: 4, damageMult: 1.0, speedMult: 1.35, pierce: 2, spreadDeg: 18, trailLife: 0.22, trailMaxPoints: 10 }
+    };
+    const config = configs[stage] || configs[1];
+    const volleyId = ++this.windArcherVolleyCounter;
+    if (this.windArcherVolleyHitCounts.size > 4000) {
+      this.windArcherVolleyHitCounts.clear();
+    }
+    this.windArcherMomentum = 0;
+    this.windArcherMomentumStage = 1;
+    this.windArcherLastReleaseStage = stage;
+    this.windArcherLastReleaseAt = this.time;
+    if (this.player) {
+      this.player.windArcherMomentumStage = 1;
+      this.player.windArcherMomentum = 0;
+    }
+    for (let i = 0; i < config.count; i++) {
+      const spreadOffset = config.count > 1
+        ? (i - (config.count - 1) / 2) * (config.spreadDeg / Math.max(1, config.count - 1))
+        : 0;
+      this.firePlayerProjectile(targetX, targetY, config.damageMult, {
+        attackTypeOverride: "windVolley",
+        angleOffsetRad: spreadOffset * Math.PI / 180,
+        speedMultOverride: config.speedMult,
+        piercesRemainingOverride: config.pierce,
+        trailStyleOverride: stage >= 2 ? "faint_afterimage" : null,
+        trailLifeOverride: config.trailLife,
+        trailMaxPointsOverride: config.trailMaxPoints,
+        animatedSpriteOverride: getElementalShotAnimatedSprite("wind", {
+          drawWidth: stage >= 3 ? 18 : 16,
+          drawHeight: stage >= 3 ? 18 : 16
+        }),
+        projectileMetadata: {
+          windVolleyGroupId: volleyId,
+          windVolleyStage: stage,
+          windVolleySameTargetRule: true,
+          windVolleyReleaseAt: this.time
+        }
+      });
+    }
+    return true;
+  }
+
   _applyGuardComboPhaseHit({ px, py, dirX, dirY, range, coneAngle, damage, phase, reinforced, attackType }) {
     this._spawnMeleeAttackLunge(dirX, dirY, 20, 0.1);
     this._spawnGuardComboPhaseVfx(phase.name, px, py, dirX, dirY, range);
@@ -6778,22 +7014,36 @@ export class Game {
 
   executeBasicAttackByType(attackType, targetX, targetY, context = {}) {
     const resolvedAttackType = this.sanitizeBasicAttackType(attackType, this.attackType || "projectile");
-    const px = Number.isFinite(context?.px) ? context.px : (this.player.position.x + this.player.size / 2);
-    const py = Number.isFinite(context?.py) ? context.py : (this.player.position.y + this.player.size / 2);
+    const centerX = this.player.position.x + this.player.size / 2;
+    const centerY = this.player.position.y + this.player.size / 2;
     let dirX = Number.isFinite(context?.dirX) ? context.dirX : 0;
     let dirY = Number.isFinite(context?.dirY) ? context.dirY : 0;
     if (!Number.isFinite(dirX) || !Number.isFinite(dirY) || (Math.abs(dirX) + Math.abs(dirY) === 0)) {
-      const dx = targetX - px;
-      const dy = targetY - py;
+      const dx = targetX - centerX;
+      const dy = targetY - centerY;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
       dirX = dx / dist;
       dirY = dy / dist;
     }
+    const attackOrigin = this.resolvePlayerAttackOrigin({
+      attackType: resolvedAttackType,
+      targetX,
+      targetY,
+      dirX,
+      dirY
+    });
+    const px = Number.isFinite(context?.px) ? context.px : attackOrigin.originX;
+    const py = Number.isFinite(context?.py) ? context.py : attackOrigin.originY;
     const scale = Math.max(0.01, Number(context?.damageMultiplier) || 1);
     const attackMults = this.getSkillMultipliersFor(resolvedAttackType);
     const attackDamageMult = (attackMults.damageMult || 1) * scale;
     const suppressSfx = context?.suppressSfx === true;
     const projectileEvolution = resolvedAttackType === "projectile" ? this.getProjectileShotEvolutionOverrides() : null;
+
+    if (resolvedAttackType === "windVolley") {
+      if (!suppressSfx) playSfx("playerAttack");
+      return this.performWindVolleyAttack(targetX, targetY, { ...context, px, py, dirX, dirY });
+    }
 
     if (resolvedAttackType === "projectile") {
       if (this.hasAttackPenalty("misfire") && Math.random() < 0.1) return false;
@@ -6901,16 +7151,15 @@ export class Game {
       const rangeMult = reinforced ? 1.28 : 1;
       const angleBonus = reinforced ? 10 : 0;
       const phaseDefs = [
-        { name: "pommel", range: 170, angle: 42, damageMult: 0.78, stunDuration: 0.5, knockback: 0, hitFrame: 7 },
-        { name: "heavy1", range: 220, angle: 104, damageMult: 1.7, stunDuration: 0.2, knockback: 5, hitFrame: 5 },
-        { name: "quick", range: 220, angle: 62, damageMult: 0.7, stunDuration: 0.2, knockback: 5, echoDelay: 0.1, echoDuration: 0.2, hitFrame: 6 },
-        { name: "heavy2", range: 200, angle: 58, damageMult: 1.35, stunDuration: 0.2, knockback: 170, hitFrame: 6 }
+        { name: "pommel", range: 170, angle: 42, damageMult: 0.78, stunDuration: 0.5, knockback: 0 },
+        { name: "heavy1", range: 220, angle: 104, damageMult: 1.7, stunDuration: 0.2, knockback: 5 },
+        { name: "quick", range: 220, angle: 62, damageMult: 0.7, stunDuration: 0.2, knockback: 5, echoDelay: 0.1, echoDuration: 0.2 },
+        { name: "heavy2", range: 200, angle: 58, damageMult: 1.35, stunDuration: 0.2, knockback: 170 }
       ];
       const phase = phaseDefs[comboPhase] || phaseDefs[0];
       const range = Math.round(phase.range * rangeMult);
       const coneAngle = phase.angle + angleBonus;
       const damage = Math.max(1, Math.round(attackDamage * phase.damageMult));
-      const triggerAt = Math.max(0, this.player?.getAttackTriggerDelayForFrame?.(phase.hitFrame) || 0);
       this.skillEffects.push({
         type: "guardComboPhaseHit",
         px,
@@ -6927,9 +7176,9 @@ export class Game {
         },
         reinforced,
         attackType: resolvedAttackType,
-        triggerAt,
+        triggerAt: 0,
         t: 0,
-        duration: Math.max(triggerAt + 0.05, phase.echoDuration || 0.25),
+        duration: Math.max(0.05, phase.echoDuration || 0.25),
         triggered: false
       });
       if (phase.name === "quick" && phase.echoDelay != null) {
@@ -6942,9 +7191,9 @@ export class Game {
           range,
           coneAngle,
           damage,
-          triggerAt: triggerAt + phase.echoDelay,
+          triggerAt: phase.echoDelay,
           t: 0,
-          duration: Math.max(triggerAt + (phase.echoDuration || 0.2), triggerAt + phase.echoDelay + 0.05)
+          duration: Math.max((phase.echoDuration || 0.2), phase.echoDelay + 0.05)
         });
       }
       return true;
@@ -7070,8 +7319,16 @@ export class Game {
     if (resolvedAttackType === "backfireShot") {
       if (context?.secondary && (this.backfireDashState || this.dashStrikeState)) return false;
       const backDist = this.player.size * 1.5;
-      const projX = px - PLAYER_PROJECTILE_SIZE / 2;
-      const projY = py - PLAYER_PROJECTILE_SIZE / 2;
+      const projectileOrigin = this.resolvePlayerAttackOrigin({
+        attackType: resolvedAttackType,
+        mode: "projectile",
+        targetX,
+        targetY,
+        dirX,
+        dirY
+      });
+      const projX = projectileOrigin.originX - PLAYER_PROJECTILE_SIZE / 2;
+      const projY = projectileOrigin.originY - PLAYER_PROJECTILE_SIZE / 2;
       const speedMult = 1 + this.getAttackUpgradeValue("projectileSpeed") - this.getAttackPenaltyValue("slowShot");
       const maxDistMult = 1 + this.getAttackUpgradeValue("rangeBoost") - this.getAttackPenaltyValue("reducedRange");
       const hasPiercingSource = (this.hasUpgradeCard("piercing") || this.hasAttackUpgrade("piercing"));
@@ -7127,13 +7384,21 @@ export class Game {
     const damagePerShot = Math.max(1, Math.floor(baseDamage / (countPerWave * 2)));
     const centerX = this.player.position.x + this.player.size / 2;
     const centerY = this.player.position.y + this.player.size / 2;
-    const px = centerX - rectW / 2;
-    const py = centerY - rectH / 2;
     let dirX = targetX - centerX;
     let dirY = targetY - centerY;
     const dist = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
     dirX /= dist;
     dirY /= dist;
+    const attackOrigin = this.resolvePlayerAttackOrigin({
+      attackType: "projectile",
+      mode: "projectile",
+      targetX,
+      targetY,
+      dirX,
+      dirY
+    });
+    const px = attackOrigin.originX - rectW / 2;
+    const py = attackOrigin.originY - rectH / 2;
     const spreadRad = (spreadDeg * Math.PI) / 180;
     const spawnWave = (sx, sy, dX, dY) => {
       for (let i = 0; i < countPerWave; i++) {
@@ -7444,8 +7709,6 @@ export class Game {
   }
 
   firePlayerProjectile(targetX, targetY, damageMult = 1, options = {}) {
-    const px = this.player.position.x + this.player.size / 2 - PLAYER_PROJECTILE_SIZE / 2;
-    const py = this.player.position.y + this.player.size / 2 - PLAYER_PROJECTILE_SIZE / 2;
     if (this.bloodAmmoActive && !options.fromSkill) {
       const cost = Math.max(1, Math.round((this.currentStats?.maxHealth ?? 100) * 0.01));
       if (this.currentHealth > cost) {
@@ -7503,6 +7766,16 @@ export class Game {
       dirX = odx;
       dirY = ody;
     }
+    const projectileOrigin = this.resolvePlayerAttackOrigin({
+      attackType: options?.attackTypeOverride || this.attackType,
+      mode: "projectile",
+      targetX,
+      targetY,
+      dirX,
+      dirY
+    });
+    const px = projectileOrigin.originX - PLAYER_PROJECTILE_SIZE / 2;
+    const py = projectileOrigin.originY - PLAYER_PROJECTILE_SIZE / 2;
 
     const isMachineGunBurst = evo?.fireMode === "BURST";
     let count = isMachineGunBurst ? 1 : this.getProjectileCount();
@@ -7521,6 +7794,7 @@ export class Game {
 
     let speedMult = 1 + (attackTypeForDamage === "projectile" ? this.getAttackUpgradeValue("projectile_speed") : this.getAttackUpgradeValue("projectileSpeed")) - this.getAttackPenaltyValue("slowShot");
     if (evo?.projectileSpeedMult != null) speedMult *= evo.projectileSpeedMult;
+    if (Number.isFinite(options?.speedMultOverride)) speedMult *= Math.max(0, Number(options.speedMultOverride));
 
     const maxDistMult = 1 + (attackTypeForDamage === "projectile" ? this.getAttackUpgradeValue("range_boost") : this.getAttackUpgradeValue("rangeBoost")) - this.getAttackPenaltyValue("reducedRange");
     const maxDistAbs = evo?.infiniteRange ? Number.POSITIVE_INFINITY : null;
@@ -7530,6 +7804,9 @@ export class Game {
     let piercesRemaining = pierceEnabledFromEvo
       ? (evo.pierceMaxTargets ?? Number.POSITIVE_INFINITY)
       : ((hasPiercingSource ? 3 : 2) + equipmentPierce);
+    if (Number.isFinite(options?.piercesRemainingOverride)) {
+      piercesRemaining = Math.max(0, Math.floor(Number(options.piercesRemainingOverride))) + equipmentPierce;
+    }
     const fragileShot = this.hasAttackPenalty("fragileShot");
     if (fragileShot) {
       // Sniper Shot uses Infinity, so this remains Infinity.
@@ -7630,7 +7907,7 @@ export class Game {
         : (evo?.infiniteRange ? Number.POSITIVE_INFINITY : (PLAYER_PROJECTILE_MAX_DIST * maxDistMult));
       if (ghost) maxDist = Number.isFinite(maxDist) ? maxDist * 3 : Number.POSITIVE_INFINITY;
       const durationMs = Number.isFinite(maxDist) ? Math.max(100, (maxDist / speed) * 1000) : 10000;
-      let maxTotalTargetsBase = piercesRemaining === Number.POSITIVE_INFINITY ? 999999 : Math.max(1, Math.min(999999, piercesRemaining));
+      let maxTotalTargetsBase = piercesRemaining === Number.POSITIVE_INFINITY ? 999999 : Math.max(1, Math.min(999999, piercesRemaining + 1));
       if (attackTypeForDamage === "projectile" && this.elementalState === "wind") {
         maxTotalTargetsBase = 999999;
       }
@@ -7653,6 +7930,7 @@ export class Game {
         const shotElement = extra.elementalState ?? this.elementalState;
         const isWind = attackTypeForDamage === "projectile" && shotElement === "wind";
         const isLightning = attackTypeForDamage === "projectile" && shotElement === "lightning";
+        const visualElement = attackTypeForDamage === "windVolley" ? "wind" : shotElement;
         let moveSpeedShot = speed;
         if (attackTypeForDamage === "projectile" && shotElement === "lightning") {
           const lightningSpeedMult = evo?.projectileMods?.lightningSpeedMult ?? 1;
@@ -7663,25 +7941,31 @@ export class Game {
         if (attackTypeForDamage === "projectile" && shotElement === "lightning") maxTotalShot = Math.min(999999, maxTotalShot + 1);
         const useHomingForShot = seekerHoming || this.hasUpgradeCard("homing") || seeking;
         const homingTarget = useHomingForShot ? this.getNearestEnemy(centerX, centerY, 800) : null;
-        const projectileAnimatedSprite = attackTypeForDamage === "projectile"
+        const projectileAnimatedSprite = options.animatedSpriteOverride || (attackTypeForDamage === "projectile"
           ? getElementalShotAnimatedSprite(shotElement)
           : (attackTypeForDamage === "bladeBlast"
             ? getBladeBlastProjectileAnimatedSprite({
               drawWidth: 16,
               drawHeight: 16
             })
-            : null);
+            : null));
+        const shotMetadata = options.projectileMetadata ? { ...options.projectileMetadata } : null;
+        const trailStyle = options.trailStyleOverride ?? (attackTypeForDamage === "bladeBlast" ? "faint_afterimage" : null);
+        const trailEnabled = !!trailStyle;
         if (isWind) {
           const angleRad = Math.atan2(dy, dx);
           const visualPayload = {
             kind: 'projectile',
-            elementalState: 'wind',
+            elementalState: visualElement,
             shape: 'rect',
             width: windRectW,
             height: windRectH,
             animatedSprite: projectileAnimatedSprite,
             alpha: 0.32,
-            coreAlpha: 0.7
+            coreAlpha: 0.7,
+            trailEnabled,
+            trailLife: Number.isFinite(options.trailLifeOverride) ? options.trailLifeOverride : undefined,
+            trailMaxPoints: Number.isFinite(options.trailMaxPointsOverride) ? options.trailMaxPointsOverride : undefined
           };
           this.createHitboxAttack(PLAYER_ELEMENTAL_WIND_RECT_DEF, {
             x: centerX - windRectW / 2,
@@ -7699,7 +7983,9 @@ export class Game {
             maxTotalTargets: maxTotalShot,
             faction: 'player',
             ownerId: 'player',
+            attackType: attackTypeForDamage,
             elementalState: 'wind',
+            ...(shotMetadata || {}),
             ...extra
           }, {
             visual: visualPayload
@@ -7720,22 +8006,24 @@ export class Game {
             maxTotalTargets: maxTotalShot,
             faction: 'player',
             ownerId: 'player',
+            attackType: attackTypeForDamage,
             ...(useHomingForShot && homingTarget ? { moveMode: 'homing', targetId: homingTarget.id, homingStrength: 2.5 } : {}),
             ...(sniperFalloff ? { sniperPierceFalloff: sniperFalloff } : {}),
             ...(attackTypeForDamage === "projectile" ? { elementalState: shotElement } : {}),
+            ...(shotMetadata || {}),
             ...extra
           }, {
             visual: {
               kind: 'projectile',
-              elementalState: shotElement,
+              elementalState: visualElement,
               shape: 'circle',
               radius: r,
               animatedSprite: projectileAnimatedSprite,
-              alpha: shotElement === 'wind' ? 0.35 : 1,
-              trailEnabled: attackTypeForDamage === "bladeBlast",
-              trailLife: attackTypeForDamage === "bladeBlast" ? 0.18 : undefined,
+              alpha: visualElement === 'wind' ? 0.35 : 1,
+              trailEnabled,
+              trailLife: Number.isFinite(options.trailLifeOverride) ? options.trailLifeOverride : (attackTypeForDamage === "bladeBlast" ? 0.18 : undefined),
               trailStep: attackTypeForDamage === "bladeBlast" ? 5 : undefined,
-              trailMaxPoints: attackTypeForDamage === "bladeBlast" ? 10 : undefined
+              trailMaxPoints: Number.isFinite(options.trailMaxPointsOverride) ? options.trailMaxPointsOverride : (attackTypeForDamage === "bladeBlast" ? 10 : undefined)
             }
           });
         }
@@ -7813,23 +8101,26 @@ export class Game {
         canSteer,
         sniperPierceFalloff: sniperFalloff,
         forceHoming: seekerHoming,
-        trailStyle: attackTypeForDamage === "bladeBlast" ? "faint_afterimage" : null,
-        trailLife: attackTypeForDamage === "bladeBlast" ? 0.18 : undefined,
-        trailMaxPoints: attackTypeForDamage === "bladeBlast" ? 10 : undefined,
-        animatedSprite: attackTypeForDamage === "projectile"
+        trailStyle: options.trailStyleOverride ?? (attackTypeForDamage === "bladeBlast" ? "faint_afterimage" : null),
+        trailLife: Number.isFinite(options.trailLifeOverride) ? options.trailLifeOverride : (attackTypeForDamage === "bladeBlast" ? 0.18 : undefined),
+        trailMaxPoints: Number.isFinite(options.trailMaxPointsOverride) ? options.trailMaxPointsOverride : (attackTypeForDamage === "bladeBlast" ? 10 : undefined),
+        animatedSprite: options.animatedSpriteOverride || (attackTypeForDamage === "projectile"
           ? getElementalShotAnimatedSprite(entityElement)
           : (attackTypeForDamage === "bladeBlast"
             ? getBladeBlastProjectileAnimatedSprite({
               drawWidth: 16,
               drawHeight: 16
             })
-            : null),
+            : null)),
         ...(attackTypeForDamage === "projectile" && entityElement === "lightning" ? this.getLightningProjectileZigzagProfile() : {}),
         ...(attackTypeForDamage === "projectile" ? { elementalState: entityElement } : {})
       });
       proj.attackType = attackTypeForDamage;
       proj.isCrit = !!isCrit;
       proj.maxLifetime = seekerHoming ? 3 : 2;
+      if (options.projectileMetadata && typeof options.projectileMetadata === "object") {
+        Object.assign(proj, options.projectileMetadata);
+      }
       this.playerProjectiles.push(proj);
     }
 
@@ -7921,6 +8212,14 @@ export class Game {
         proj.hitEnemyIds.add(enemy.id);
         const damageMult = proj.currentDamageMult != null ? proj.currentDamageMult : 1;
         let useDmg = Math.round(dmg * damageMult);
+        if (proj.attackType === "windVolley" && proj.windVolleySameTargetRule && enemy?.id != null && proj.windVolleyGroupId != null) {
+          const key = `${proj.windVolleyGroupId}:${enemy.id}`;
+          const priorHits = this.windArcherVolleyHitCounts.get(key) || 0;
+          if (priorHits > 0) {
+            useDmg = Math.max(1, Math.round((this.computePlayerDamage?.(null) || 1) * 0.2));
+          }
+          this.windArcherVolleyHitCounts.set(key, priorHits + 1);
+        }
         if (this.hasAttackUpgrade("momentum")) {
           useDmg = Math.round(useDmg * (1 + Math.min(1, proj.flightTime) * 0.1));
         }
@@ -8740,7 +9039,9 @@ export class Game {
           const resolvedTargetY = item.followCursor && this.lastMouseWorld
             ? this.lastMouseWorld.y
             : item.targetY;
-          if (item.type === "meteor") {
+          if (item.kind === "basicAttackRelease") {
+            this.executeBasicAttackByType(item.attackType, resolvedTargetX, resolvedTargetY, item.context || {});
+          } else if (item.type === "meteor") {
             const attackFlatBonus = getSkillFlatDamageBonus(this, "projectile");
             const evo = this.getProjectileShotEvolutionOverrides();
             const dmgMult = evo?.damageMult != null ? evo.damageMult : 1;
@@ -9898,6 +10199,17 @@ export class Game {
               this.cuteSpiritCompanion.charge = Math.min(this.cuteSpiritCompanion.charge + 1, 10);
             }
           }
+        }
+      }
+      if (resolvedSkillId === "wind_archer_retreat_volley" && opts.skillInstanceId != null) {
+        this.windArcherRetreatVolleyRefundedCasts = this.windArcherRetreatVolleyRefundedCasts || new Set();
+        if (!this.windArcherRetreatVolleyRefundedCasts.has(opts.skillInstanceId)) {
+          this.windArcherRetreatVolleyRefundedCasts.add(opts.skillInstanceId);
+          this.dashCharges = Math.min(this.dashMaxCharges ?? 0, (this.dashCharges || 0) + 1);
+          this.updateDashUI?.();
+          const px = this.player.position.x + this.player.size / 2;
+          const py = this.player.position.y + this.player.size / 2;
+          this.addFloatingText(px, py, "+1 Dash", "heal");
         }
       }
       this.applyTalentOnEnemyKill(enemy);
@@ -12251,7 +12563,8 @@ export class Game {
     const castTargetX = this.lastMouseWorld?.x;
     const castTargetY = this.lastMouseWorld?.y;
     if (!options.triggered && typeof this.player?.beginCastAnimation === "function") {
-      this.player.beginCastAnimation(0.7, castTargetX, castTargetY);
+      const castDuration = skillId === "wind_archer_retreat_volley" ? 0.12 : 0.7;
+      this.player.beginCastAnimation(castDuration, castTargetX, castTargetY);
     }
     const px = this.player.position.x + this.player.size / 2;
     const py = this.player.position.y + this.player.size / 2;
@@ -12282,7 +12595,6 @@ export class Game {
     const skillMults = this.getSkillMultipliersFor(skillId);
     const effectPowerMult = skillMults.effectPowerMult || 1;
     const attackSpeedMult = skillMults.attackSpeedMult || 1;
-
     const cursor = this.lastMouseWorld || { x: NaN, y: NaN };
     if (typeof console !== "undefined" && console.log) {
       console.log(
@@ -12356,12 +12668,25 @@ export class Game {
       }
     }
 
+    const resolveSkillProjectileOrigin = (dirX, dirY) => {
+      const dist = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
+      return this.resolvePlayerAttackOrigin({
+        attackType: skillId,
+        mode: "projectile",
+        targetX: px + (dirX / dist) * 10,
+        targetY: py + (dirY / dist) * 10,
+        dirX: dirX / dist,
+        dirY: dirY / dist
+      });
+    };
+
     const pushFireball = (dirX, dirY, mult, modList) => {
       const dist = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
       const speed = 180;
+      const launchOrigin = resolveSkillProjectileOrigin(dirX, dirY);
       const eff = {
         type: "fireball",
-        x: px, y: py, vx: (dirX / dist) * speed, vy: (dirY / dist) * speed,
+        x: launchOrigin.originX, y: launchOrigin.originY, vx: (dirX / dist) * speed, vy: (dirY / dist) * speed,
         mult: mult * chargeMult, radius: 60, t: 0, mods: modList || mods,
         maxRange: 360, distanceTraveled: 0,
         animatedSprite: getSkillEffectAnimatedSprite('fireball'),
@@ -12371,8 +12696,8 @@ export class Game {
         eff.phase = "orbit";
         eff.orbitT = 0;
         eff.orbitDuration = 3;
-        eff.px0 = px;
-        eff.py0 = py;
+        eff.px0 = launchOrigin.originX;
+        eff.py0 = launchOrigin.originY;
       }
       eff.bouncesLeft = (modList && modList.includes("bouncing")) ? 3 : 0;
       this.skillEffects.push(eff);
@@ -12381,9 +12706,10 @@ export class Game {
     const pushIceShard = (dirX, dirY, mult, modList) => {
       const dist = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
       const speed = 400;
+      const launchOrigin = resolveSkillProjectileOrigin(dirX, dirY);
       const eff = {
         type: "iceShard",
-        x: px, y: py, vx: (dirX / dist) * speed, vy: (dirY / dist) * speed,
+        x: launchOrigin.originX, y: launchOrigin.originY, vx: (dirX / dist) * speed, vy: (dirY / dist) * speed,
         mult: mult * chargeMult, pierces: 5, t: 0, mods: modList || mods,
         maxRange: 600, distanceTraveled: 0,
         animatedSprite: getSkillEffectAnimatedSprite('iceShard'),
@@ -12393,8 +12719,8 @@ export class Game {
         eff.phase = "orbit";
         eff.orbitT = 0;
         eff.orbitDuration = 3;
-        eff.px0 = px;
-        eff.py0 = py;
+        eff.px0 = launchOrigin.originX;
+        eff.py0 = launchOrigin.originY;
       }
       eff.bouncesLeft = (modList && modList.includes("bouncing")) ? 3 : 0;
       this.skillEffects.push(eff);
@@ -12436,6 +12762,7 @@ export class Game {
       if (target) {
         const tx1 = target.position.x + target.size / 2;
         const ty1 = target.position.y + target.size / 2;
+        const launchOrigin = resolveSkillProjectileOrigin(tx1 - px, ty1 - py);
         let dmg = this.computeSkillDamage(target, 1, slot, { sacrificeMult, skillId, skillMults, ringProcDamageMult });
         this.dealDamageToEnemy(target, dmg, { isSkill: true, skillSlot: slot, modList: mods, triggeredCast, allowTriggeredProcs });
         const chain = this.getNearestEnemy(tx1, ty1, 120, target);
@@ -12446,7 +12773,7 @@ export class Game {
         }
         this.skillEffects.push({
           type: "lightningBolt",
-          fromX: px, fromY: py, toX: tx1, toY: ty1, chain: chainPos,
+          fromX: launchOrigin.originX, fromY: launchOrigin.originY, toX: tx1, toY: ty1, chain: chainPos,
           t: 0, duration: 0.2
         });
       }
@@ -12503,9 +12830,10 @@ export class Game {
       this.damageSkillsUsedThisRun.add("lightningSpear");
       const dx = tx - px; const dy = ty - py;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const launchOrigin = resolveSkillProjectileOrigin(dx, dy);
       this.skillEffects.push({
         type: "lightningSpear",
-        x: px, y: py, vx: (dx / dist) * 600, vy: (dy / dist) * 600,
+        x: launchOrigin.originX, y: launchOrigin.originY, vx: (dx / dist) * 600, vy: (dy / dist) * 600,
         mult: 1.2, t: 0, chargeTime: 0.5, stun: 1 * effectPowerMult,
         slot, modList: mods, sacrificeMult, skillId, skillMults
       });
@@ -12568,9 +12896,10 @@ export class Game {
       const dx = tx - px;
       const dy = ty - py;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const launchOrigin = resolveSkillProjectileOrigin(dx, dy);
       this.skillEffects.push({
         type: "spinningScythe",
-        x: px, y: py, dirX: dx / dist, dirY: dy / dist,
+        x: launchOrigin.originX, y: launchOrigin.originY, dirX: dx / dist, dirY: dy / dist,
         t: 0, maxRange: 200, phase: "out", distanceTraveled: 0, speed: 280,
         mult: 1, lifestealPct: 0.1, hitIds: new Set(),
         slot, modList: mods, sacrificeMult, skillId, skillMults
@@ -12645,9 +12974,10 @@ export class Game {
       const dx = tx - px;
       const dy = ty - py;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const launchOrigin = resolveSkillProjectileOrigin(dx, dy);
       this.skillEffects.push({
         type: "hunterShot",
-        x: px, y: py, vx: (dx / dist) * 420, vy: (dy / dist) * 420,
+        x: launchOrigin.originX, y: launchOrigin.originY, vx: (dx / dist) * 420, vy: (dy / dist) * 420,
         t: 0, maxRange: 500, distanceTraveled: 0, mult: 1, homing: true,
         slot, modList: mods, sacrificeMult, skillId, skillMults
       });
@@ -12668,9 +12998,10 @@ export class Game {
       const dx = tx - px;
       const dy = ty - py;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const launchOrigin = resolveSkillProjectileOrigin(dx, dy);
       this.skillEffects.push({
         type: "homingSkull",
-        x: px, y: py, vx: (dx / dist) * 350, vy: (dy / dist) * 350,
+        x: launchOrigin.originX, y: launchOrigin.originY, vx: (dx / dist) * 350, vy: (dy / dist) * 350,
         t: 0, maxRange: 450, distanceTraveled: 0, mult: 0.9, homing: true,
         slot, modList: mods, sacrificeMult, skillId, skillMults
       });
@@ -12892,6 +13223,54 @@ export class Game {
         this.refreshSkillCooldownSlot(pick.slot, pick.skillId, "dark_mage_blood_refresh");
       }
       this.skillEffects.push({ type: "darkMageBloodRefresh", x: px, y: py, t: 0, duration: 0.3 });
+    } else if (skillId === "wind_archer_retreat_volley") {
+      this.damageSkillsUsedThisRun.add("wind_archer_retreat_volley");
+      this.windArcherRetreatVolleyCastCounter = (this.windArcherRetreatVolleyCastCounter || 0) + 1;
+      this.windArcherRetreatVolleyRefundedCasts = this.windArcherRetreatVolleyRefundedCasts || new Set();
+      if (this.windArcherRetreatVolleyRefundedCasts.size > 128) {
+        this.windArcherRetreatVolleyRefundedCasts.clear();
+      }
+      const dx = tx - px;
+      const dy = ty - py;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const dirX = dx / dist;
+      const dirY = dy / dist;
+      const empowered = (this.dashCharges || 0) > 0;
+      if (empowered) {
+        this.dashCharges = Math.max(0, (this.dashCharges || 0) - 1);
+        this.updateDashUI?.();
+      }
+      const retreatVolleyBaseSpeed = PLAYER_PROJECTILE_SPEED * 1.15;
+      this.skillEffects.push({
+        type: "retreatVolley",
+        x: px,
+        y: py,
+        dirX,
+        dirY,
+        t: 0,
+        duration: 0.16,
+        releaseTime: 0.12,
+        jumpDistance: empowered ? 185 : 140,
+        jumpDuration: 0.16,
+        arrowCount: 5,
+        spreadDeg: 24,
+        mult: empowered ? 0.85 : 0.55,
+        projectileSpeed: retreatVolleyBaseSpeed * (empowered ? 1.35 : 1.2),
+        projectileRange: 520,
+        pierceCount: empowered ? 1 : 0,
+        slowMult: 0.75,
+        slowDuration: 2,
+        explosionRadius: 52,
+        explosionMult: 0.35,
+        castId: this.windArcherRetreatVolleyCastCounter,
+        explodedTargetIds: new Set(),
+        refunded: false,
+        slot,
+        modList: mods,
+        sacrificeMult,
+        skillId,
+        skillMults
+      });
     } else if (skillId === "death_knight_summon_lich") {
       this.damageSkillsUsedThisRun.add("death_knight_summon_lich");
       if (!this.deathKnightLich) {
@@ -14065,10 +14444,20 @@ export class Game {
         if (Math.floor(eff.t * shotsPerSecond) > Math.floor((eff.t - dt) * shotsPerSecond)) {
           const target = this.getNearestEnemy(this.player.position.x + this.player.size / 2, this.player.position.y + this.player.size / 2, 500);
           if (target) {
+            const targetX = target.position.x + target.size / 2;
+            const targetY = target.position.y + target.size / 2;
+            const launchOrigin = this.resolvePlayerAttackOrigin({
+              attackType: eff.skillId || "rapidFire",
+              mode: "projectile",
+              targetX,
+              targetY
+            });
             const dmg = this.computeSkillDamage(target, 1, eff.slot, { sacrificeMult: eff.sacrificeMult, skillId: eff.skillId, skillMults: eff.skillMults, ringProcDamageMult: eff.ringProcDamageMult });
             this.dealDamageToEnemy(target, dmg, { isSkill: true, skillSlot: eff.slot, modList: eff.modList, triggeredCast: !!eff.triggeredCast, allowTriggeredProcs: eff.allowTriggeredProcs === true });
-            eff.lastTargetX = target.position.x + target.size / 2;
-            eff.lastTargetY = target.position.y + target.size / 2;
+            eff.lastShotOriginX = launchOrigin.originX;
+            eff.lastShotOriginY = launchOrigin.originY;
+            eff.lastTargetX = targetX;
+            eff.lastTargetY = targetY;
             eff.lastShotTime = eff.t;
           }
         }
@@ -15113,14 +15502,13 @@ export class Game {
           drawBolt(eff.toX, eff.toY, eff.chain.x, eff.chain.y);
         }
       } else if (eff.type === "rapidFire") {
-        const px = this.player.position.x + this.player.size / 2;
-        const py = this.player.position.y + this.player.size / 2;
         const pulse = 0.3 + 0.2 * Math.sin(this.time * 12);
         ctx.strokeStyle = `rgba(253, 224, 71, ${pulse})`;
         ctx.lineWidth = 3;
         ctx.strokeRect(this.player.position.x + ox - 4, this.player.position.y + oy - 4, this.player.size + 8, this.player.size + 8);
         if (eff.lastTargetX != null && eff.t - eff.lastShotTime < 0.15) {
-          const sx0 = px + ox; const sy0 = py + oy;
+          const sx0 = (eff.lastShotOriginX ?? (this.player.position.x + this.player.size / 2)) + ox;
+          const sy0 = (eff.lastShotOriginY ?? (this.player.position.y + this.player.size / 2)) + oy;
           const sx1 = eff.lastTargetX + ox; const sy1 = eff.lastTargetY + oy;
           const fade = 1 - (eff.t - eff.lastShotTime) / 0.15;
           ctx.strokeStyle = `rgba(253, 224, 71, ${0.8 * fade})`;
@@ -18944,6 +19332,11 @@ export class Game {
       if (statPayload?.stats && typeof statPayload.stats === "object") {
         Object.assign(stats, statPayload.stats);
       }
+    }
+    this.windArcherPassiveDefenseBase = Math.max(0, Math.round(Number(stats.defense) || 0));
+    const liveDefenseBonus = Math.max(0, Math.min(12, Math.floor(Number(this.windArcherPassiveDefenseBonus) || 0)));
+    if (this.playableCharacterDef?.passive?.id === 'wind_archer_slipstream_guard') {
+      stats.defense = this.windArcherPassiveDefenseBase + liveDefenseBonus;
     }
     stats.hazardDamageReduction = Math.max(
       0,

@@ -98,6 +98,9 @@ export class Player {
     this.attackStateKeys = ['attack'];
     this.attackStateCycleIndex = 0;
     this.currentAttackType = options?.attackType || null;
+    this.windArcherMomentum = 0;
+    this.windArcherMomentumStage = 1;
+    this.windArcherLastReleaseStage = 1;
     
     this.spriteSheet = {
       frameWidth: 512,
@@ -603,10 +606,15 @@ export class Player {
     const t = state.t;
     const q1 = 0.20 * d;
     const q2 = 0.55 * d;
-    const midMult = 0.7;
+    const midMult = this.characterId === 'wind_archer' ? 0.85 : 0.7;
     if (t <= q1) return 1 - (1 - midMult) * (t / q1);
     if (t < q2) return midMult;
     return midMult + (1 - midMult) * (t - q2) / (d - q2);
+  }
+
+  getCastMoveMult() {
+    if (!this.castState?.active) return 1.0;
+    return this.characterId === 'wind_archer' ? 0.75 : 0.5;
   }
   
   /**
@@ -1597,7 +1605,7 @@ export class Player {
     // Compute movement with attack slowdown multiplier
     const moveMult = this.getAttackMoveMult();
     const sprintMult = this.isSprinting ? 1.3 : 1.0;
-    const castMoveMult = this.castState?.active ? 0.5 : 1.0;
+    const castMoveMult = this.getCastMoveMult();
     const turnMoveMult = this.turnState?.active ? this.turn180MoveMult : 1.0;
     const effectiveSpeed = this.speed * moveMult * sprintMult * castMoveMult * turnMoveMult;
     const dx = axis.x * effectiveSpeed * dt;

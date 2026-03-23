@@ -183,6 +183,11 @@ export function applyGameStatsMixin(Game) {
         stats.defense = Math.round((stats.defense || 0) * (pillarStatMods.defenseMultiplier || 1) + (pillarStatMods.defenseFlat || 0));
         stats.speed = Math.round((stats.speed || 0) * (pillarStatMods.moveSpeedMultiplier || 1) + (pillarStatMods.moveSpeedFlat || 0));
       }
+      this.windArcherPassiveDefenseBase = Math.max(0, Math.round(Number(stats.defense) || 0));
+      const liveDefenseBonus = Math.max(0, Math.min(12, Math.floor(Number(this.windArcherPassiveDefenseBonus) || 0)));
+      if (this.playableCharacterDef?.passive?.id === 'wind_archer_slipstream_guard') {
+        stats.defense = this.windArcherPassiveDefenseBase + liveDefenseBonus;
+      }
       stats.hazardDamageReduction = Math.max(
         0,
         Math.min(0.75, Number(stats.hazardDamageReduction) || 0)

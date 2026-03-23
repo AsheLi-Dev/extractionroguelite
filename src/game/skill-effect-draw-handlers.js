@@ -206,11 +206,70 @@ function drawElementMageArt(_game, ctx, eff, ox, oy) {
   }
 }
 
+function drawRetreatVolley(_game, ctx, eff, ox, oy) {
+  const sx = (Number(eff?.x) || 0) + ox;
+  const sy = (Number(eff?.y) || 0) + oy;
+  const fade = Math.max(0, 1 - (Number(eff?.t) || 0) / Math.max(0.001, Number(eff?.duration) || 0.16));
+  const dirX = -(Number(eff?.dirX) || 0);
+  const dirY = -(Number(eff?.dirY) || 0);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.strokeStyle = `rgba(110, 231, 183, ${0.35 * fade})`;
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.lineTo(sx + dirX * 46, sy + dirY * 46);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRetreatVolleyArrow(_game, ctx, eff, ox, oy) {
+  if (drawAnimatedSkillProjectile(ctx, eff, ox, oy)) return;
+  const sx = (Number(eff?.x) || 0) + ox;
+  const sy = (Number(eff?.y) || 0) + oy;
+  const angle = Math.atan2(Number(eff?.vy) || 0, Number(eff?.vx) || 1);
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(angle);
+  ctx.strokeStyle = "rgba(167, 243, 208, 0.9)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-14, 0);
+  ctx.lineTo(12, 0);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(110, 231, 183, 0.45)";
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(-20, 0);
+  ctx.lineTo(4, 0);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRetreatVolleyExplosion(_game, ctx, eff, ox, oy) {
+  const sx = (Number(eff?.x) || 0) + ox;
+  const sy = (Number(eff?.y) || 0) + oy;
+  const progress = Math.max(0, Math.min(1, (Number(eff?.t) || 0) / Math.max(0.001, Number(eff?.duration) || 0.18)));
+  const radius = (Number(eff?.radius) || 52) * progress;
+  const alpha = Math.max(0, 1 - progress);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.strokeStyle = `rgba(134, 239, 172, ${0.85 * alpha})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 export const SKILL_EFFECT_DRAW_HANDLERS = {
   fireball: drawFireball,
   iceShard: drawIceShard,
   animatedSpriteImpact: drawAnimatedSpriteImpact,
   elementMageArt: drawElementMageArt,
+  retreatVolley: drawRetreatVolley,
+  retreatVolleyArrow: drawRetreatVolleyArrow,
+  retreatVolleyExplosion: drawRetreatVolleyExplosion,
   assimilativeOrb: drawAssimilativeOrb,
   spiritBanner: drawSpiritBanner,
   loyalDragons: drawLoyalDragons,

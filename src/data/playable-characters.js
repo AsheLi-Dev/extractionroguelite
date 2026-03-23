@@ -353,6 +353,51 @@ export const PLAYABLE_CHARACTERS = [
     })
   },
   {
+    id: 'wind_archer',
+    name: 'Wind Archer',
+    description: 'A highly mobile archer who turns movement into stronger volleys. Dash, slide, and repositioning feed powerful release shots.',
+    defaultWeaponArt: 'windVolley',
+    defaultWeaponArtClass: 'ranged',
+    ownsDefaultWeaponArt: true,
+    statModifiers: { maxHealth: 0.78, defense: 0, speed: 250 / 220, attack: 0.95 },
+    dash: {
+      duration: 0.2,
+      distanceMult: 0.5,
+      speedBase: 740,
+      pattern: 'linear'
+    },
+    passive: {
+      id: 'wind_archer_slipstream_guard',
+      name: 'Slipstream Guard',
+      description: 'Attack and cast movement penalties are reduced. Gain defense equal to 4% of live movement speed, up to 12.'
+    },
+    uniqueSkill: { slot: 0, skillId: 'wind_archer_retreat_volley' },
+    spriteProfile: createDirectionalSpritesheetProfile('Wind Archer', {
+      states: {
+        cast: 'CastSpell',
+        cast2: 'QuickShot',
+        cast3: 'Special1',
+        cast4: 'Special2',
+        attack: 'Attack1',
+        attack2: 'Attack2',
+        attack3: 'Attack3'
+      },
+      frames: {
+        cast2: 15,
+        cast3: 15,
+        cast4: 15,
+        attack2: 15,
+        attack3: 15
+      },
+      attackStates: ['attack', 'attack2'],
+      castStates: ['cast', 'cast2', 'cast3', 'cast4'],
+      loopSequence: {
+        run: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        dash: [0, 1, 2, 12, 13, 14]
+      }
+    })
+  },
+  {
     id: 'dark_mage',
     name: 'Dark Mage',
     description: 'Fragile caster with brutal damage. Kills ramp damage quickly and Blood Refresh trades life for tempo.',
@@ -404,7 +449,7 @@ export const PLAYABLE_CHARACTERS = [
     defaultWeaponArt: 'projectile',
     defaultWeaponArtClass: 'ranged',
     ownsDefaultWeaponArt: true,
-    statModifiers: { maxHealth: 0.7, defense: 0, speed: 1.25, attack: 1 },
+    statModifiers: { maxHealth: 0.7, defense: 0, speed: 200 / 220, attack: 1 },
     dash: {
       duration: 0.2,
       distanceMult: 0.5,
