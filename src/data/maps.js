@@ -2,6 +2,8 @@ import { Vec2 } from '../utils.js';
 import { drawTile, drawTileByName, isTileAtlasLoaded } from '../entities/tile-system.js';
 import { generateBlockerMap, WALL, PRESET_SMALL, PRESET_MEDIUM, PRESET_LARGE, PRESET_BIOME, generateCorridorCell, stampRect, mulberry32 } from '../map-gen-blockers.js';
 import { drawOpenWorldGroundBase, drawOpenWorldGroundDetails } from './openworld-ground.js';
+import { buildRockBorderFromBounds, drawRockBorder, shouldUseRockBorderForMap } from '../game/map-rock-border.js';
+import { drawUpperCliffDecor } from '../game/biome-upper-cliff.js';
 import {
   LOST_CAMP_TILE_DATA,
   LOST_CAMP_OBJECTS,
@@ -1214,6 +1216,10 @@ export class World {
     this.tileWallRects = null;
     this.cosmeticFloor = null;
     this._cropTileByGrid = null;
+    this.rockBorder = null;
+    this._rockBorderBoundsCacheKey = null;
+    /** Macro-driven upper cliff (see biome-upper-cliff.js); decorative only */
+    this.upperCliff = null;
   }
 
   _getFloorScatterTile(gx, gy) {
@@ -1345,6 +1351,7 @@ export class World {
       this.floorColor = mapDef.floorColor;
       this.wallColor = mapDef.wallColor;
     }
+    this._rockBorderBoundsCacheKey = null;
   }
 
   draw(ctx, camera) {
@@ -1460,8 +1467,22 @@ export class World {
       }
     }
 
-    // Draw walls with tiles
-    if (isTileAtlasLoaded()) {
+    const useRockBorder = shouldUseRockBorderForMap(this.theme);
+    if (useRockBorder) {
+      const cacheKey = `${this.width}:${this.height}:${this.wallThickness}:${this.theme?.id ?? this.theme?.name ?? 'theme'}`;
+      if (!this.rockBorder || this._rockBorderBoundsCacheKey !== cacheKey) {
+        const innerBounds = {
+          x: this.wallThickness,
+          y: this.wallThickness,
+          w: Math.max(1, this.width - this.wallThickness * 2),
+          h: Math.max(1, this.height - this.wallThickness * 2),
+        };
+        this.rockBorder = buildRockBorderFromBounds(innerBounds, (this.width ^ this.height) >>> 0);
+        this._rockBorderBoundsCacheKey = cacheKey;
+      }
+      drawRockBorder(ctx, this, ox, oy, camera, 0);
+      drawRockBorder(ctx, this, ox, oy, camera, 1);
+    } else if (isTileAtlasLoaded()) {
       const tileSize = 32; // Tiles are 32x32, not 16x16
       // Choose wall tile based on theme
       let wallTopTile = { row: 1, col: 'a' }; // dirt wall top (default)
@@ -1579,6 +1600,7 @@ export class World {
     const cosmeticGroundLayer = this.cosmeticFloor?.groundLayer || null;
     const canDrawCosmeticGroundBase = !!cosmeticGroundLayer?.baseCanvas;
     const canDrawTileAtlas = isTileAtlasLoaded();
+    const rockOccludeTiles = this.rockBorder?.occludeTiles || null;
 
     if (canDrawCosmeticGroundBase) {
       drawOpenWorldGroundBase(ctx, cosmeticGroundLayer, ox, oy, camera);
@@ -1591,8 +1613,11 @@ export class World {
         const screenX = Math.round(worldX + ox);
         const screenY = Math.round(worldY + oy);
         const isWall = this.tileGrid[gy][gx] === 1;
+        const tileKey = `${gx},${gy}`;
         const inBlockerChunk = blockerAtlasReady && this.blockerChunkTileSet && this.blockerChunkTileSet.has(`${gx},${gy}`);
+        const rockOccluded = !!rockOccludeTiles?.has(tileKey);
         if (isWall && !inBlockerChunk) {
+          if (rockOccluded) continue;
           const isTop = gy === 0 || (gy > 0 && this.tileGrid[gy - 1][gx] !== 1);
           if (canDrawTileAtlas) {
             drawTile(ctx, isTop ? wallTopTile.row : wallSideTile.row, isTop ? wallTopTile.col : wallSideTile.col, screenX, screenY, tileSize);
@@ -1679,6 +1704,12 @@ export class World {
       }
       ctx.imageSmoothingEnabled = true;
       ctx.restore();
+    }
+    if (this.upperCliff?.enabled) {
+      drawUpperCliffDecor(ctx, this, ox, oy, camera);
+    } else {
+      drawRockBorder(ctx, this, ox, oy, camera, 0);
+      drawRockBorder(ctx, this, ox, oy, camera, 1);
     }
   }
 

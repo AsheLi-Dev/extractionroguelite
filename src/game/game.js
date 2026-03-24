@@ -35,6 +35,8 @@ import { MAP_WIDTH, MAP_HEIGHT, WALL_THICKNESS, MAP_DEFS, World, createProcedura
 import { getVisibleOpenWorldBoulderPlacements, getVisibleOpenWorldShrubPlacements } from '../data/openworld-ground.js';
 import { mulberry32 } from '../map-gen-blockers.js';
 import { LOST_CAMP_TILESET } from '../data/lost-camp-data.js';
+import { buildRockBorderPlacements, shouldUseRockBorderForMap } from './map-rock-border.js';
+import { buildUpperCliffForBiomeWorld, shouldUseUpperCliffForMap } from './biome-upper-cliff.js';
 import {
   ATTACK_UPGRADE_DEFS, CONTRADICTORY_UPGRADE_PENALTY,
   getUpgradeDisplayDescription, getPenaltyDisplayDescription,
@@ -221,8 +223,8 @@ const DASH_CHARGE_ICON_EMPTY_SRC = "assets/UI/UI_TravelBook_IconEnergy01g.png";
 const Y_SORTED_SKILL_EFFECT_TYPES = new Set(['animatedSpriteImpact', 'enemyBreathVisual']);
 const DESIGN_WIDTH = 640;
 const DESIGN_HEIGHT = 360;
-const CAMERA_VIEW_WIDTH = 499;   // zoomed out 1.2x from 416
-const CAMERA_VIEW_HEIGHT = 281; // zoomed out 1.2x from 234
+const CAMERA_VIEW_WIDTH = 640;  // match design canvas width (no world zoom)
+const CAMERA_VIEW_HEIGHT = 360; // match design canvas height (no world zoom)
 const LIGHTNING_ZIGZAG_SEGMENT_SEC_MIN = 0.004;
 const LIGHTNING_ZIGZAG_SEGMENT_SEC_MAX = 0.008;
 const LIGHTNING_ZIGZAG_LATERAL_WEIGHT_MIN = 0.4;
@@ -687,6 +689,16 @@ export class Game {
         applyVaultCellLayouts(this.world, this.world.archetypeGrid, mulberry32(seed ^ 0x9b3c));
         applyVaultTreasureDecorations(this.world, this.world.archetypeGrid, mulberry32(seed ^ 0x9b3c));
         applyMinibossCellDecorations(this.world, this.world.archetypeGrid, mulberry32(seed ^ 0x5a17));
+        if (shouldUseUpperCliffForMap(mapDef, this.world)) {
+          this.world.rockBorder = null;
+          buildUpperCliffForBiomeWorld(this.world, seed);
+        } else if (shouldUseRockBorderForMap(mapDef)) {
+          this.world.upperCliff = null;
+          buildRockBorderPlacements(this.world, seed);
+        } else {
+          this.world.rockBorder = null;
+          this.world.upperCliff = null;
+        }
         const ag = this.world.archetypeGrid;
         if (ag?.startCell != null) {
           const bounds = getBiomeCellBounds(this.world, ag.startCell.col, ag.startCell.row);
@@ -17577,6 +17589,48 @@ export class Game {
     ctx.restore();
   }
 
+  drawRockBorderDebug(ctx) {
+    if (!this.devMode || this.world?.rockBorderDebug === false) return;
+    const points = this.world?.rockBorder?.debugPoints;
+    if (!points?.length) return;
+    ctx.save();
+    ctx.font = "9px system-ui, sans-serif";
+    for (const point of points) {
+      const ax = Math.round(point.anchorX - this.camera.position.x);
+      const ay = Math.round(point.anchorY - this.camera.position.y);
+      const dx = Math.round(point.drawX - this.camera.position.x);
+      const dy = Math.round(point.drawY - this.camera.position.y);
+      ctx.strokeStyle = "rgba(14, 165, 233, 0.9)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(ax - 3, ay);
+      ctx.lineTo(ax + 3, ay);
+      ctx.moveTo(ax, ay - 3);
+      ctx.lineTo(ax, ay + 3);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(248, 113, 113, 0.75)";
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(dx, dy);
+      ctx.stroke();
+      if (point.bboxW != null && point.bboxH != null) {
+        const bx = Math.round(point.bboxX - this.camera.position.x);
+        const by = Math.round(point.bboxY - this.camera.position.y);
+        ctx.strokeStyle = "rgba(52, 211, 153, 0.55)";
+        ctx.setLineDash([3, 3]);
+        ctx.strokeRect(bx + 0.5, by + 0.5, point.bboxW, point.bboxH);
+        ctx.setLineDash([]);
+      }
+      if (typeof point.lastAdvance === "number" && point.lastAdvance > 0) {
+        ctx.fillStyle = "rgba(251, 191, 36, 0.85)";
+        ctx.fillText(`${Math.round(point.lastAdvance)}`, ax + 5, ay + 10);
+      }
+      ctx.fillStyle = "rgba(226, 232, 240, 0.8)";
+      ctx.fillText(point.role, ax + 5, ay - 4);
+    }
+    ctx.restore();
+  }
+
   /** Pickup range multiplier: 1.5 when Cube Magnet card is equipped (+50% range), else 1. */
   getLootPickupRadiusMult() {
     return this.hasUpgradeCard("cubeMagnet") ? 1.5 : 1;
@@ -18085,6 +18139,7 @@ export class Game {
     if (typeof this.drawGuardedEffects === "function") this.drawGuardedEffects(ctx);
     this.drawAmbushZoneDebug(ctx);
     this.drawHazardZoneDebug(ctx);
+    this.drawRockBorderDebug(ctx);
     drawHazardSubareas(ctx, this, this.camera, this.time);
     drawBloodAltars(ctx, this, this.camera, this.time);
     this.drawObstacleHitboxDebug(ctx);
