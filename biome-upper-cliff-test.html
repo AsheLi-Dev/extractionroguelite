@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Biome Upper Cliff Test</title>
+  <style>
+    body {
+      margin: 0;
+      background: #0b1020;
+      color: #e2e8f0;
+      font-family: system-ui, sans-serif;
+    }
+    .wrap {
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      justify-content: center;
+    }
+    canvas {
+      image-rendering: pixelated;
+      border: 1px solid #334155;
+      background: #0f172a;
+    }
+    #biome-upper-cliff-test-status {
+      font-size: 12px;
+      color: #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="biome-upper-cliff-test-canvas"></canvas>
+    <div id="biome-upper-cliff-test-status">Loading...</div>
+  </div>
+  <script type="module" src="./src/debug/biome-upper-cliff-test.js"></script>
+</body>
+</html>
+

@@ -2,8 +2,7 @@ import { Vec2 } from '../utils.js';
 import { drawTile, drawTileByName, isTileAtlasLoaded } from '../entities/tile-system.js';
 import { generateBlockerMap, WALL, PRESET_SMALL, PRESET_MEDIUM, PRESET_LARGE, PRESET_BIOME, generateCorridorCell, stampRect, mulberry32 } from '../map-gen-blockers.js';
 import { drawOpenWorldGroundBase, drawOpenWorldGroundDetails } from './openworld-ground.js';
-import { buildRockBorderFromBounds, drawRockBorder, shouldUseRockBorderForMap } from '../game/map-rock-border.js';
-import { drawUpperCliffDecor } from '../game/biome-upper-cliff.js';
+import { drawUpperCliffDecor, drawUpperCliffGroundCap } from '../game/biome-upper-cliff.js';
 import {
   LOST_CAMP_TILE_DATA,
   LOST_CAMP_OBJECTS,
@@ -51,6 +50,30 @@ const CHUNK_TILES = 30;
 const CHUNK_PX = TILE_SIZE_BLOCKER * CHUNK_TILES; // 960
 
 export const BLOCKER_CHUNK_ATLAS_SRC = 'assets/Environments/blocks%20for%20empty%20grid.png';
+const OPENWORLD_NEG_SPACE_BACKDROP_SRC = 'assets/Environments/1. OpenWorld/bckgrnd_mainstatic.png';
+const OPENWORLD_NEG_SPACE_BACKDROP_DRAW_W = 1920;
+const OPENWORLD_NEG_SPACE_BACKDROP_DRAW_H = 1440;
+let openWorldNegSpaceBackdropImage = null;
+
+function getOpenWorldNegSpaceBackdropImage() {
+  if (openWorldNegSpaceBackdropImage) return openWorldNegSpaceBackdropImage;
+  const img = new Image();
+  img.src = OPENWORLD_NEG_SPACE_BACKDROP_SRC;
+  openWorldNegSpaceBackdropImage = img;
+  return img;
+}
+
+function drawImageCover(ctx, img, dx, dy, dw, dh) {
+  const iw = img?.naturalWidth || img?.width || 0;
+  const ih = img?.naturalHeight || img?.height || 0;
+  if (!iw || !ih || dw <= 0 || dh <= 0) return;
+  const scale = Math.max(dw / iw, dh / ih);
+  const sw = dw / scale;
+  const sh = dh / scale;
+  const sx = (iw - sw) * 0.5;
+  const sy = (ih - sh) * 0.5;
+  ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+}
 
 /** Chunk frame definitions (atlas coordinates). Separate from placement logic. Nine chunks in one horizontal row. */
 export const BLOCKER_CHUNKS = [
@@ -1345,6 +1368,55 @@ export class World {
     return this._cropTileByGrid.get(`${gx},${gy}`) || null;
   }
 
+  _shouldMaskTopUnplayableForUpperCliff() {
+    const rows = this.archetypeGrid?.grid?.length || 0;
+    return !!this.upperCliff?.enabled && rows > 0;
+  }
+
+  _getTopUnplayableCutoffY() {
+    const rows = this.archetypeGrid?.grid?.length || 0;
+    if (!rows) return 0;
+    return this.height / rows;
+  }
+
+  _getTopRowPlayableMacroRects() {
+    const grid = this.archetypeGrid?.grid;
+    if (!Array.isArray(grid) || !grid.length || !Array.isArray(grid[0]) || !grid[0].length) return [];
+    const rows = grid.length;
+    const cols = grid[0].length;
+    const cellW = this.width / cols;
+    const cellH = this.height / rows;
+    const rects = [];
+    const topRow = grid[0];
+    for (let col = 0; col < cols; col++) {
+      const archetype = topRow[col];
+      if (!archetype || archetype === 'empty') continue;
+      rects.push({
+        x: col * cellW,
+        y: 0,
+        w: cellW,
+        h: cellH,
+      });
+    }
+    return rects;
+  }
+
+  _applyUpperCliffVisibleRegionClip(ctx, ox, oy) {
+    if (!this._shouldMaskTopUnplayableForUpperCliff()) return false;
+    const cutoffY = this._getTopUnplayableCutoffY();
+    const playableTopRects = this._getTopRowPlayableMacroRects();
+    ctx.save();
+    ctx.beginPath();
+    // Always keep rows below top macro row visible.
+    ctx.rect(ox, oy + cutoffY, this.width, Math.max(0, this.height - cutoffY));
+    // Re-open any row-0 macro cell that is actually playable.
+    for (const r of playableTopRects) {
+      ctx.rect(ox + r.x, oy + r.y, r.w, r.h);
+    }
+    ctx.clip();
+    return true;
+  }
+
   setTheme(mapDef) {
     this.theme = mapDef;
     if (mapDef) {
@@ -1363,6 +1435,7 @@ export class World {
     // Procedural tile grid: draw from grid
     if (this.tileGrid) {
       this._drawTileGrid(ctx, ox, oy, camera, tileSize);
+      const clippedPostLayers = this._applyUpperCliffVisibleRegionClip(ctx, ox, oy);
       if (this.lostCampStamps?.length && this.lostCampAtlas?.complete) {
         this._drawLostCampStamps(ctx, ox, oy, camera);
       }
@@ -1378,6 +1451,9 @@ export class World {
         for (const exit of exitZones) {
           ctx.fillRect(ox + exit.x, oy + exit.y, exit.w, exit.h);
         }
+      }
+      if (clippedPostLayers) {
+        ctx.restore();
       }
       return;
     }
@@ -1467,22 +1543,7 @@ export class World {
       }
     }
 
-    const useRockBorder = shouldUseRockBorderForMap(this.theme);
-    if (useRockBorder) {
-      const cacheKey = `${this.width}:${this.height}:${this.wallThickness}:${this.theme?.id ?? this.theme?.name ?? 'theme'}`;
-      if (!this.rockBorder || this._rockBorderBoundsCacheKey !== cacheKey) {
-        const innerBounds = {
-          x: this.wallThickness,
-          y: this.wallThickness,
-          w: Math.max(1, this.width - this.wallThickness * 2),
-          h: Math.max(1, this.height - this.wallThickness * 2),
-        };
-        this.rockBorder = buildRockBorderFromBounds(innerBounds, (this.width ^ this.height) >>> 0);
-        this._rockBorderBoundsCacheKey = cacheKey;
-      }
-      drawRockBorder(ctx, this, ox, oy, camera, 0);
-      drawRockBorder(ctx, this, ox, oy, camera, 1);
-    } else if (isTileAtlasLoaded()) {
+    if (isTileAtlasLoaded()) {
       const tileSize = 32; // Tiles are 32x32, not 16x16
       // Choose wall tile based on theme
       let wallTopTile = { row: 1, col: 'a' }; // dirt wall top (default)
@@ -1600,12 +1661,31 @@ export class World {
     const cosmeticGroundLayer = this.cosmeticFloor?.groundLayer || null;
     const canDrawCosmeticGroundBase = !!cosmeticGroundLayer?.baseCanvas;
     const canDrawTileAtlas = isTileAtlasLoaded();
-    const rockOccludeTiles = this.rockBorder?.occludeTiles || null;
+    const rockOccludeTiles = this.rockBorder?.occludeTiles || this.upperCliff?.occludeTiles || null;
+    const maskTopUnplayable = this._shouldMaskTopUnplayableForUpperCliff();
+
+    if (maskTopUnplayable) {
+      const bg = getOpenWorldNegSpaceBackdropImage();
+      if (bg?.complete && bg?.naturalWidth > 0) {
+        const camCx = camera.position.x + camera.viewWidth * 0.5;
+        const camCy = camera.position.y + camera.viewHeight * 0.5;
+        const dx = Math.round((camCx - OPENWORLD_NEG_SPACE_BACKDROP_DRAW_W * 0.5) + ox);
+        const dy = Math.round((camCy - OPENWORLD_NEG_SPACE_BACKDROP_DRAW_H * 0.5) + oy);
+        drawImageCover(
+          ctx,
+          bg,
+          dx,
+          dy,
+          OPENWORLD_NEG_SPACE_BACKDROP_DRAW_W,
+          OPENWORLD_NEG_SPACE_BACKDROP_DRAW_H
+        );
+      }
+      this._applyUpperCliffVisibleRegionClip(ctx, ox, oy);
+    }
 
     if (canDrawCosmeticGroundBase) {
       drawOpenWorldGroundBase(ctx, cosmeticGroundLayer, ox, oy, camera);
     }
-
     for (let gy = startGy; gy < endGy; gy++) {
       for (let gx = startGx; gx < endGx; gx++) {
         const worldX = gx * tileSize;
@@ -1705,11 +1785,15 @@ export class World {
       ctx.imageSmoothingEnabled = true;
       ctx.restore();
     }
+    if (maskTopUnplayable) {
+      ctx.restore();
+    }
+    // Draw upper-cliff visuals after mask restore so unplayable-area masking never hides them.
+    if (this.upperCliff?.enabled) {
+      drawUpperCliffGroundCap(ctx, this, ox, oy);
+    }
     if (this.upperCliff?.enabled) {
       drawUpperCliffDecor(ctx, this, ox, oy, camera);
-    } else {
-      drawRockBorder(ctx, this, ox, oy, camera, 0);
-      drawRockBorder(ctx, this, ox, oy, camera, 1);
     }
   }
 

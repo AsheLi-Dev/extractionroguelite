@@ -35,7 +35,6 @@ import { MAP_WIDTH, MAP_HEIGHT, WALL_THICKNESS, MAP_DEFS, World, createProcedura
 import { getVisibleOpenWorldBoulderPlacements, getVisibleOpenWorldShrubPlacements } from '../data/openworld-ground.js';
 import { mulberry32 } from '../map-gen-blockers.js';
 import { LOST_CAMP_TILESET } from '../data/lost-camp-data.js';
-import { buildRockBorderPlacements, shouldUseRockBorderForMap } from './map-rock-border.js';
 import { buildUpperCliffForBiomeWorld, shouldUseUpperCliffForMap } from './biome-upper-cliff.js';
 import {
   ATTACK_UPGRADE_DEFS, CONTRADICTORY_UPGRADE_PENALTY,
@@ -692,9 +691,6 @@ export class Game {
         if (shouldUseUpperCliffForMap(mapDef, this.world)) {
           this.world.rockBorder = null;
           buildUpperCliffForBiomeWorld(this.world, seed);
-        } else if (shouldUseRockBorderForMap(mapDef)) {
-          this.world.upperCliff = null;
-          buildRockBorderPlacements(this.world, seed);
         } else {
           this.world.rockBorder = null;
           this.world.upperCliff = null;

@@ -23,7 +23,6 @@ import { mulberry32 } from '../map-gen-blockers.js';
 import { LOST_CAMP_TILESET } from '../data/lost-camp-data.js';
 import { setMinimapWorld } from '../ui/minimap.js';
 import { buildOpenWorldCosmeticFloor } from '../data/openworld-ground.js';
-import { buildRockBorderPlacements, shouldUseRockBorderForMap } from './map-rock-border.js';
 import { buildUpperCliffForBiomeWorld, shouldUseUpperCliffForMap } from './biome-upper-cliff.js';
 
 export function applyGameMapMixin(Game) {
@@ -93,9 +92,6 @@ export function applyGameMapMixin(Game) {
       if (shouldUseUpperCliffForMap(biomeMapDef, world)) {
         world.rockBorder = null;
         buildUpperCliffForBiomeWorld(world, seed);
-      } else if (shouldUseRockBorderForMap(biomeMapDef)) {
-        world.upperCliff = null;
-        buildRockBorderPlacements(world, seed);
       } else {
         world.rockBorder = null;
         world.upperCliff = null;

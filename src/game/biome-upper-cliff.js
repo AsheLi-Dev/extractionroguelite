@@ -25,12 +25,25 @@ export const UPPER_CLIFF_GAMEPLAY_INSET_TOP_PX = 0;
 export const UPPER_CLIFF_GAMEPLAY_INSET_SIDE_PX = 0;
 /** Phase 4: slightly tighter overlap along top spans (multiplier on advance inside map-rock-border) */
 export const UPPER_CLIFF_TOP_SPAN_LENGTH_SCALE = 1;
-const UPPER_PREVIEW_KEEP_IDS = new Set([
+const UPPER_TOP_PREVIEW_IDS = new Set([
   'top_left', 'top_right', 'top_5', 'top_6', 'top_flat_8', 'top_flat_9',
+]);
+const UPPER_SIDE_PREVIEW_IDS = new Set([
   'left_5', 'right_5',
   'left_flat_1', 'left_flat_2', 'left_flat_3', 'left_flat_4',
   'right_flat_1', 'right_flat_2', 'right_flat_3', 'right_flat_4',
 ]);
+const UPPER_FULL_PREVIEW_IDS = new Set([
+  ...UPPER_TOP_PREVIEW_IDS,
+  ...UPPER_SIDE_PREVIEW_IDS,
+  'bottom_left', 'bottom_4', 'bottom_5', 'bottom_6', 'bottom_7',
+  'bottom_8', 'bottom_9', 'bottom_10', 'bottom_11', 'bottom_right',
+]);
+const TOP_STITCH_TEMPLATE_W = 1100;
+const TOP_CLIFF_RAISE_PX = 120;
+const GROUND_CAP_COLOR = '#6f6a47';
+const GROUND_CAP_HEIGHT_PX = 88;
+const GROUND_CAP_Y_OFFSET_PX = -32;
 
 function macroCellSizePx(world, cols, rows) {
   return {
@@ -363,6 +376,92 @@ function computeUpperCliffBoundsFromBoundary(world, boundary) {
   return { x: minX, y: minY, w, h };
 }
 
+function buildTopPlacementsAcrossSpan(world, yTop, xLeft, xRight, seedBase = 1337) {
+  const out = [];
+  let cursor = xLeft;
+  let iter = 0;
+  while (cursor < xRight && iter < 24) {
+    const sampleBounds = {
+      x: cursor,
+      y: Math.max(0, yTop - TOP_CLIFF_RAISE_PX),
+      w: TOP_STITCH_TEMPLATE_W,
+      h: Math.max(96, world.height - yTop - 32),
+    };
+    const sample = buildRockBorderFromBounds(sampleBounds, seedBase + iter);
+    // Top stitch must remain top-only; side pieces are reserved for full island cliffs.
+    const tops = (sample?.placements || []).filter((p) => UPPER_TOP_PREVIEW_IDS.has(p.spriteId));
+    if (!tops.length) break;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    for (const p of tops) {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x + p.sw);
+    }
+    const span = Math.max(1, maxX - minX);
+    const shiftX = cursor - minX;
+    for (const p of tops) {
+      const x = p.x + shiftX;
+      if (x + p.sw < xLeft || x > xRight) continue;
+      out.push({ ...p, x });
+    }
+    cursor += Math.max(220, span - 120);
+    iter++;
+  }
+  return out;
+}
+
+function buildTopRowIslandCliffs(world, layout, seedBase = 9001) {
+  const out = [];
+  for (const c of layout.cells) {
+    if (!c.playable || c.row !== 0) continue;
+    const x = c.col * (world.width / layout.cols);
+    const y = c.row * (world.height / layout.rows);
+    const w = world.width / layout.cols;
+    const h = world.height / layout.rows;
+    const islandBounds = { x: x + 32, y: y + 32, w: Math.max(64, w - 64), h: Math.max(64, h - 64) };
+    const rock = buildRockBorderFromBounds(islandBounds, seedBase + c.col * 31 + c.row * 7);
+    for (const p of rock?.placements || []) {
+      if (!UPPER_FULL_PREVIEW_IDS.has(p.spriteId)) continue;
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+function buildUpperCapRects(topPlacements) {
+  const rects = [];
+  if (!topPlacements?.length) return rects;
+  for (const p of topPlacements) {
+    const y = p.y + p.sh + GROUND_CAP_Y_OFFSET_PX;
+    rects.push({
+      x: p.x - 2,
+      y,
+      w: p.sw + 4,
+      h: GROUND_CAP_HEIGHT_PX,
+      color: GROUND_CAP_COLOR,
+    });
+  }
+  return rects;
+}
+
+function buildOccludeTilesFromPlacements(world, placements) {
+  const set = new Set();
+  const ts = world.tileSize || 32;
+  for (const p of placements || []) {
+    const gx0 = Math.floor(p.x / ts);
+    const gy0 = Math.floor(p.y / ts);
+    const gx1 = Math.floor((p.x + p.sw - 1) / ts);
+    const gy1 = Math.floor((p.y + p.sh - 1) / ts);
+    for (let gy = gy0; gy <= gy1; gy++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        if (gx < 0 || gy < 0) continue;
+        set.add(`${gx},${gy}`);
+      }
+    }
+  }
+  return set;
+}
+
 function drawPlaceholderTargets(ctx, ox, oy, camera, targets) {
   const vl = camera.position.x;
   const vt = camera.position.y;
@@ -462,20 +561,28 @@ export function buildUpperCliffForBiomeWorld(world, seed, options = {}) {
 
   const boundary = computeUpperCliffExposedBoundary(world, layout);
   const layoutTargets = buildUpperCliffLayoutTargets(boundary);
-  const bounds = computeUpperCliffBoundsFromBoundary(world, boundary);
-
   const useSprites = options.useSprites !== false;
   let rockBorder = null;
-  if (useSprites && bounds) {
-    rockBorder = buildRockBorderFromBounds(bounds, seed ^ 0x51f4c1);
-    if (rockBorder?.placements?.length) {
-      rockBorder.placements = rockBorder.placements.filter((p) => UPPER_PREVIEW_KEEP_IDS.has(p.spriteId));
-      if (Array.isArray(rockBorder.debugPoints) && rockBorder.debugPoints.length) {
-        rockBorder.debugPoints = rockBorder.debugPoints.filter((p) => {
-          const placement = rockBorder.placements.find((x) => x.x === p.bboxX && x.y === p.bboxY);
-          return !!placement;
-        });
-      }
+  let capRects = [];
+  let occludeTiles = null;
+  if (useSprites) {
+    const topPlacements = [];
+    for (const seg of boundary.topSegments) {
+      // only stitch the playable-row-1 top boundary (row0 playable cells get full island cliffs)
+      if (seg.cellRow !== 1) continue;
+      topPlacements.push(...buildTopPlacementsAcrossSpan(world, seg.y0, seg.x0, seg.x1, (seed ^ 0x51f4c1) + seg.cellCol * 13));
+    }
+    const islandPlacements = buildTopRowIslandCliffs(world, layout, seed ^ 0x77ab);
+    const placements = [...topPlacements, ...islandPlacements];
+    if (placements.length) {
+      rockBorder = {
+        image: buildRockBorderFromBounds({ x: 0, y: 0, w: 64, h: 64 }, seed)?.image || null,
+        placements,
+        occludeTiles: null,
+        debugPoints: [],
+      };
+      capRects = buildUpperCapRects(topPlacements);
+      occludeTiles = buildOccludeTilesFromPlacements(world, placements);
     }
   }
 
@@ -485,6 +592,8 @@ export function buildUpperCliffForBiomeWorld(world, seed, options = {}) {
     boundary,
     layoutTargets,
     rockBorder,
+    capRects,
+    occludeTiles,
     visualMode: useSprites && rockBorder?.placements?.length ? 'sprites' : 'none',
     gameplayInsetPx: {
       top: UPPER_CLIFF_GAMEPLAY_INSET_TOP_PX,
@@ -518,6 +627,18 @@ export function drawUpperCliffDecor(ctx, world, ox, oy, camera) {
     drawRockBorder(ctx, { rockBorder: uc.rockBorder }, ox, oy, camera, 0);
     drawRockBorder(ctx, { rockBorder: uc.rockBorder }, ox, oy, camera, 1);
   }
+}
+
+/** Draw cap in an early world pass so it stays beneath all other visible layers. */
+export function drawUpperCliffGroundCap(ctx, world, ox, oy) {
+  const uc = world?.upperCliff;
+  if (!uc?.enabled || !uc.capRects?.length) return;
+  ctx.save();
+  for (const r of uc.capRects) {
+    ctx.fillStyle = r.color || GROUND_CAP_COLOR;
+    ctx.fillRect(Math.round(ox + r.x), Math.round(oy + r.y), Math.round(r.w), Math.round(r.h));
+  }
+  ctx.restore();
 }
 
 export function shouldUseUpperCliffForMap(mapDef, world) {
