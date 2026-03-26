@@ -163,7 +163,8 @@ export function applyGameUIMixin(Game) {
     updateEnemyCountUI() {
       if (!this.enemyCountEl) return;
       const es = this.enemySystem;
-      const count = es.enemies.length + (es.boss ? 1 : 0);
+    const aliveEnemies = (es.enemies || []).filter((e) => !(e?.isDead && e?.keepDeadForRevive));
+    const count = aliveEnemies.length + (es.boss ? 1 : 0);
       this.enemyCountEl.textContent = `Enemies: ${count}`;
       this.enemyCountEl.classList.toggle("hidden", this.currentMap?.id === 4 && !es.boss);
     },

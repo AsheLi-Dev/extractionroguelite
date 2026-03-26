@@ -2,7 +2,7 @@
 // Map transitions, obstacles
 // This module adds methods to Game.prototype when imported
 
-import { MAP_DEFS, createProceduralWorld, PRESET_MEDIUM, PRESET_BIOME, buildArchetypeGrid, buildAllSubareaGrids, buildSubareaZonesForWorld, applyCorridorCellLayouts, applyBiomeTopBottomWalls, buildCobblestonePath, applyLostCampCellLayouts, applyVaultCellLayouts, applyVaultTreasureDecorations, applyMinibossCellDecorations, getBiomeCellBounds, getBiomeGridDimensions, BIOME_ARCHETYPE, BIOME_GRID_COLS, BIOME_GRID_ROWS } from '../data/maps.js';
+import { MAP_DEFS, createProceduralWorld, PRESET_MEDIUM, PRESET_BIOME, buildArchetypeGrid, buildAllSubareaGrids, buildSubareaZonesForWorld, applyBiomeTopBottomWalls, buildCobblestonePath, applyLostCampCellLayouts, applyVaultCellLayouts, applyVaultTreasureDecorations, applyMinibossCellDecorations, getBiomeCellBounds, getBiomeGridDimensions, BIOME_ARCHETYPE, BIOME_GRID_COLS, BIOME_GRID_ROWS } from '../data/maps.js';
 import { REST_ROOM_LAYOUT, REST_ROOM_MAP_DEF, REST_ROOM_MAP_ID, REST_ROOM_WORLD_PRESET, isRestRoomMapId } from '../data/rest-room.js';
 import { OBSTACLE_TYPES } from '../data/obstacles.js';
 import { BREAKABLE_DEFS } from '../data/breakables-data.js';
@@ -24,6 +24,8 @@ import { LOST_CAMP_TILESET } from '../data/lost-camp-data.js';
 import { setMinimapWorld } from '../ui/minimap.js';
 import { buildOpenWorldCosmeticFloor } from '../data/openworld-ground.js';
 import { buildUpperCliffForBiomeWorld, shouldUseUpperCliffForMap } from './biome-upper-cliff.js';
+import { resolveForestVariantFromNodeType } from './forest-biome-variant-selector.js';
+import { getForestVariantConfig, getForestVariantEnemyPool, getForestVariantObstaclePool } from '../data/forest-biome-variants.js';
 
 export function applyGameMapMixin(Game) {
   Object.assign(Game.prototype, {
@@ -57,11 +59,16 @@ export function applyGameMapMixin(Game) {
       const biomeMapDef = (options.disableExits === true || this.enableRunRouteGraph)
         ? { ...mapDef, exits: [] }
         : mapDef;
+      const variantRng = mulberry32((Number(seed) || 0) ^ 0xf05e57);
+      const activeForestVariant = this.resolveActiveForestVariantForMap?.(biomeMapDef, { rng: variantRng });
       const { world } = createProceduralWorld(PRESET_BIOME, seed, biomeMapDef);
+      if (activeForestVariant) {
+        world.forestVariantId = activeForestVariant.variantId;
+        world.forestVariantNodeTier = activeForestVariant.nodeTier;
+      }
       world.archetypeGrid = buildArchetypeGrid(world);
       buildAllSubareaGrids(world, world.archetypeGrid, mulberry32(seed ^ 0x7a3f));
       buildSubareaZonesForWorld(world, world.archetypeGrid, mulberry32(seed ^ 0xc4d2), { chancePerCell: 0.5, totemWeight: 0.4, ambushWeight: 0.4 });
-      applyCorridorCellLayouts(world, world.archetypeGrid, mulberry32(seed));
       applyBiomeTopBottomWalls(world, world.archetypeGrid, seed);
       buildCobblestonePath(world, world.archetypeGrid, mulberry32(seed ^ 0x8f2a));
       applyLostCampCellLayouts(world, world.archetypeGrid);
@@ -102,7 +109,54 @@ export function applyGameMapMixin(Game) {
     },
 
     resolveOpenWorldGroundTypeForMap(mapDef = this.currentMap) {
-      return mapDef?.floorPattern === "grass" ? "grassA" : null;
+      if (mapDef?.floorPattern !== "grass") return null;
+      const grassSet = this.getForestVariantVisualSets?.()?.grassPatchSpriteSet || null;
+      return grassSet?.groundTypeId || "grassA";
+    },
+
+    resolveActiveForestVariantForMap(mapDef = this.currentMap, options = {}) {
+      if (mapDef?.floorPattern !== "grass") return null;
+      const nodeType = this.getCurrentNode?.()?.type || null;
+      const rng = typeof options.rng === "function" ? options.rng : Math.random;
+      const resolved = resolveForestVariantFromNodeType(nodeType, rng);
+      const variant = getForestVariantConfig(resolved.variantId);
+      this.activeForestVariantId = resolved.variantId;
+      this.activeForestNodeTier = resolved.nodeTier;
+      this.activeForestVariantConfig = variant;
+      this.activeForestEnemyPool = getForestVariantEnemyPool(variant?.enemyPoolId);
+      this.activeForestObstaclePool = getForestVariantObstaclePool(variant?.obstaclePoolId);
+      return {
+        nodeTier: resolved.nodeTier,
+        variantId: resolved.variantId,
+        variant,
+      };
+    },
+
+    getActiveForestVariantConfig() {
+      if (this.activeForestVariantConfig) return this.activeForestVariantConfig;
+      const resolved = this.resolveActiveForestVariantForMap?.(this.currentMap);
+      return resolved?.variant || getForestVariantConfig(null);
+    },
+
+    getForestVariantVisualSets() {
+      const variant = this.getActiveForestVariantConfig?.() || getForestVariantConfig(null);
+      return {
+        treeSpriteSet: variant?.treeSpriteSet || {},
+        grassPatchSpriteSet: variant?.grassPatchSpriteSet || {},
+        obstacleSpriteSet: variant?.obstacleSpriteSet || {},
+      };
+    },
+
+    getActiveForestEnemyPool() {
+      if (this.activeForestEnemyPool) return this.activeForestEnemyPool;
+      const variant = this.getActiveForestVariantConfig?.() || getForestVariantConfig(null);
+      return getForestVariantEnemyPool(variant?.enemyPoolId);
+    },
+
+    getActiveForestObstaclePool() {
+      if (this.activeForestObstaclePool) return this.activeForestObstaclePool;
+      const variant = this.getActiveForestVariantConfig?.() || getForestVariantConfig(null);
+      return getForestVariantObstaclePool(variant?.obstaclePoolId);
     },
 
     queueOpenWorldCosmeticFloorBuild(world = this.world, seed = this.proceduralSeed, mapDef = this.currentMap) {
@@ -541,8 +595,19 @@ export function applyGameMapMixin(Game) {
         return;
       }
 
+      const migratedBarrelBreakables = [];
       this.obstacles = savedState.obstacles.map(obsData => {
-        if (obsData.type === "barrel") return null;
+        if (obsData.type === "barrel") {
+          // Migration: barrels are now breakables (`barrel_a`) with sprite-driven hit/destroy states.
+          try {
+            const b = new Breakable(obsData.id || `barrel_${Date.now()}_${Math.random()}`, obsData.position.x, obsData.position.y, "barrel_a");
+            if (obsData.destroyed) b.die(this.time || 0, this);
+            migratedBarrelBreakables.push(b);
+          } catch (e) {
+            // ignore migration failure; better to drop barrel than crash load
+          }
+          return null;
+        }
         const typeDef = OBSTACLE_TYPES[obsData.type];
         if (!typeDef) return null;
         const obstacle = new Obstacle(obsData.position.x, obsData.position.y, typeDef);
@@ -585,6 +650,10 @@ export function applyGameMapMixin(Game) {
         b.isDead = bData.isDead || false;
         return b;
       }).filter(Boolean);
+
+      if (migratedBarrelBreakables.length) {
+        this.breakables = [...this.breakables, ...migratedBarrelBreakables];
+      }
 
       this.mapInteractables = savedState.mapInteractables
         ? savedState.mapInteractables.filter((obj) => obj.type !== "shop").map(obj => ({ ...obj }))
@@ -681,7 +750,12 @@ export function applyGameMapMixin(Game) {
         { id: "chest_rare", w: 4 },
         { id: "jar_1", w: 14 },
         { id: "jar_2", w: 12 },
-        { id: "ore_sack", w: 6 }
+        { id: "ore_sack", w: 6 },
+        { id: "barrel_a", w: 12 },
+        { id: "woodenCrate", w: 8 },
+        { id: "woodenCrateB", w: 6 },
+        { id: "woodenCrateC", w: 6 },
+        { id: "woodenCrateD", w: 6 }
       ];
       const totalW = weights.reduce((s, x) => s + x.w, 0);
       const pickDefId = () => {
@@ -921,7 +995,12 @@ export function applyGameMapMixin(Game) {
         { id: 'urn_magic', w: 16 },
         { id: 'jar_1', w: 14 },
         { id: 'jar_2', w: 12 },
-        { id: 'ore_sack', w: 6 }
+        { id: 'ore_sack', w: 6 },
+        { id: 'barrel_a', w: 12 },
+        { id: 'woodenCrate', w: 8 },
+        { id: 'woodenCrateB', w: 6 },
+        { id: 'woodenCrateC', w: 6 },
+        { id: 'woodenCrateD', w: 6 }
       ];
       const totalW = weights.reduce((s, x) => s + x.w, 0);
       const pickDefId = () => {
@@ -995,7 +1074,6 @@ export function applyGameMapMixin(Game) {
         return weights[0].typeId;
       };
       let placed = 0;
-      const corridorMiddlePoints = this.world.corridorMiddlePoints || {};
       const chestDef = SEARCHABLE_PROP_DEFS.chest;
       const chestW = chestDef?.width ?? 32;
       const chestH = chestDef?.height ?? 32;
@@ -1020,20 +1098,6 @@ export function applyGameMapMixin(Game) {
           }
         }
         return { gx: startGx, gy: startGy };
-      };
-      const getPathMidpointBetweenInteriorPoints = (p1, p2) => {
-        // Path between interior points is carved as: vertical to (p1.gx, p2.gy) then horizontal to (p2.gx, p2.gy).
-        const vLen = Math.abs(p2.gy - p1.gy);
-        const hLen = Math.abs(p2.gx - p1.gx);
-        const total = vLen + hLen;
-        if (total <= 0) return { gx: p1.gx, gy: p1.gy };
-        const half = total / 2;
-        if (half <= vLen) {
-          const sy = p2.gy >= p1.gy ? 1 : -1;
-          return { gx: p1.gx, gy: p1.gy + sy * Math.round(half) };
-        }
-        const sx = p2.gx >= p1.gx ? 1 : -1;
-        return { gx: p1.gx + sx * Math.round(half - vLen), gy: p2.gy };
       };
       const tryPlaceChestCluster = (centerGx, centerGy) => {
         const count = scaledCount(3 + Math.floor(Math.random() * 3));
@@ -1069,12 +1133,6 @@ export function applyGameMapMixin(Game) {
           const archetype = data.grid[row][col];
           if (archetype === BIOME_ARCHETYPE.START || archetype === BIOME_ARCHETYPE.EXIT) continue;
           if (archetype === BIOME_ARCHETYPE.MINIBOSS) continue;
-          const points = corridorMiddlePoints[`${row}_${col}`];
-          if (archetype === BIOME_ARCHETYPE.CORRIDORS && points?.length === 2) {
-            const mid = getPathMidpointBetweenInteriorPoints(points[0], points[1]);
-            const snapped = findNearestFloorTile(mid.gx, mid.gy, 4);
-            tryPlaceChestCluster(snapped.gx, snapped.gy);
-          }
           if (archetype === BIOME_ARCHETYPE.OPEN_SPACE) {
             const bounds = getBiomeCellBounds(this.world, col, row);
             const centerGx = Math.floor((bounds.x + bounds.w / 2) / tileSize);
@@ -1251,7 +1309,7 @@ export function applyGameMapMixin(Game) {
 
       // Get available obstacle types for this map
       const availableTypes = Object.values(OBSTACLE_TYPES).filter(obs =>
-        obs.maps.includes(mapId) && obs.id !== "barrel"
+        obs.maps.includes(mapId)
       );
       if (availableTypes.length === 0) return;
 

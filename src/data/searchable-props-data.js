@@ -7,6 +7,7 @@ export const SEARCHABLE_PROP_DEFS = {
     sprite: "prop_locker",
     searchTime: 1.5,
     lootTable: "locker_basic",
+    value: "medium",
     width: 48,
     height: 48,
     tileClosed: { row: 24, col: "d" }, // sarcophagus (closed)
@@ -17,6 +18,7 @@ export const SEARCHABLE_PROP_DEFS = {
     sprite: "prop_crate",
     searchTime: 1.0,
     lootTable: "crate_basic",
+    value: "low",
     width: 40,
     height: 40,
     tileClosed: { row: 18, col: "a" },
@@ -27,6 +29,7 @@ export const SEARCHABLE_PROP_DEFS = {
     sprite: "prop_dead_warrior",
     searchTime: 1.2,
     lootTable: "dead_warrior",
+    value: "medium",
     width: 32,
     height: 40,
     tileClosed: { row: 24, col: "d" }, // sarcophagus (closed)
@@ -38,6 +41,7 @@ export const SEARCHABLE_PROP_DEFS = {
     sprite: "tile_chest",
     searchTime: 1.2,
     lootTable: "chest_basic",
+    value: "high",
     width: 32,
     height: 32,
     tileClosed: { row: 18, col: "a" },

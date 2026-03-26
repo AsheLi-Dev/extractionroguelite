@@ -150,6 +150,24 @@ function topWidthFromMiddle(middleIds, byId) {
   return w;
 }
 
+/** Last tile before `top_right` must be a top flat (never `top_5`/`top_6`). */
+function ensureMiddleBeforeTopRightEndsWithTopFlat(middleIds, flatIds, byId) {
+  const lastMid = middleIds[middleIds.length - 1];
+  if (lastMid && CLIFF_TOP_FLAT_IDS.has(lastMid)) return;
+  if (lastMid && !CLIFF_TOP_FLAT_IDS.has(lastMid)) middleIds.pop();
+  let prevForPick = middleIds.length ? middleIds[middleIds.length - 1] : 'top_left';
+  let fp = pickDifferentRandomId(flatIds, prevForPick) || flatIds[0];
+  while (
+    middleIds.length > 0 &&
+    topWidthFromMiddle([...middleIds, fp], byId) > CLIFF_SPAN_MAX
+  ) {
+    middleIds.pop();
+    prevForPick = middleIds.length ? middleIds[middleIds.length - 1] : 'top_left';
+    fp = pickDifferentRandomId(flatIds, prevForPick) || flatIds[0];
+  }
+  middleIds.push(fp);
+}
+
 function computeTopPlacements(sequenceIds, byId) {
   const placements = [];
   const missing = [];
@@ -240,6 +258,10 @@ function buildCliffTopSequence(topSprites, topFlatSprites) {
   while (topWidthFromMiddle(middleIds, byId) > CLIFF_SPAN_MAX && middleIds.length) {
     middleIds.pop();
     prevId = middleIds.length ? middleIds[middleIds.length - 1] : 'top_left';
+  }
+
+  if (flatIds.length) {
+    ensureMiddleBeforeTopRightEndsWithTopFlat(middleIds, flatIds, byId);
   }
 
   const sequenceIds = ['top_left', ...middleIds, 'top_right'];
@@ -428,7 +450,7 @@ function layoutCliffPreview() {
   for (let i = 0; i < lefts.length; i++) {
     const sp = lefts[i];
     if (i === 0) {
-      xL = leftAnchorRightX - sp.w - 32;
+      xL = leftAnchorRightX - sp.w;
     } else {
       const prev = lefts[i - 1];
       const prevRight = xL + prev.w;
@@ -448,7 +470,7 @@ function layoutCliffPreview() {
   for (let i = 0; i < rights.length; i++) {
     const sp = rights[i];
     if (i === 0) {
-      xR = rightAnchorLeftX + 32;
+      xR = rightAnchorLeftX;
     } else {
       const prev = rights[i - 1];
       const prevLeft = xR;

@@ -224,23 +224,6 @@ export const PLAYER_PULSE_CIRCLE_DEF = {
   tags: ['aoe', 'pulseShot']
 };
 
-/** Skeleton Archer arrow: moving circle projectile (enemy → player). Damage/radius/speed overridden at spawn. Radius = executeOpts.size/2 (size is diameter). */
-export const SKELETON_ARCHER_ARROW_DEF = {
-  id: 'skeleton_archer_arrow',
-  shape: 'circle',
-  radius: 5,
-  durationMs: 2500,
-  moveSpeed: 350,
-  moveMode: 'straight',
-  damage: 0,
-  hitStunMs: 0,
-  knockback: 0,
-  maxHitsPerTarget: 1,
-  maxTotalTargets: 1,
-  followOwner: false,
-  tags: ['enemy_projectile', 'skeleton_archer']
-};
-
 /** Human Lancer thrust: rect line attack. Directional knockback along thrust direction. */
 export const HUMAN_LANCER_THRUST_RECT_DEF = {
   id: 'human_lancer_thrust',

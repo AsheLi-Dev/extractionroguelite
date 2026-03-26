@@ -7,6 +7,9 @@ const CLIFF_SPAN_MAX = 896;
 const CLIFF_TOP_FLAT_IDS = new Set(['top_flat_8', 'top_flat_9']);
 const CLIFF_TOP_SLOPE_DOWN_ID = 'top_5';
 const CLIFF_TOP_SLOPE_UP_ID = 'top_6';
+
+/** Pass to {@link buildRockBorderFromBounds} for row-0 island cliffs (no `top_5` on top run). */
+export const ROCK_BORDER_ISLAND_TOP_BUILD_OPTIONS = { excludeTopIds: new Set([CLIFF_TOP_SLOPE_DOWN_ID]) };
 const CLIFF_LEFT_SLOPE_ID = 'left_5';
 const CLIFF_RIGHT_SLOPE_ID = 'right_5';
 const CLIFF_LEFT_BOTTOM_IDS = ['bottom_4', 'bottom_5', 'bottom_6'];
@@ -71,6 +74,24 @@ function topWidthFromMiddle(middleIds, byId) {
   return w;
 }
 
+/** Last tile before `top_right` must be a top flat (never `top_5`/`top_6`). */
+function ensureMiddleBeforeTopRightEndsWithTopFlat(middleIds, flatIds, byId, rng) {
+  const lastMid = middleIds[middleIds.length - 1];
+  if (lastMid && CLIFF_TOP_FLAT_IDS.has(lastMid)) return;
+  if (lastMid && !CLIFF_TOP_FLAT_IDS.has(lastMid)) middleIds.pop();
+  let prevForPick = middleIds.length ? middleIds[middleIds.length - 1] : 'top_left';
+  let fp = pickDifferentRandomId(flatIds, prevForPick, rng) || flatIds[0];
+  while (
+    middleIds.length > 0 &&
+    topWidthFromMiddle([...middleIds, fp], byId) > CLIFF_SPAN_MAX
+  ) {
+    middleIds.pop();
+    prevForPick = middleIds.length ? middleIds[middleIds.length - 1] : 'top_left';
+    fp = pickDifferentRandomId(flatIds, prevForPick, rng) || flatIds[0];
+  }
+  middleIds.push(fp);
+}
+
 function computeTopPlacements(sequenceIds, byId) {
   const placements = [];
   let x = 0;
@@ -98,7 +119,11 @@ function computeTopPlacements(sequenceIds, byId) {
   return { placements, minY, maxY, width: x };
 }
 
-function buildCliffTopSequence(topSprites, topFlatSprites, rng) {
+function buildCliffTopSequence(topSprites, topFlatSprites, rng, options = {}) {
+  const excludeTopIds = options.excludeTopIds;
+  const slopePool = [CLIFF_TOP_SLOPE_DOWN_ID, CLIFF_TOP_SLOPE_UP_ID].filter(
+    (id) => !excludeTopIds?.has(id)
+  );
   const byId = new Map([...topSprites, ...topFlatSprites].map((sp) => [sp.id, sp]));
   const flatIds = topFlatSprites.map((sp) => sp.id);
   if (!byId.get('top_left') || !byId.get('top_right') || !flatIds.length) {
@@ -108,8 +133,8 @@ function buildCliffTopSequence(topSprites, topFlatSprites, rng) {
   let prevId = 'top_left';
   const minFlatW = Math.min(...topFlatSprites.map((s) => s.w));
   while (topWidthFromMiddle(middleIds, byId) < CLIFF_SPAN_MIN && middleIds.length < 80) {
-    if (middleIds.length > 0 && rng() < 0.35) {
-      const slopePick = pickDifferentRandomId([CLIFF_TOP_SLOPE_DOWN_ID, CLIFF_TOP_SLOPE_UP_ID], prevId, rng);
+    if (middleIds.length > 0 && rng() < 0.35 && slopePool.length) {
+      const slopePick = pickDifferentRandomId(slopePool, prevId, rng);
       if (slopePick) {
         middleIds.push(slopePick);
         prevId = slopePick;
@@ -120,8 +145,8 @@ function buildCliffTopSequence(topSprites, topFlatSprites, rng) {
     prevId = flatPick;
   }
   while (topWidthFromMiddle(middleIds, byId) <= CLIFF_SPAN_MAX - minFlatW && rng() < 0.45) {
-    if (rng() < 0.3) {
-      const slopePick = pickDifferentRandomId([CLIFF_TOP_SLOPE_DOWN_ID, CLIFF_TOP_SLOPE_UP_ID], prevId, rng);
+    if (rng() < 0.3 && slopePool.length) {
+      const slopePick = pickDifferentRandomId(slopePool, prevId, rng);
       if (slopePick && topWidthFromMiddle([...middleIds, slopePick], byId) <= CLIFF_SPAN_MAX) {
         middleIds.push(slopePick);
         prevId = slopePick;
@@ -135,6 +160,7 @@ function buildCliffTopSequence(topSprites, topFlatSprites, rng) {
   while (topWidthFromMiddle(middleIds, byId) > CLIFF_SPAN_MAX && middleIds.length) {
     middleIds.pop();
   }
+  ensureMiddleBeforeTopRightEndsWithTopFlat(middleIds, flatIds, byId, rng);
   return computeTopPlacements(['top_left', ...middleIds, 'top_right'], byId);
 }
 
@@ -242,16 +268,24 @@ function makePlacement(sprite, x, y, role, pass) {
   };
 }
 
-function buildPreviewStyleRockBorder(bounds, seed = 1) {
+/**
+ * @param {{ x: number, y: number, w: number, h: number }} bounds
+ * @param {number} [seed]
+ * @param {{ excludeTopIds?: Set<string> }} [options] — e.g. {@link ROCK_BORDER_ISLAND_TOP_BUILD_OPTIONS}
+ */
+function buildPreviewStyleRockBorder(bounds, seed = 1, options = {}) {
   const rng = mulberry32((seed ^ 0x53ad) >>> 0);
-  const top = ROCK_BORDER_ATLAS.top || [];
+  const excludeTopIds = options.excludeTopIds;
+  const topAll = ROCK_BORDER_ATLAS.top || [];
+  const top =
+    excludeTopIds?.size > 0 ? topAll.filter((sp) => !excludeTopIds.has(sp.id)) : topAll;
   const topFlat = ROCK_BORDER_ATLAS.topFlat || [];
   const bottom = ROCK_BORDER_ATLAS.bottom || [];
   const left = ROCK_BORDER_ATLAS.left || [];
   const right = ROCK_BORDER_ATLAS.right || [];
   const leftFlat = ROCK_BORDER_ATLAS.leftFlat || [];
   const rightFlat = ROCK_BORDER_ATLAS.rightFlat || [];
-  const topLayout = buildCliffTopSequence(top, topFlat, rng);
+  const topLayout = buildCliffTopSequence(top, topFlat, rng, options);
   const tops = topLayout.placements;
   const leftSlope = left.find((sp) => sp.id === CLIFF_LEFT_SLOPE_ID) || null;
   const rightSlope = right.find((sp) => sp.id === CLIFF_RIGHT_SLOPE_ID) || null;
@@ -289,7 +323,7 @@ function buildPreviewStyleRockBorder(bounds, seed = 1) {
   let xL = leftAnchorRightX - (lefts[0]?.w || 0);
   for (let i = 0; i < lefts.length; i++) {
     const sp = lefts[i];
-    if (i === 0) xL = leftAnchorRightX - sp.w - 32;
+    if (i === 0) xL = leftAnchorRightX - sp.w;
     else {
       const prev = lefts[i - 1];
       const prevRight = xL + prev.w;
@@ -303,7 +337,7 @@ function buildPreviewStyleRockBorder(bounds, seed = 1) {
   let xR = rightAnchorLeftX;
   for (let i = 0; i < rights.length; i++) {
     const sp = rights[i];
-    if (i === 0) xR = rightAnchorLeftX + 32;
+    if (i === 0) xR = rightAnchorLeftX;
     else if (rights[i - 1].id === CLIFF_RIGHT_SLOPE_ID) xR += 96;
     rightPlaced.push({ sprite: sp, x: xR, y: yR, pass: 3 });
     yR += sp.h;
@@ -313,8 +347,10 @@ function buildPreviewStyleRockBorder(bounds, seed = 1) {
   let deltaRight = 0;
   const blPre = bots.find((s) => s.id === 'bottom_left');
   const brPre = bots.find((s) => s.id === 'bottom_right');
-  const alignBottom = HleftStack === HrightStack;
-  if (alignBottom && blPre) {
+  // Nudge each vertical side so its bottom flat meets the top edge of bottom_left / bottom_right.
+  // Previously this only ran when HleftStack === HrightStack (random stacks are usually unequal),
+  // which left most seeds with a vertical gap between side columns and bottom corner sprites.
+  if (blPre) {
     const targetTop = bottomBandY + (Hbot - blPre.h);
     const lastLf = [...leftPlaced].reverse().find((p) => isLeftFlatId(p.sprite.id));
     if (lastLf) {
@@ -322,7 +358,7 @@ function buildPreviewStyleRockBorder(bounds, seed = 1) {
       for (const p of leftPlaced) p.y += deltaLeft;
     }
   }
-  if (alignBottom && brPre) {
+  if (brPre) {
     const targetTop = bottomBandY + (Hbot - brPre.h);
     const lastRf = [...rightPlaced].reverse().find((p) => isRightFlatId(p.sprite.id));
     if (lastRf) {
@@ -331,7 +367,15 @@ function buildPreviewStyleRockBorder(bounds, seed = 1) {
     }
   }
 
-  const topShift = alignBottom ? Math.max(0, deltaLeft, deltaRight) : 0;
+  const topShift = Math.max(0, deltaLeft, deltaRight);
+  // Tops shift by topShift so the row stays tied to the side that needed the largest bottom nudge.
+  // Left/right columns only used deltaLeft/deltaRight, so when those differ the first side flat no
+  // longer meets top_left / top_right (left_flat can appear to sit above the corner). Re-sync Y.
+  for (const p of leftPlaced) p.y += topShift - deltaLeft;
+  for (const p of rightPlaced) p.y += topShift - deltaRight;
+  const bottomFixLeft = topShift - deltaLeft;
+  const bottomFixRight = topShift - deltaRight;
+
   for (const p of tops) topPlaced.push({ sprite: p.sprite, x: p.x, y: p.y + topYOffset + topShift, pass: 4 });
 
   const lastLeftFlat = [...leftPlaced].reverse().find((p) => isLeftFlatId(p.sprite.id));
@@ -348,7 +392,7 @@ function buildPreviewStyleRockBorder(bounds, seed = 1) {
   const rightBottomSeg = idx8 >= 0 ? bots.slice(idx8) : [];
   let curX = bottomLeftX;
   for (const sp of leftBottomSeg) {
-    const y0 = bottomBandY + (Hbot - sp.h) + (CLIFF_BOTTOM_DROP_BY_ID[sp.id] || 0);
+    const y0 = bottomBandY + (Hbot - sp.h) + (CLIFF_BOTTOM_DROP_BY_ID[sp.id] || 0) + bottomFixLeft;
     bottomPlaced.push({ sprite: sp, x: curX, y: y0, pass: 1 });
     curX += sp.w;
     if (sp.id === 'bottom_7') curX += bottom78Gap;
@@ -358,7 +402,7 @@ function buildPreviewStyleRockBorder(bounds, seed = 1) {
     for (let i = rightBottomSeg.length - 1; i >= 0; i--) {
       const sp = rightBottomSeg[i];
       rightEdge -= sp.w;
-      const y0 = bottomBandY + (Hbot - sp.h) + (CLIFF_BOTTOM_DROP_BY_ID[sp.id] || 0);
+      const y0 = bottomBandY + (Hbot - sp.h) + (CLIFF_BOTTOM_DROP_BY_ID[sp.id] || 0) + bottomFixRight;
       bottomPlaced.push({ sprite: sp, x: rightEdge, y: y0, pass: 1 });
     }
   }
@@ -374,11 +418,12 @@ function buildPreviewStyleRockBorder(bounds, seed = 1) {
   }
   const localW = Math.max(1, maxX - minX);
   const localH = Math.max(1, maxY - minY);
-  // Keep preview adjacency intact in runtime: never scale spacing up.
-  // Expanding only positions (while drawing sprites at native w/h) creates real gaps.
-  const scale = Math.min(1, Math.min(bounds.w / localW, bounds.h / localH));
-  const offX = bounds.x + (bounds.w - localW * scale) * 0.5;
-  const offY = bounds.y + (bounds.h - localH * scale) * 0.02;
+  // World uses the same authored X/Y spacing as the preview (scale fixed at 1).
+  // Center within bounds; do not downscale — that compressed positions while sprites
+  // stayed native size and broke adjacency. Overflow may extend past bounds for small rectangles.
+  const scale = 1;
+  const offX = bounds.x + (bounds.w - localW) * 0.5;
+  const offY = bounds.y + (bounds.h - localH) * 0.02;
 
   const placements = [];
   const debugPoints = [];
@@ -403,9 +448,14 @@ function buildPreviewStyleRockBorder(bounds, seed = 1) {
   return { image: getRockBorderImage(), placements, occludeTiles: null, debugPoints };
 }
 
-export function buildRockBorderFromBounds(bounds, seed = 1) {
+/**
+ * @param {{ x: number, y: number, w: number, h: number }} bounds
+ * @param {number} [seed]
+ * @param {{ excludeTopIds?: Set<string> }} [options]
+ */
+export function buildRockBorderFromBounds(bounds, seed = 1, options) {
   if (!bounds) return null;
-  return buildPreviewStyleRockBorder(bounds, seed);
+  return buildPreviewStyleRockBorder(bounds, seed, options);
 }
 
 export function buildRockBorderPlacements(world, seed = 1) {

@@ -1,10 +1,14 @@
 export const GRID_SIZE = 4;
 
 export const NODE_TYPES = {
+  CALM: "white",
+  RISKY: "blue",
+  DEADLY: "yellow",
+  BOSS: "red",
+  // Backward-compatible aliases.
   SAFE: "white",
   ELITE: "blue",
   DANGER: "yellow",
-  BOSS: "red",
 };
 
 export const NODE_TAGS = {
@@ -41,13 +45,13 @@ export function generateRunMap() {
       if (x === GRID_SIZE - 1 && y === GRID_SIZE - 1) {
         type = NODE_TYPES.BOSS;
       } else if (depth <= 1) {
-        type = NODE_TYPES.SAFE;
+        type = NODE_TYPES.CALM;
       } else if (depth <= 3) {
-        type = Math.random() < 0.7 ? NODE_TYPES.SAFE : NODE_TYPES.ELITE;
+        type = Math.random() < 0.7 ? NODE_TYPES.CALM : NODE_TYPES.RISKY;
       } else if (depth <= 5) {
-        type = Math.random() < 0.8 ? NODE_TYPES.ELITE : NODE_TYPES.DANGER;
+        type = Math.random() < 0.8 ? NODE_TYPES.RISKY : NODE_TYPES.DEADLY;
       } else {
-        type = Math.random() < 0.5 ? NODE_TYPES.ELITE : NODE_TYPES.DANGER;
+        type = Math.random() < 0.5 ? NODE_TYPES.RISKY : NODE_TYPES.DEADLY;
       }
 
       nodes[y][x] = {
@@ -66,12 +70,12 @@ export function generateRunMap() {
 export function generateTutorialRunMap() {
   return [
     [
-      { x: 0, y: 0, type: NODE_TYPES.SAFE, tag: null, visited: false, biomeMapId: 0 },
-      { x: 1, y: 0, type: NODE_TYPES.SAFE, tag: null, visited: false, biomeMapId: 1 },
+      { x: 0, y: 0, type: NODE_TYPES.CALM, tag: null, visited: false, biomeMapId: 0 },
+      { x: 1, y: 0, type: NODE_TYPES.CALM, tag: null, visited: false, biomeMapId: 1 },
     ],
     [
-      { x: 0, y: 1, type: NODE_TYPES.SAFE, tag: null, visited: false, biomeMapId: 2 },
-      { x: 1, y: 1, type: NODE_TYPES.SAFE, tag: NODE_TAGS.EXTRACTION, visited: false, biomeMapId: 3 },
+      { x: 0, y: 1, type: NODE_TYPES.CALM, tag: null, visited: false, biomeMapId: 2 },
+      { x: 1, y: 1, type: NODE_TYPES.CALM, tag: NODE_TAGS.EXTRACTION, visited: false, biomeMapId: 3 },
     ],
   ];
 }

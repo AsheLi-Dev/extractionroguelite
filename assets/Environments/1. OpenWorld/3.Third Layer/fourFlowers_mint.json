@@ -1,0 +1,26 @@
+{
+  "image": "fourFlowers.png",
+  "tileWidth": 32,
+  "tileHeight": 32,
+  "families": [
+    {
+      "id": "mint",
+      "startCol": 0,
+      "startRow": 0,
+      "tiles": [
+        { "id": "mint_1", "x": 0, "y": 0, "w": 32, "h": 32, "weight": 10 },
+        { "id": "mint_2", "x": 32, "y": 0, "w": 32, "h": 32, "weight": 10 },
+        { "id": "mint_3", "x": 64, "y": 0, "w": 32, "h": 32, "weight": 10 },
+
+        { "id": "mint_4", "x": 0, "y": 32, "w": 32, "h": 32, "weight": 10 },
+        { "id": "mint_5", "x": 32, "y": 32, "w": 32, "h": 32, "weight": 10 },
+        { "id": "mint_6", "x": 64, "y": 32, "w": 32, "h": 32, "weight": 10 },
+
+        { "id": "mint_7", "x": 0, "y": 64, "w": 32, "h": 32, "weight": 10 },
+        { "id": "mint_8", "x": 32, "y": 64, "w": 32, "h": 32, "weight": 10 },
+        { "id": "mint_9", "x": 64, "y": 64, "w": 32, "h": 32, "weight": 10 }
+      ]
+    }
+  ]
+}
+

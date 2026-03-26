@@ -66,6 +66,8 @@ export class Player {
     this.castStateName = "cast";
     this.castStateKeys = ['cast'];
     this.castStateCycleIndex = 0;
+    /** Optional sprite profile keys (channel, emote, …) beyond attack/cast; wire gameplay to these as needed. */
+    this.specialStateKeys = [];
     
     // Attack movement slowdown profile (PoE2-style)
     this.attackMoveProfile = {
@@ -330,6 +332,9 @@ export class Player {
       this.castStateKeys = Array.isArray(this.spriteProfile.castStates) && this.spriteProfile.castStates.length > 0
         ? [...this.spriteProfile.castStates]
         : ['cast'];
+      this.specialStateKeys = Array.isArray(this.spriteProfile.specialStates) && this.spriteProfile.specialStates.length > 0
+        ? [...this.spriteProfile.specialStates]
+        : [];
       this._applyCharacterDirectionalSpritesheets(options.playableCharacter, this.spriteProfile);
     } else if (this.spriteProfile?.kind === 'directional_folder') {
       this.characterId = options.playableCharacter.id;
@@ -340,6 +345,9 @@ export class Player {
       this.castStateKeys = Array.isArray(this.spriteProfile.castStates) && this.spriteProfile.castStates.length > 0
         ? [...this.spriteProfile.castStates]
         : ['cast'];
+      this.specialStateKeys = Array.isArray(this.spriteProfile.specialStates) && this.spriteProfile.specialStates.length > 0
+        ? [...this.spriteProfile.specialStates]
+        : [];
       this._applyCharacterFolderAnimations(options.playableCharacter, this.spriteProfile);
     } else if (options?.playableCharacter?.spriteFolderBase && options?.playableCharacter?.spriteFolderAnimations) {
       this.characterId = options.playableCharacter.id;
@@ -1018,6 +1026,13 @@ export class Player {
 
     const attack4Entries = loadState('attack4');
     if (attack4Entries) Object.assign(this.spriteSets.attack4, attack4Entries);
+
+    for (const sk of this.specialStateKeys || []) {
+      if (!sk || !states[sk]) continue;
+      if (!this.spriteSets[sk]) this.spriteSets[sk] = {};
+      const specEntries = loadState(sk);
+      if (specEntries) Object.assign(this.spriteSets[sk], specEntries);
+    }
   }
 
   _createDirectionalSheet(src, label) {
@@ -1695,12 +1710,9 @@ export class Player {
       if (obstacleIntersectsRect(obstacle, testY)) canMoveY = false;
     }
 
-    if (!canMoveX && !canMoveY) {
+    // Do not allow axis-fallback sliding: if either axis collides, cancel this movement step.
+    if (!canMoveX || !canMoveY) {
       nx = this.position.x;
-      ny = this.position.y;
-    } else if (!canMoveX) {
-      nx = this.position.x;
-    } else if (!canMoveY) {
       ny = this.position.y;
     }
 

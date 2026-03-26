@@ -139,10 +139,6 @@ export function applyGameEnemyAttacksMixin(Game) {
               sourceId: source?.id ?? null,
               sourceType: 'enemy_projectile'
             });
-            if (world.playerDebuffVFX?.stun) {
-              world.playerDebuffVFX.stun.active = true;
-              world.playerDebuffVFX.stun.until = world.time + attackHitbox.stunDuration;
-            }
           }
           if (attackHitbox.slowZone && attackHitbox.slowDuration != null) {
             world.applyStatusToEntity?.('player', 'slow', {

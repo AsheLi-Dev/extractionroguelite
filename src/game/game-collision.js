@@ -81,6 +81,12 @@ export function applyGameCollisionMixin(Game) {
         if (obstacleIntersectsRect(obstacle, blockerRect)) return true;
       }
 
+      for (const b of this.breakables || []) {
+        if (!b || typeof b.isBlockingMovement !== 'function' || !b.isBlockingMovement()) continue;
+        const r = { x: b.position.x, y: b.position.y, w: b.hitbox.w, h: b.hitbox.h };
+        if (this.rectsOverlap(blockerRect, r)) return true;
+      }
+
       for (const ob of this.getVaultEntranceBlocking?.() || []) {
         if (obstacleIntersectsRect(ob, blockerRect)) return true;
       }
@@ -202,6 +208,12 @@ export function applyGameCollisionMixin(Game) {
         if (obstacleIntersectsRect(obstacle, rect)) return true;
       }
 
+      for (const b of this.breakables || []) {
+        if (!b || typeof b.isBlockingMovement !== 'function' || !b.isBlockingMovement()) continue;
+        const r = { x: b.position.x, y: b.position.y, w: b.hitbox.w, h: b.hitbox.h };
+        if (this.rectsOverlap(rect, r)) return true;
+      }
+
       for (const ob of this.getVaultEntranceBlocking?.() || []) {
         if (obstacleIntersectsRect(ob, rect)) return true;
       }
@@ -310,6 +322,13 @@ export function applyGameCollisionMixin(Game) {
           if (obstacleIntersectsRect(obstacle, testRect)) {
             return true;
           }
+        }
+
+        // Check blocking breakables
+        for (const br of this.breakables || []) {
+          if (!br || typeof br.isBlockingMovement !== 'function' || !br.isBlockingMovement()) continue;
+          const r = { x: br.position.x, y: br.position.y, w: br.hitbox.w, h: br.hitbox.h };
+          if (this.rectsOverlap(testRect, r)) return true;
         }
         
         // Check procedural tile walls
@@ -437,6 +456,14 @@ export function applyGameCollisionMixin(Game) {
             return true;
           }
         }
+
+        // Check blocking breakables
+        const testRect = { x, y, w: size, h: size };
+        for (const br of this.breakables || []) {
+          if (!br || typeof br.isBlockingMovement !== 'function' || !br.isBlockingMovement()) continue;
+          const r = { x: br.position.x, y: br.position.y, w: br.hitbox.w, h: br.hitbox.h };
+          if (this.rectsOverlap(testRect, r)) return true;
+        }
         
         // Check procedural tile walls
         const walls = this.world.tileWallRects || [];
@@ -550,6 +577,10 @@ export function applyGameCollisionMixin(Game) {
           if (obstacle.destroyed || !obstacle.blocksMovement) continue;
           if (isDashingNow && obstacle.type === "ancientTree") continue;
           blockingRects.push(getObstacleCollisionRect(obstacle));
+        }
+        for (const br of this.breakables || []) {
+          if (!br || typeof br.isBlockingMovement !== 'function' || !br.isBlockingMovement()) continue;
+          blockingRects.push({ x: br.position.x, y: br.position.y, w: br.hitbox.w, h: br.hitbox.h });
         }
         for (const obj of this.mapInteractables || []) {
           if (!obj?.collisionRect) continue;
@@ -880,7 +911,7 @@ export function applyGameCollisionMixin(Game) {
         if (t < minT) minT = t;
       }
       for (const obstacle of this.obstacles || []) {
-        if (obstacle.destroyed || !obstacle.blocksMovement) continue;
+        if (obstacle.destroyed || !obstacle.blocksAttackHitboxes) continue;
         const r = getObstacleCollisionRect(obstacle);
         const t = rayRectHit(r.x, r.y, r.w, r.h);
         if (t < minT) minT = t;

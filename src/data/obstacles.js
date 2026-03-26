@@ -1,4 +1,173 @@
 export const OBSTACLE_TYPES = {
+  largePond: {
+    id: "largePond",
+    name: "Large Pond",
+    maps: [0, 1, 2, 3, 4], // All maps (safe default)
+    blocksMovement: true,
+    blocksProjectiles: false,
+    // Ponds should not block melee/projectile hitboxes.
+    blocksAttackHitboxes: false,
+    // Size will be refined from atlas frame once loaded; this is a safe fallback.
+    size: { w: 56, h: 35 },
+    drawScale: 1,
+    collisionScale: 0.9,
+    atlas: {
+      sheetSrc: "assets/Environments/1. OpenWorld/1.First Layer/ponds.png",
+      defsSrc: "assets/Environments/1. OpenWorld/1.First Layer/ponds.json",
+      frameIds: ["pond_large_1", "pond_large_2"]
+    },
+    shadowColor: "rgba(0, 0, 0, 0.12)"
+  },
+  smallPonds: {
+    id: "smallPonds",
+    name: "Small Ponds (Decorative)",
+    maps: [0, 1, 2, 3, 4], // All maps (safe default)
+    blocksMovement: false,
+    blocksProjectiles: false,
+    blocksAttackHitboxes: false,
+    // Fallback; replaced by chosen atlas frame size once loaded.
+    size: { w: 17, h: 23 },
+    drawScale: 1,
+    atlas: {
+      sheetSrc: "assets/Environments/1. OpenWorld/1.First Layer/ponds.png",
+      defsSrc: "assets/Environments/1. OpenWorld/1.First Layer/ponds.json",
+      frameIds: ["pond_5", "pond_9", "pond_10", "pond_11"]
+    },
+    shadowColor: "rgba(0, 0, 0, 0.06)"
+  },
+  magicPillarSmall: {
+    id: "magicPillarSmall",
+    name: "Magic Pillar (Small)",
+    maps: [0, 1, 2, 3, 4],
+    blocksMovement: true,
+    blocksProjectiles: true,
+    // Default hitbox blocking behaviour is fine (same as ruinPillar).
+    size: { w: 49, h: 132 },
+    placementSize: { w: 49, h: 132 },
+    drawScale: 1,
+    atlas: {
+      sheetSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/2 Small Magic Pillars.png",
+      defsSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/magicPillars_small.json",
+      frameIds: ["magic_pillar_small_1", "magic_pillar_small_2"]
+    },
+    shadowColor: "rgba(0, 0, 0, 0.22)"
+  },
+  magicPillarMedium: {
+    id: "magicPillarMedium",
+    name: "Magic Pillar (Medium)",
+    maps: [0, 1, 2, 3, 4],
+    blocksMovement: true,
+    blocksProjectiles: true,
+    size: { w: 103, h: 165 },
+    placementSize: { w: 103, h: 165 },
+    drawScale: 1,
+    atlas: {
+      sheetSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/3 medium magic pillars.png",
+      defsSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/magicPillars_medium.json",
+      frameIds: ["magic_pillar_medium_1", "magic_pillar_medium_2", "magic_pillar_medium_3"]
+    },
+    shadowColor: "rgba(0, 0, 0, 0.24)"
+  },
+  magicPillarLarge: {
+    id: "magicPillarLarge",
+    name: "Magic Pillar (Large)",
+    maps: [0, 1, 2, 3, 4],
+    blocksMovement: true,
+    blocksProjectiles: true,
+    size: { w: 66, h: 289 },
+    placementSize: { w: 66, h: 289 },
+    drawScale: 1,
+    atlas: {
+      sheetSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/2 Large Magic Pillars.png",
+      defsSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/magicPillars_large.json",
+      frameIds: ["magic_pillar_large_1", "magic_pillar_large_2"]
+    },
+    shadowColor: "rgba(0, 0, 0, 0.26)"
+  },
+  darkPillarSmall: {
+    id: "darkPillarSmall",
+    name: "Dark Pillar (Small)",
+    maps: [0, 1, 2, 3, 4],
+    blocksMovement: true,
+    blocksProjectiles: true,
+    size: { w: 49, h: 132 },
+    placementSize: { w: 49, h: 132 },
+    drawScale: 1,
+    atlas: {
+      sheetSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/2 small dark pillars.png",
+      defsSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/darkPillars_small.json",
+      frameIds: ["dark_pillar_small_1", "dark_pillar_small_2"]
+    },
+    shadowColor: "rgba(0, 0, 0, 0.25)"
+  },
+  darkPillarMedium: {
+    id: "darkPillarMedium",
+    name: "Dark Pillar (Medium)",
+    maps: [0, 1, 2, 3, 4],
+    blocksMovement: true,
+    blocksProjectiles: true,
+    size: { w: 103, h: 165 },
+    placementSize: { w: 103, h: 165 },
+    drawScale: 1,
+    atlas: {
+      sheetSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/3 mediu dark pillars.png",
+      defsSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/darkPillars_medium.json",
+      frameIds: ["dark_pillar_medium_1", "dark_pillar_medium_2", "dark_pillar_medium_3"]
+    },
+    shadowColor: "rgba(0, 0, 0, 0.27)"
+  },
+  darkPillarLarge: {
+    id: "darkPillarLarge",
+    name: "Dark Pillar (Large)",
+    maps: [0, 1, 2, 3, 4],
+    blocksMovement: true,
+    blocksProjectiles: true,
+    size: { w: 66, h: 289 },
+    placementSize: { w: 66, h: 289 },
+    drawScale: 1,
+    atlas: {
+      sheetSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/2 large dark pillars.png",
+      defsSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/darkPillars_large.json",
+      frameIds: ["dark_pillar_large_1", "dark_pillar_large_2"]
+    },
+    shadowColor: "rgba(0, 0, 0, 0.29)"
+  },
+  magicAltar: {
+    id: "magicAltar",
+    name: "Magic Altar",
+    maps: [0, 1, 2, 3, 4],
+    blocksMovement: true,
+    blocksProjectiles: true,
+    // Only the lower 80% should block.
+    collisionBottomRatio: 0.8,
+    size: { w: 137, h: 100 },
+    placementSize: { w: 137, h: 100 },
+    drawScale: 1,
+    atlas: {
+      sheetSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/3 magic altars.png",
+      defsSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/magicAltars.json",
+      frameIds: ["magic_altar_1", "magic_altar_2", "magic_altar_3"]
+    },
+    shadowColor: "rgba(0, 0, 0, 0.22)"
+  },
+  darkAltar: {
+    id: "darkAltar",
+    name: "Dark Altar",
+    maps: [0, 1, 2, 3, 4],
+    blocksMovement: true,
+    blocksProjectiles: true,
+    // Only the lower 80% should block.
+    collisionBottomRatio: 0.8,
+    size: { w: 137, h: 100 },
+    placementSize: { w: 137, h: 100 },
+    drawScale: 1,
+    atlas: {
+      sheetSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/3 dark altars.png",
+      defsSrc: "assets/Environments/1. OpenWorld/4.SingleObj/Special/darkAltars.json",
+      frameIds: ["dark_altar_1", "dark_altar_2", "dark_altar_3"]
+    },
+    shadowColor: "rgba(0, 0, 0, 0.26)"
+  },
   giantRock: {
     id: "giantRock",
     name: "Giant Rock",
@@ -82,18 +251,6 @@ export const OBSTACLE_TYPES = {
     color: "#b0e0e6",
     meltTime: 30,
     shadowColor: "rgba(0, 0, 0, 0.2)"
-  },
-  barrel: {
-    id: "barrel",
-    name: "Barrel",
-    maps: [0, 1, 2, 3, 4], // All maps
-    blocksMovement: true,
-    blocksProjectiles: false,
-    size: { w: 40, h: 40 },
-    color: "#8b4513",
-    explosionDamage: 15,
-    explosionRadius: 60,
-    shadowColor: "rgba(0, 0, 0, 0.25)"
   },
   bonePile: {
     id: "bonePile",

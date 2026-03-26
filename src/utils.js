@@ -146,6 +146,14 @@ export function lerp(a, b, t) {
 
 /** Returns collision rect for a wall (e.g. tile wall or obstacle). */
 export function getWallCollisionRect(wall, inset = 4) {
+  void inset;
+  if (wall?._biomeInvisibleBarrier || wall?._upperCliffRockCollision) {
+    const x = wall.x ?? 0;
+    const y = wall.y ?? 0;
+    const w = Math.max(1, wall.w ?? 32);
+    const h = Math.max(1, wall.h ?? 32);
+    return { x, y, w, h };
+  }
   const w = wall?.w ?? wall?.h ?? 32;
   const h = wall?.h ?? wall?.w ?? 32;
   const cw = Math.min(32, Math.max(1, w));
@@ -165,6 +173,48 @@ export function getObstacleCollisionRect(obstacle) {
   const x = obstacle?.position?.x ?? obstacle?.x ?? 0;
   const y = obstacle?.position?.y ?? obstacle?.y ?? 0;
   const type = obstacle?.type ?? obstacle?.typeDef?.id ?? "";
+
+  if (type === "largePond") {
+    const td = obstacle.typeDef || {};
+    const vw = obstacle.size?.w ?? td.size?.w ?? w;
+    const vh = obstacle.size?.h ?? td.size?.h ?? h;
+    const ratio = Number(td.collisionScale);
+    const scale = Number.isFinite(ratio) && ratio > 0 && ratio <= 1 ? ratio : 0.9;
+    const cw = Math.max(1, Math.round(vw * scale));
+    const ch = Math.max(1, Math.round(vh * scale));
+    return {
+      x: x + (vw - cw) / 2,
+      y: y + (vh - ch) / 2,
+      w: cw,
+      h: ch,
+    };
+  }
+
+  if (type === "magicPillarSmall" || type === "magicPillarMedium" || type === "magicPillarLarge") {
+    // Same collision style as ruinPillar: only the bottom half blocks (keeps lanes readable).
+    return { x, y: y + h / 2, w, h: h / 2 };
+  }
+
+  if (type === "darkPillarSmall" || type === "darkPillarMedium" || type === "darkPillarLarge") {
+    // Same collision style as ruinPillar: only the bottom half blocks (keeps lanes readable).
+    return { x, y: y + h / 2, w, h: h / 2 };
+  }
+
+  if (type === "magicAltar") {
+    const td = obstacle?.typeDef || {};
+    const ratioRaw = Number(td.collisionBottomRatio);
+    const ratio = Number.isFinite(ratioRaw) && ratioRaw > 0 && ratioRaw <= 1 ? ratioRaw : 0.8;
+    const ch = Math.max(1, Math.round(h * ratio));
+    return { x, y: y + (h - ch), w, h: ch };
+  }
+
+  if (type === "darkAltar") {
+    const td = obstacle?.typeDef || {};
+    const ratioRaw = Number(td.collisionBottomRatio);
+    const ratio = Number.isFinite(ratioRaw) && ratioRaw > 0 && ratioRaw <= 1 ? ratioRaw : 0.8;
+    const ch = Math.max(1, Math.round(h * ratio));
+    return { x, y: y + (h - ch), w, h: ch };
+  }
 
   if (type === "giantRock") {
     const td = obstacle.typeDef || {};

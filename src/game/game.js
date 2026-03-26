@@ -31,7 +31,7 @@ import {
   isSkillUnlocked, getUnlockedSkills, getSkillById, getSkillDamageScalingMult, getSkillHealScalingMult
 } from '../data/skills.js';
 import { RUN_CONDITIONS, ATTACK_TYPES, pickRandomConditions, enforceConditionLimits } from '../data/conditions.js';
-import { MAP_WIDTH, MAP_HEIGHT, WALL_THICKNESS, MAP_DEFS, World, createProceduralWorld, PRESET_MEDIUM, PRESET_BIOME, PRESET_FOREST_BIOME_TEST, BIOME_MAP_DEF, FOREST_BIOME_TEST_MAP_DEF, buildArchetypeGrid, buildForestBiomeTestArchetypeGrid, buildAllSubareaGrids, buildSubareaZonesForWorld, BIOME_ARCHETYPE, getBiomeCellBounds, getBiomeGridDimensions, BIOME_GRID_COLS, BIOME_GRID_ROWS, applyCorridorCellLayouts, applyBiomeTopBottomWalls, buildCobblestonePath, applyLostCampCellLayouts, applyVaultCellLayouts, applyVaultTreasureDecorations, applyMinibossCellDecorations } from '../data/maps.js';
+import { MAP_WIDTH, MAP_HEIGHT, WALL_THICKNESS, MAP_DEFS, World, createProceduralWorld, PRESET_MEDIUM, PRESET_BIOME, PRESET_FOREST_BIOME_TEST, BIOME_MAP_DEF, FOREST_BIOME_TEST_MAP_DEF, buildArchetypeGrid, buildForestBiomeTestArchetypeGrid, buildAllSubareaGrids, buildSubareaZonesForWorld, BIOME_ARCHETYPE, getBiomeCellBounds, getBiomeGridDimensions, BIOME_GRID_COLS, BIOME_GRID_ROWS, applyBiomeTopBottomWalls, buildCobblestonePath, applyLostCampCellLayouts, applyVaultCellLayouts, applyVaultTreasureDecorations, applyMinibossCellDecorations } from '../data/maps.js';
 import { getVisibleOpenWorldBoulderPlacements, getVisibleOpenWorldShrubPlacements } from '../data/openworld-ground.js';
 import { mulberry32 } from '../map-gen-blockers.js';
 import { LOST_CAMP_TILESET } from '../data/lost-camp-data.js';
@@ -681,7 +681,6 @@ export class Game {
         this.world.archetypeGrid = buildForestBiomeTestArchetypeGrid(this.world);
         buildAllSubareaGrids(this.world, this.world.archetypeGrid, mulberry32(seed ^ 0x7a3f));
         buildSubareaZonesForWorld(this.world, this.world.archetypeGrid, mulberry32(seed ^ 0xc4d2), { chancePerCell: 0.5, totemWeight: 0.4, ambushWeight: 0.4 });
-        applyCorridorCellLayouts(this.world, this.world.archetypeGrid, mulberry32(seed));
         applyBiomeTopBottomWalls(this.world, this.world.archetypeGrid, seed);
         buildCobblestonePath(this.world, this.world.archetypeGrid, mulberry32(seed ^ 0x8f2a));
         applyLostCampCellLayouts(this.world, this.world.archetypeGrid);
@@ -860,7 +859,6 @@ export class Game {
 
     this.toxicGroundTimer = 0;
     this.burningGroundTimer = 0;
-    this.stunTimer = 0;
     this.playerSlowUntil = 0;
     this.playerSlowMult = 1;
     this.playerBurnUntil = 0;
@@ -1543,7 +1541,7 @@ export class Game {
     const devSpawnMinibossBtn = document.getElementById("dev-spawn-miniboss");
     if (devMinibossSelect) {
       devMinibossSelect.innerHTML = '<option value="">-- Select enemy --</option>';
-      const attackKitEnemies = ["Orc", "Orc Wizard", "Goblin", "Goblin Archer", "Troll", "Ettin", "Big Slime", "Skeleton Archer", "Lich", "Death Knight", "Banshee", "Giant Spider", "Manticore", "Dryad", "Rock Golem", "Drake / Lesser Dragon", "GoblinKing", "RockGiant"];
+      const attackKitEnemies = ["Orc", "Orc Wizard", "Goblin", "Goblin Archer", "Troll", "Ettin", "Big Slime", "Lich", "Death Knight", "Death Lord", "Banshee", "Giant Spider", "Manticore", "Dryad", "Rock Golem", "Drake / Lesser Dragon", "GoblinKing", "RockGiant"];
       for (const name of attackKitEnemies) {
         const opt = document.createElement("option");
         opt.value = name;
@@ -2712,6 +2710,12 @@ export class Game {
   applyStatusToEntity(targetOrId, statusId, statusData = {}) {
     const entityId = (targetOrId != null && typeof targetOrId === 'object') ? targetOrId.id : targetOrId;
     if ((entityId === null || entityId === undefined || entityId === '') || !this.statusManager) return null;
+    if (statusId === 'stun' && entityId !== 'player') {
+      const targetEntity = this.getEntityById(entityId);
+      if (targetEntity?.attackCtrl?.state === 'active') {
+        return null;
+      }
+    }
     const status = this.statusManager.applyStatus(entityId, {
       ...statusData,
       statusId
@@ -2843,6 +2847,10 @@ export class Game {
       const burn = this.statusManager.getStatus('player', 'burn');
       const slow = this.statusManager.getStatus('player', 'slow');
       const stun = this.statusManager.getStatus('player', 'stun');
+      const stunRemaining = Number(stun?.remaining);
+      if (stun && (!Number.isFinite(stunRemaining) || stunRemaining <= 0)) {
+        this.statusManager.removeStatus('player', 'stun', this);
+      }
       const poison = this.statusManager.getStatus('player', 'poison');
       const haste = this.statusManager.getStatus('player', 'haste');
       const weakening = this.statusManager.getStatus('player', 'weakening');
@@ -2852,11 +2860,6 @@ export class Game {
       this.playerBurnDmg = burn?.magnitude ?? 0;
       this.playerSlowUntil = slow ? this.time + slow.remaining : 0;
       this.playerSlowMult = slow?.magnitude ?? 1;
-      const stunRemaining = Number(stun?.remaining);
-      this.stunTimer = Number.isFinite(stunRemaining) && stunRemaining > 0 ? stunRemaining : 0;
-      if (stun && this.stunTimer <= 0) {
-        this.statusManager.removeStatus('player', 'stun', this);
-      }
       this.playerPoisonUntil = poison ? this.time + poison.remaining : 0;
       this.playerPoisonDmgPerSec = poison?.magnitude ?? 0;
       this.playerHasteUntil = haste ? this.time + haste.remaining : 0;
@@ -2965,11 +2968,6 @@ export class Game {
       statusId: 'slow',
       duration: this.playerSlowUntil - this.time,
       magnitude: this.playerSlowMult ?? 1,
-      sourceType: 'legacy_sync'
-    } : null);
-    compareAndApply('player', 'stun', (this.stunTimer || 0) > 0 ? {
-      statusId: 'stun',
-      duration: this.stunTimer,
       sourceType: 'legacy_sync'
     } : null);
     compareAndApply('player', 'poison', this.playerPoisonUntil > this.time ? {
@@ -3448,6 +3446,11 @@ export class Game {
     });
   }
 
+  /** Player stun is owned by {@link StatusManager} only; use this instead of any legacy timer. */
+  isPlayerStunned() {
+    return !!this.statusManager?.hasStatus?.('player', 'stun');
+  }
+
   applyKnockback(targetId, fromX, fromY, force, opts = {}) {
     const entity = this.getEntityById(targetId);
     if (!entity || !entity.position) return;
@@ -3517,52 +3520,13 @@ export class Game {
         : overlap(hitboxRect, r);
       if (!collided) continue;
       if (hitbox.faction === 'enemy' && hitbox.tags?.includes('enemy_projectile')) {
-        if (obstacle.type === "barrel") {
-          obstacle.destroyed = true;
-          const ex = obstacle.position.x + obstacle.size.w / 2;
-          const ey = obstacle.position.y + obstacle.size.h / 2;
-          const hitArea = this.enemiesInRadius(ex, ey, obstacle.typeDef.explosionRadius);
-          for (const e of hitArea) {
-            this.dealDamageToEnemy(e, obstacle.typeDef.explosionDamage, {
-              useDamageFacade: true,
-              sourceType: "environment",
-              reason: "barrel_explosion_enemy",
-              damageClass: "explosion",
-              tags: ["environment", "barrel_explosion"]
-            });
-          }
-          const px = this.player.position.x + this.player.size / 2;
-          const py = this.player.position.y + this.player.size / 2;
-          const dist = Math.sqrt((px - ex) ** 2 + (py - ey) ** 2);
-          if (dist < obstacle.typeDef.explosionRadius) {
-            this.applyDamage({
-              targetType: "player",
-              sourceType: "environment",
-              amount: obstacle.typeDef.explosionDamage,
-              reason: "barrel_explosion_player",
-              damageClass: "explosion",
-              tags: ["environment", "barrel_explosion"],
-              bypassMitigation: false,
-              canKill: true
-            });
-          }
-          this.skillEffects.push({
-            type: "barrelExplosion",
-            x: ex,
-            y: ey,
-            radius: obstacle.typeDef.explosionRadius,
-            t: 0,
-            duration: 0.3
-          });
-        } else {
-          this.dealDamageToBreakable(obstacle, Math.max(1, Math.round(hitbox.enemyProjectileDamage || hitbox.damage || this.currentStats?.attack || 1)), {
-            useDamageFacade: true,
-            sourceType: "enemy_projectile",
-            reason: "enemy_projectile_obstacle_hit",
-            damageClass: "object",
-            tags: ["projectile", "enemy", "obstacle_hit"]
-          });
-        }
+        this.dealDamageToBreakable(obstacle, Math.max(1, Math.round(hitbox.enemyProjectileDamage || hitbox.damage || this.currentStats?.attack || 1)), {
+          useDamageFacade: true,
+          sourceType: "enemy_projectile",
+          reason: "enemy_projectile_obstacle_hit",
+          damageClass: "object",
+          tags: ["projectile", "enemy", "obstacle_hit"]
+        });
       }
       return true;
     }
@@ -3614,9 +3578,12 @@ export class Game {
     }
   }
 
-  spawnEnemyConeHitbox(enemy, ex, ey, dirX, dirY, range, arcDeg, baseDmg, attackId) {
+  spawnEnemyConeHitbox(enemy, ex, ey, dirX, dirY, range, arcDeg, baseDmg, attackId, opts = {}) {
     const halfAngleRad = ((arcDeg ?? 90) * 0.5 * Math.PI) / 180;
     const damage = Math.max(1, Math.round(baseDmg));
+    const knockOpt = opts?.knockback;
+    const knockback =
+      knockOpt != null && Number.isFinite(Number(knockOpt)) ? Math.max(0, Number(knockOpt)) : 60;
     // Enemy cone melee attacks own damage + knockback only. Player movement lock
     // should come from explicit status effects, not generic hitbox stun.
     const def = attackId === 'death_knight_cleave' ? {
@@ -3631,7 +3598,7 @@ export class Game {
       moveSpeed: 0,
       damage,
       hitStunMs: 0,
-      knockback: 60,
+      knockback,
       maxHitsPerTarget: 1,
       followOwner: false,
       tags: ['enemy']
@@ -4110,11 +4077,6 @@ export class Game {
           });
         }
       } else this.playerPoisonAccum = 0;
-
-      if (this.stunTimer > 0) {
-        this.stunTimer -= dt;
-        if (this.stunTimer < 0) this.stunTimer = 0;
-      }
     }
 
     this.updateSprint(dt);
@@ -4521,7 +4483,7 @@ export class Game {
       // Player position is driven by updateDashStrike
     } else if (this.backfireDashState) {
       // Player position is driven by updateBackfireDash
-    } else if (this.stunTimer <= 0) {
+    } else if (!this.isPlayerStunned()) {
       const walls = this.world.tileWallRects || [];
       const blocking = [...(this.obstacles || []).filter(o => !o.destroyed), ...this.getVaultEntranceBlocking()];
       this.player.update(dt, this.input, this.world, blocking, walls, this.lastMouseWorld);
@@ -4574,12 +4536,15 @@ export class Game {
       this.updateHealthBar();
     }
 
-    if (!Number.isFinite(this.stunTimer) || this.stunTimer < 0) {
-      this.stunTimer = 0;
-      this.removeStatusFromEntity?.('player', 'stun');
-      if (this.playerDebuffVFX?.stun) {
-        this.playerDebuffVFX.stun.active = false;
-        this.playerDebuffVFX.stun.until = 0;
+    const corruptStun = this.statusManager?.getStatus?.('player', 'stun');
+    if (corruptStun) {
+      const rem = Number(corruptStun.remaining);
+      if (!Number.isFinite(rem) || rem < 0) {
+        this.removeStatusFromEntity?.('player', 'stun');
+        if (this.playerDebuffVFX?.stun) {
+          this.playerDebuffVFX.stun.active = false;
+          this.playerDebuffVFX.stun.until = 0;
+        }
       }
     }
 
@@ -4678,7 +4643,8 @@ export class Game {
     // Mark map as cleared if all enemies are defeated
     if (!this.enableRunRouteGraph && !this.clearedMaps.has(this.currentMapStateKey)) {
       const es = this.enemySystem;
-      const allEnemiesDead = es.enemies.length === 0 && (!es.boss || es.boss.isDead);
+      const aliveEnemies = (es.enemies || []).filter((e) => !(e?.isDead && e?.keepDeadForRevive));
+      const allEnemiesDead = aliveEnemies.length === 0 && (!es.boss || es.boss.isDead);
       if (allEnemiesDead) {
         this.clearedMaps.add(this.currentMapStateKey);
       }
@@ -4730,7 +4696,7 @@ export class Game {
     }
 
     if (this.searchingProp) {
-      if (this.currentHealth <= 0 || this.stunTimer > 0 || !this.searchingProp.playerInRange(this.player) || !this.input.keys.has("e")) {
+      if (this.currentHealth <= 0 || this.isPlayerStunned() || !this.searchingProp.playerInRange(this.player) || !this.input.keys.has("e")) {
         this.searchingProp = null;
       } else {
         let searchMult = getAncestorSearchSpeedMult(this, this.searchingProp);
@@ -4892,8 +4858,8 @@ export class Game {
   resolveMapTemplateIdForNode(node) {
     if (!node) return 0;
     if (node.type === NODE_TYPES.BOSS) return 4;
-    if (node.type === NODE_TYPES.DANGER) return Math.random() < 0.55 ? 3 : 2;
-    if (node.type === NODE_TYPES.ELITE) return Math.random() < 0.6 ? 2 : 1;
+    if (node.type === NODE_TYPES.DEADLY) return Math.random() < 0.55 ? 3 : 2;
+    if (node.type === NODE_TYPES.RISKY) return Math.random() < 0.6 ? 2 : 1;
     return Math.random() < 0.65 ? 1 : 0;
   }
 
@@ -5335,32 +5301,50 @@ export class Game {
     const WALL = 1;
     const FLOOR = 0;
     const tileGrid = this.world.tileGrid;
-    const availableTypes = Object.values(OBSTACLE_TYPES).filter((obs) => obs.maps.includes(1));
-    if (availableTypes.length === 0) return;
+    const variantObstaclePool = this.getActiveForestObstaclePool?.() || null;
+    const poolEntries = Array.isArray(variantObstaclePool?.obstacles) ? variantObstaclePool.obstacles : [];
+    const poolTypeDefs = poolEntries
+      .map((e) => ({ w: Number(e?.w) || 0, typeDef: OBSTACLE_TYPES[e?.obstacleTypeId] || null }))
+      .filter((e) => e.w > 0 && e.typeDef && Array.isArray(e.typeDef.maps) && e.typeDef.maps.includes(1));
+    const fallbackTypes = Object.values(OBSTACLE_TYPES).filter((obs) => Array.isArray(obs?.maps) && obs.maps.includes(1));
+    if (poolTypeDefs.length === 0 && fallbackTypes.length === 0) return;
+    const pickObstacleFromPool = () => {
+      if (poolTypeDefs.length === 0) return fallbackTypes[Math.floor(Math.random() * fallbackTypes.length)];
+      const total = poolTypeDefs.reduce((s, e) => s + e.w, 0);
+      if (total <= 0) return poolTypeDefs[Math.floor(Math.random() * poolTypeDefs.length)].typeDef;
+      let r = Math.random() * total;
+      for (const e of poolTypeDefs) {
+        r -= e.w;
+        if (r <= 0) return e.typeDef;
+      }
+      return poolTypeDefs[poolTypeDefs.length - 1].typeDef;
+    };
+    const variantVisuals = this.getForestVariantVisualSets?.() || {};
+    const treeSpriteSet = variantVisuals.treeSpriteSet || {};
+    const obstacleSpriteSet = variantVisuals.obstacleSpriteSet || {};
+    const withSpriteSources = (typeDef, spriteSources) => {
+      if (!typeDef) return typeDef;
+      if (!Array.isArray(spriteSources) || spriteSources.length === 0) return typeDef;
+      return { ...typeDef, spriteSources: [...spriteSources] };
+    };
+    const resolveObstacleTypeDef = (typeDef) => {
+      if (!typeDef) return typeDef;
+      if (typeDef.id === "ancientTree") return withSpriteSources(typeDef, treeSpriteSet.spriteSources);
+      if (typeDef.id === "giantRock") return withSpriteSources(typeDef, obstacleSpriteSet.giantRockSpriteSources);
+      return typeDef;
+    };
     const exitPixel = this.world.exitPixel || { x: this.world.width - 100, y: this.world.height / 2 - 60 };
     const exitZone = { x: exitPixel.x - 80, y: exitPixel.y - 80, w: 160, h: 160 };
     const playerMargin = 120;
     const { cols, rows } = getBiomeGridDimensions(this.world);
-    const vaultTreeDef = OBSTACLE_TYPES.ancientTree
-      ? {
-          ...OBSTACLE_TYPES.ancientTree,
-          spriteSources: [
-            "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeB_01.png",
-            "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeB_02.png",
-            "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeB_03.png",
-            "assets/Environments/1. OpenWorld/4.SingleObj/Trees/treeB_04.png",
-          ],
-        }
-      : null;
-    const vaultRockDef = OBSTACLE_TYPES.giantRock
-      ? {
-          ...OBSTACLE_TYPES.giantRock,
-          spriteSources: [
-            "assets/Environments/1. OpenWorld/4.SingleObj/Special/monC_01.png",
-            "assets/Environments/1. OpenWorld/4.SingleObj/Special/monC_02.png",
-          ],
-        }
-      : null;
+    const vaultTreeDef = withSpriteSources(
+      resolveObstacleTypeDef(OBSTACLE_TYPES.ancientTree),
+      treeSpriteSet.vaultSpriteSources
+    );
+    const vaultRockDef = withSpriteSources(
+      resolveObstacleTypeDef(OBSTACLE_TYPES.giantRock),
+      obstacleSpriteSet.vaultRockSpriteSources
+    );
     const rectOverlapsVaultCircle = (x, y, w, h, vaultZone) => {
       if (!vaultZone) return false;
       const cx = x + w / 2;
@@ -5438,7 +5422,7 @@ export class Game {
       for (let col = 0; col < cols; col++) {
         const archetype = data.grid[row][col];
         if (archetype === BIOME_ARCHETYPE.START || archetype === BIOME_ARCHETYPE.EXIT) continue;
-        if (archetype === BIOME_ARCHETYPE.CORRIDORS || archetype === BIOME_ARCHETYPE.LOST_CAMPS || archetype === BIOME_ARCHETYPE.MINIBOSS || archetype === BIOME_ARCHETYPE.VAULT) continue;
+        if (archetype === BIOME_ARCHETYPE.LOST_CAMPS || archetype === BIOME_ARCHETYPE.MINIBOSS || archetype === BIOME_ARCHETYPE.VAULT) continue;
         let count = 0;
         if (archetype === BIOME_ARCHETYPE.RUINS) count = 4 + Math.floor(Math.random() * 4);
         else if (archetype === BIOME_ARCHETYPE.OPEN_SPACE) count = 1 + Math.floor(Math.random() * 2);
@@ -5452,9 +5436,12 @@ export class Game {
           w: Math.max(0, bounds.w - 2 * margin),
           h: Math.max(0, bounds.h - 2 * margin),
         };
-        const treeDef = OBSTACLE_TYPES.ancientTree;
+        const treeDef = resolveObstacleTypeDef(OBSTACLE_TYPES.ancientTree);
         for (let i = 0; i < count; i++) {
-          const typeDef = (archetype === BIOME_ARCHETYPE.WOODS && treeDef) ? treeDef : availableTypes[Math.floor(Math.random() * availableTypes.length)];
+          const pickedType = pickObstacleFromPool();
+          const typeDef = (archetype === BIOME_ARCHETYPE.WOODS && treeDef)
+            ? treeDef
+            : resolveObstacleTypeDef(pickedType);
           const size = typeDef.size;
           const placeW = typeDef.placementSize ? typeDef.placementSize.w : size.w;
           const placeH = typeDef.placementSize ? typeDef.placementSize.h : size.h;
@@ -6006,7 +5993,8 @@ export class Game {
   updateEnemyCountUI() {
     if (!this.enemyCountEl) return;
     const es = this.enemySystem;
-    const count = es.enemies.length + (es.boss ? 1 : 0);
+    const aliveEnemies = (es.enemies || []).filter((e) => !(e?.isDead && e?.keepDeadForRevive));
+    const count = aliveEnemies.length + (es.boss ? 1 : 0);
     this.enemyCountEl.textContent = `Enemies: ${count}`;
     this.enemyCountEl.classList.toggle("hidden", this.currentMap?.id === 4 && !es.boss);
   }
@@ -6392,7 +6380,7 @@ export class Game {
       : 1;
     const pillarInfiniteDash = typeof this.isPillarInfiniteDashCharges === "function" && this.isPillarInfiniteDashCharges();
     if (this.dashActive || this.slideMoveActive || (!pillarInfiniteDash && (this.dashCharges || 0) < dashCost)) return;
-    if (this.stunTimer > 0) return;
+    if (this.isPlayerStunned()) return;
     const as = this.player?.attackMoveState;
     if (as?.active && as.t < as.duration * 0.5) return;
     if (this.player?.isSprinting) this.endSprint();
@@ -6541,7 +6529,7 @@ export class Game {
     if (this.gameOver || this.paused || this.levelUpChoices) return;
     if (!this.player || this.player.isSprinting) return;
     if (this.input.isCrouchHeld()) return;
-    if (this.stunTimer > 0) return;
+    if (this.isPlayerStunned()) return;
     if ((this.dashCharges || 0) < 1) return;
 
     this.dashCharges = Math.max(0, (this.dashCharges || 0) - 1);
@@ -6733,6 +6721,7 @@ export class Game {
         attackType,
         targetX,
         targetY,
+        followCursor: true,
         context: {
           ...sharedContext,
           suppressSfx,
@@ -8516,7 +8505,7 @@ export class Game {
         if (obstacle.destroyed || !obstacle.blocksProjectiles) continue;
         if (obstacle.type === "knightStoneWall") continue;
         if (proj.intersects(obstacle)) {
-          if (proj.bounceOffWalls && obstacle.type !== "barrel") {
+          if (proj.bounceOffWalls) {
             const r = getObstacleCollisionRect(obstacle);
             const pr = { x: proj.position.x, y: proj.position.y, w: proj.rectWidth ?? proj.size, h: proj.rectHeight ?? proj.size };
             const overlapX = Math.min(pr.x + pr.w - r.x, r.x + r.w - pr.x);
@@ -8533,46 +8522,7 @@ export class Game {
           } else {
             hitObstacle = true;
           }
-          // Barrel explosion
-          if (hitObstacle && obstacle.type === "barrel") {
-            obstacle.destroyed = true;
-            const ex = obstacle.position.x + obstacle.size.w / 2;
-            const ey = obstacle.position.y + obstacle.size.h / 2;
-            const hitArea = this.enemiesInRadius(ex, ey, obstacle.typeDef.explosionRadius);
-            for (const e of hitArea) {
-              this.dealDamageToEnemy(e, obstacle.typeDef.explosionDamage, {
-                useDamageFacade: true,
-                sourceType: "environment",
-                reason: "barrel_explosion_enemy",
-                damageClass: "explosion",
-                tags: ["environment", "barrel_explosion"]
-              });
-            }
-            // Damage player if in range
-            const px = this.player.position.x + this.player.size / 2;
-            const py = this.player.position.y + this.player.size / 2;
-            const dist = Math.sqrt((px - ex) ** 2 + (py - ey) ** 2);
-            if (dist < obstacle.typeDef.explosionRadius) {
-              this.applyDamage({
-                targetType: "player",
-                sourceType: "environment",
-                amount: obstacle.typeDef.explosionDamage,
-                reason: "barrel_explosion_player",
-                damageClass: "explosion",
-                tags: ["environment", "barrel_explosion"],
-                bypassMitigation: false,
-                canKill: true
-              });
-            }
-            this.skillEffects.push({ 
-              type: "barrelExplosion", 
-              x: ex, 
-              y: ey, 
-              radius: obstacle.typeDef.explosionRadius, 
-              t: 0, 
-              duration: 0.3 
-            });
-          } else if (hitObstacle) {
+          if (hitObstacle) {
             this.dealDamageToBreakable(obstacle, Math.max(1, Math.round(proj.damage || this.currentStats?.attack || 1)), {
               useDamageFacade: true,
               sourceType: "player_projectile",
@@ -9051,7 +9001,10 @@ export class Game {
             ? this.lastMouseWorld.y
             : item.targetY;
           if (item.kind === "basicAttackRelease") {
-            this.executeBasicAttackByType(item.attackType, resolvedTargetX, resolvedTargetY, item.context || {});
+            const releaseContext = item.context ? { ...item.context } : {};
+            delete releaseContext.dirX;
+            delete releaseContext.dirY;
+            this.executeBasicAttackByType(item.attackType, resolvedTargetX, resolvedTargetY, releaseContext);
           } else if (item.type === "meteor") {
             const attackFlatBonus = getSkillFlatDamageBonus(this, "projectile");
             const evo = this.getProjectileShotEvolutionOverrides();
@@ -9160,7 +9113,8 @@ export class Game {
           if (enemy.deflectingParent && !enemy.deflectingParent.isDead) minionSurviving.push(enemy);
           continue;
         }
-        if (enemy.attackCtrl) {
+        const corpseFrozen = !!(enemy.keepDeadForRevive && enemy.isDead);
+        if (enemy.attackCtrl && !corpseFrozen) {
           if (enemy._attackDashState) enemy.attackCtrl.updateDash(dt, this);
           if (enemy._jumpSlamState) enemy.attackCtrl.updateJumpSlam(dt, this);
           if (enemy._attackRollState) enemy.attackCtrl.updateRoll(dt, this);
@@ -9209,7 +9163,7 @@ export class Game {
           }
         }
         
-        if (canTargetPlayer && enemy.intersects(player) && !enemy._frogSpitFlight?.active) {
+        if (!corpseFrozen && canTargetPlayer && enemy.intersects(player) && !enemy._frogSpitFlight?.active) {
           if (enemy.attackTimer <= 0) {
             enemy.attackTimer = enemy.attackCooldown;
             this.lastDamagingEnemy = enemy;
@@ -9223,7 +9177,7 @@ export class Game {
             }
           }
         }
-        if (canTargetPlayer && enemy.intersects(player) && !enemy._frogSpitFlight?.active && this.hasUpgradeCard("thorns")) {
+        if (!corpseFrozen && canTargetPlayer && enemy.intersects(player) && !enemy._frogSpitFlight?.active && this.hasUpgradeCard("thorns")) {
           const thornsDmg = Math.max(1, Math.round(this.currentStats.defense * 0.5 + 3));
           this.dealDamageToEnemy(enemy, thornsDmg);
         }
@@ -9242,26 +9196,55 @@ export class Game {
       enemy.health = Math.min(enemy.maxHealth, enemy.health + (enemy.regenChannelRate ?? 15) * dt);
     }
       if (enemy.isDead) {
-        if (this.hasCondition("enemyExplode")) {
-          this.applyDamage({
-            targetType: "player",
-            sourceEntity: enemy,
-            sourceType: "enemy_death_effect",
-            amount: 8,
-            reason: "enemy_explode_on_death",
-            damageClass: "explosion",
-            fromEnemy: true,
-            bypassMitigation: false,
-            canKill: true
-          });
-        }
-        const martyrMinions = this.dropLootFromEnemy(enemy);
-        if (enemy.name === "GoblinKing" && enemy.goblinKingMinions) {
-          for (const m of enemy.goblinKingMinions) {
-            if (m && !m.isDead) m._fleeFromPlayer = true;
+        if (corpseFrozen) {
+          if (!enemy._corpseDeathProcessed) {
+            if (this.hasCondition("enemyExplode")) {
+              this.applyDamage({
+                targetType: "player",
+                sourceEntity: enemy,
+                sourceType: "enemy_death_effect",
+                amount: 8,
+                reason: "enemy_explode_on_death",
+                damageClass: "explosion",
+                fromEnemy: true,
+                bypassMitigation: false,
+                canKill: true
+              });
+            }
+            const martyrMinions = this.dropLootFromEnemy(enemy);
+            if (enemy.name === "GoblinKing" && enemy.goblinKingMinions) {
+              for (const m of enemy.goblinKingMinions) {
+                if (m && !m.isDead) m._fleeFromPlayer = true;
+              }
+            }
+            enemy._corpseDeathProcessed = true;
+            minionSurviving.push(enemy);
+            minionSurviving.push(...(martyrMinions || []));
+          } else {
+            minionSurviving.push(enemy);
           }
+        } else {
+          if (this.hasCondition("enemyExplode")) {
+            this.applyDamage({
+              targetType: "player",
+              sourceEntity: enemy,
+              sourceType: "enemy_death_effect",
+              amount: 8,
+              reason: "enemy_explode_on_death",
+              damageClass: "explosion",
+              fromEnemy: true,
+              bypassMitigation: false,
+              canKill: true
+            });
+          }
+          const martyrMinions = this.dropLootFromEnemy(enemy);
+          if (enemy.name === "GoblinKing" && enemy.goblinKingMinions) {
+            for (const m of enemy.goblinKingMinions) {
+              if (m && !m.isDead) m._fleeFromPlayer = true;
+            }
+          }
+          minionSurviving.push(...(martyrMinions || []));
         }
-        minionSurviving.push(...(martyrMinions || []));
       } else {
         minionSurviving.push(enemy);
       }
@@ -9286,8 +9269,9 @@ export class Game {
         if (enemy.deflectingParent && !enemy.deflectingParent.isDead) surviving.push(enemy);
         continue;
       }
+      const corpseFrozen = !!(enemy.keepDeadForRevive && enemy.isDead);
       // Attack controller: dash and jump slam movement (before normal update)
-      if (enemy.attackCtrl) {
+      if (enemy.attackCtrl && !corpseFrozen) {
         if (enemy._attackDashState) enemy.attackCtrl.updateDash(dt, this);
         if (enemy._jumpSlamState) enemy.attackCtrl.updateJumpSlam(dt, this);
         if (enemy._attackRollState) enemy.attackCtrl.updateRoll(dt, this);
@@ -9323,7 +9307,7 @@ export class Game {
 
       // Attack VFX removed - no red circle effects
 
-      if (canTargetPlayer && enemy.intersects(player) && !enemy._frogSpitFlight?.active) {
+      if (!corpseFrozen && canTargetPlayer && enemy.intersects(player) && !enemy._frogSpitFlight?.active) {
         if (enemy.attackTimer <= 0) {
           enemy.attackTimer = enemy.attackCooldown;
           this.lastDamagingEnemy = enemy;
@@ -9338,7 +9322,7 @@ export class Game {
         }
       }
 
-      if (canTargetPlayer && enemy.intersects(player) && !enemy._frogSpitFlight?.active && this.hasUpgradeCard("thorns")) {
+      if (!corpseFrozen && canTargetPlayer && enemy.intersects(player) && !enemy._frogSpitFlight?.active && this.hasUpgradeCard("thorns")) {
         const thornsDmg = Math.max(1, Math.round(this.currentStats.defense * 0.5 + 3));
         this.dealDamageToEnemy(enemy, thornsDmg);
       }
@@ -9359,26 +9343,55 @@ export class Game {
       }
 
       if (enemy.isDead) {
-        if (this.hasCondition("enemyExplode")) {
-          this.applyDamage({
-            targetType: "player",
-            sourceEntity: enemy,
-            sourceType: "enemy_death_effect",
-            amount: 8,
-            reason: "enemy_explode_on_death",
-            damageClass: "explosion",
-            fromEnemy: true,
-            bypassMitigation: false,
-            canKill: true
-          });
-        }
-        const martyrMinions = this.dropLootFromEnemy(enemy);
-        if (enemy.name === "GoblinKing" && enemy.goblinKingMinions) {
-          for (const m of enemy.goblinKingMinions) {
-            if (m && !m.isDead) m._fleeFromPlayer = true;
+        if (corpseFrozen) {
+          if (!enemy._corpseDeathProcessed) {
+            if (this.hasCondition("enemyExplode")) {
+              this.applyDamage({
+                targetType: "player",
+                sourceEntity: enemy,
+                sourceType: "enemy_death_effect",
+                amount: 8,
+                reason: "enemy_explode_on_death",
+                damageClass: "explosion",
+                fromEnemy: true,
+                bypassMitigation: false,
+                canKill: true
+              });
+            }
+            const martyrMinions = this.dropLootFromEnemy(enemy);
+            if (enemy.name === "GoblinKing" && enemy.goblinKingMinions) {
+              for (const m of enemy.goblinKingMinions) {
+                if (m && !m.isDead) m._fleeFromPlayer = true;
+              }
+            }
+            enemy._corpseDeathProcessed = true;
+            surviving.push(enemy);
+            surviving.push(...(martyrMinions || []));
+          } else {
+            surviving.push(enemy);
           }
+        } else {
+          if (this.hasCondition("enemyExplode")) {
+            this.applyDamage({
+              targetType: "player",
+              sourceEntity: enemy,
+              sourceType: "enemy_death_effect",
+              amount: 8,
+              reason: "enemy_explode_on_death",
+              damageClass: "explosion",
+              fromEnemy: true,
+              bypassMitigation: false,
+              canKill: true
+            });
+          }
+          const martyrMinions = this.dropLootFromEnemy(enemy);
+          if (enemy.name === "GoblinKing" && enemy.goblinKingMinions) {
+            for (const m of enemy.goblinKingMinions) {
+              if (m && !m.isDead) m._fleeFromPlayer = true;
+            }
+          }
+          surviving.push(...(martyrMinions || []));
         }
-        surviving.push(...(martyrMinions || []));
       } else {
         surviving.push(enemy);
       }
@@ -9485,10 +9498,12 @@ export class Game {
       debuffs.weaken.active = false;
     }
     
-    // Stun: yellow stars orbiting
-    if (debuffs.stun.active && this.stunTimer > 0) {
+    // Stun: yellow stars orbiting (driven by status manager)
+    const stunStatus = this.statusManager?.getStatus?.('player', 'stun');
+    const stunRem = Number(stunStatus?.remaining);
+    if (Number.isFinite(stunRem) && stunRem > 0) {
       debuffs.stun.active = true;
-      debuffs.stun.until = this.time + this.stunTimer;
+      debuffs.stun.until = this.time + stunRem;
     } else {
       debuffs.stun.active = false;
     }
@@ -17873,7 +17888,8 @@ export class Game {
       });
     }
     for (const enemy of this.enemySystem?.enemies || []) {
-      if (!enemy || enemy.isDead) continue;
+      if (!enemy) continue;
+      if (enemy.isDead && !enemy.keepDeadForRevive) continue;
       actors.push({
         sortY: enemy.position.y + (enemy.size || 0),
         draw: () => enemy.draw(ctx, this.camera, this.time)
@@ -18048,8 +18064,8 @@ export class Game {
         const isCurrent = x === this.nodeX && y === this.nodeY;
         const alpha = node.visited || isCurrent ? 0.95 : 0.35;
         ctx.fillStyle = node.type === NODE_TYPES.BOSS ? `rgba(239, 68, 68, ${alpha})`
-          : node.type === NODE_TYPES.DANGER ? `rgba(250, 204, 21, ${alpha})`
-            : node.type === NODE_TYPES.ELITE ? `rgba(59, 130, 246, ${alpha})`
+          : node.type === NODE_TYPES.DEADLY ? `rgba(250, 204, 21, ${alpha})`
+            : node.type === NODE_TYPES.RISKY ? `rgba(59, 130, 246, ${alpha})`
               : `rgba(255, 255, 255, ${alpha})`;
         ctx.fillRect(cx, cy, size, size);
         ctx.strokeStyle = isCurrent ? "rgba(236, 253, 245, 0.98)" : "rgba(15, 23, 42, 0.95)";
@@ -18074,9 +18090,9 @@ export class Game {
     ctx.fillText(`Node ${this.nodeX + 1},${this.nodeY + 1}`, baseX, baseY + height + 18);
     const legendY = baseY + height + 34;
     const legend = [
-      { label: "Safe", color: "rgba(255,255,255,0.95)" },
-      { label: "Elite", color: "rgba(59,130,246,0.95)" },
-      { label: "Danger", color: "rgba(250,204,21,0.95)" },
+      { label: "Calm", color: "rgba(255,255,255,0.95)" },
+      { label: "Risky", color: "rgba(59,130,246,0.95)" },
+      { label: "Deadly", color: "rgba(250,204,21,0.95)" },
       { label: "Boss", color: "rgba(239,68,68,0.95)" },
     ];
     let cursorX = baseX;

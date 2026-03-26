@@ -14,23 +14,32 @@
  * @property {Object<string, number[]>} [loopSequence]
  * @property {string[]} [attackStates]
  * @property {string[]} [castStates]
+ * @property {string[]} [specialStates]
  * @property {boolean} [mirrorLeftFacing]
  * @property {'default'|'full_sequence'} [attackTimeline]
+ */
+
+/**
+ * Enemy-only: maps a runtime spriteSheets key to a profile `states` key (PNG stem via states[profileKey]).
+ * @typedef {{ animKey: string, profileKey: string, fps?: number }} EnemyDirectionalSheetEntry
  */
 
 /**
  * @typedef {Object} DirectionalSpritesheetProfile
  * @property {'directional_spritesheet'} kind
  * @property {string} basePath
- * @property {Object<string, string>} states
+ * @property {Object<string, string>} states - Logical key → file stem (e.g. attack2 → 'Attack2'). Add any extra keys here; set frames/loopSequence for each.
  * @property {Object<string, number>} frames
  * @property {Object<string, number>} [loopFrames]
  * @property {Object<string, number[]>} [loopSequence]
- * @property {string[]} [attackStates]
- * @property {string[]} [castStates]
+ * @property {string[]} [attackStates] - Player: ordered attack animation state keys (attack, attack2, …) resolved against `states`.
+ * @property {string[]} [castStates] - Player: cast animation keys (cast, cast2, …).
+ * @property {string[]} [specialStates] - Player: optional keys for non-attack/non-cast sheets (channel, interact, emote, …). Consumed when you wire `specialStateKeys` on Player.
  * @property {number} [rowCount]
  * @property {boolean} [mirrorLeftFacing]
  * @property {'default'|'full_sequence'} [attackTimeline]
+ * @property {EnemyDirectionalSheetEntry[]} [enemyMultiAttackSheets] - Enemy: replaces default single `attack` row with multiple sheets (e.g. attackDown → attack, attackUp → attack2).
+ * @property {EnemyDirectionalSheetEntry[]} [enemySpecialSheets] - Enemy: extra sheets in addition to idle/move/(attacks); e.g. { animKey: 'channel', profileKey: 'cast2' }.
  */
 
 /**
@@ -105,11 +114,15 @@ export const DIRECTIONAL_FOLDER_PACK_FRAMES = Object.freeze({
  * Creates a standard directional folder sprite profile for heroes that use the same
  * folder structure as the Dark Mage asset pack.
  * @param {string} heroFolder
- * @param {{ baseRoot?: string, states?: Object<string, string>, frames?: Object<string, number>, loopFrames?: Object<string, number>, loopSequence?: Object<string, number[]>, attackStates?: string[], castStates?: string[], mirrorLeftFacing?: boolean, attackTimeline?: 'default'|'full_sequence' }} [options]
+ * @param {{ baseRoot?: string, states?: Object<string, string>, frames?: Object<string, number>, loopFrames?: Object<string, number>, loopSequence?: Object<string, number[]>, attackStates?: string[], castStates?: string[], specialStates?: string[], mirrorLeftFacing?: boolean, attackTimeline?: 'default'|'full_sequence' }} [options]
  * @returns {DirectionalFolderSpriteProfile}
  */
 export function createDirectionalFolderSpriteProfile(heroFolder, options = {}) {
   const baseRoot = options.baseRoot || 'assets/Heroes/2D HD Character pack';
+  const specialStates =
+    Array.isArray(options.specialStates) && options.specialStates.length > 0
+      ? [...options.specialStates]
+      : [];
   return {
     kind: 'directional_folder',
     basePath: `${baseRoot}/${heroFolder}`,
@@ -133,6 +146,7 @@ export function createDirectionalFolderSpriteProfile(heroFolder, options = {}) {
     castStates: Array.isArray(options.castStates) && options.castStates.length > 0
       ? [...options.castStates]
       : ['cast'],
+    specialStates,
     mirrorLeftFacing: options.mirrorLeftFacing ?? false,
     attackTimeline: options.attackTimeline || 'full_sequence'
   };
@@ -142,11 +156,37 @@ export function createDirectionalFolderSpriteProfile(heroFolder, options = {}) {
  * Creates a standard 8-row directional spritesheet profile. Expected row order:
  * E, SE, S, SW, W, NW, N, NE.
  * @param {string} heroFolder
- * @param {{ baseRoot?: string, states?: Object<string, string>, frames?: Object<string, number>, loopFrames?: Object<string, number>, loopSequence?: Object<string, number[]>, attackStates?: string[], castStates?: string[], mirrorLeftFacing?: boolean, attackTimeline?: 'default'|'full_sequence', rowCount?: number }} [options]
+ * @param {{
+ *   baseRoot?: string,
+ *   states?: Object<string, string>,
+ *   frames?: Object<string, number>,
+ *   loopFrames?: Object<string, number>,
+ *   loopSequence?: Object<string, number[]>,
+ *   attackStates?: string[],
+ *   castStates?: string[],
+ *   specialStates?: string[],
+ *   mirrorLeftFacing?: boolean,
+ *   attackTimeline?: 'default'|'full_sequence',
+ *   rowCount?: number,
+ *   enemyMultiAttackSheets?: EnemyDirectionalSheetEntry[],
+ *   enemySpecialSheets?: EnemyDirectionalSheetEntry[]
+ * }} [options]
  * @returns {DirectionalSpritesheetProfile}
  */
 export function createDirectionalSpritesheetProfile(heroFolder, options = {}) {
   const baseRoot = options.baseRoot || 'assets/Heroes/2D HD Character pack/Spritesheets/With shadow';
+  const attackStates =
+    Array.isArray(options.attackStates) && options.attackStates.length > 0
+      ? [...options.attackStates]
+      : ['attack'];
+  const castStates =
+    Array.isArray(options.castStates) && options.castStates.length > 0
+      ? [...options.castStates]
+      : ['cast'];
+  const specialStates =
+    Array.isArray(options.specialStates) && options.specialStates.length > 0
+      ? [...options.specialStates]
+      : [];
   return {
     kind: 'directional_spritesheet',
     basePath: `${baseRoot}/${heroFolder}`,
@@ -164,15 +204,18 @@ export function createDirectionalSpritesheetProfile(heroFolder, options = {}) {
     loopSequence: {
       ...(options.loopSequence || {})
     },
-    attackStates: Array.isArray(options.attackStates) && options.attackStates.length > 0
-      ? [...options.attackStates]
-      : ['attack'],
-    castStates: Array.isArray(options.castStates) && options.castStates.length > 0
-      ? [...options.castStates]
-      : ['cast'],
+    attackStates,
+    castStates,
+    specialStates,
     rowCount: options.rowCount || 8,
     mirrorLeftFacing: options.mirrorLeftFacing ?? false,
-    attackTimeline: options.attackTimeline || 'full_sequence'
+    attackTimeline: options.attackTimeline || 'full_sequence',
+    ...(Array.isArray(options.enemyMultiAttackSheets) && options.enemyMultiAttackSheets.length > 0
+      ? { enemyMultiAttackSheets: [...options.enemyMultiAttackSheets] }
+      : {}),
+    ...(Array.isArray(options.enemySpecialSheets) && options.enemySpecialSheets.length > 0
+      ? { enemySpecialSheets: [...options.enemySpecialSheets] }
+      : {})
   };
 }
 

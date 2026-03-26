@@ -1,6 +1,9 @@
 /**
  * EnemyAttackController - runs telegraph  execute  recover loop per enemy.
  * State: idle | windup | active | recover
+ *
+ * Projectile attacks: `_execute` (spawn) runs once during windup when elapsed reaches
+ * `execute.projectileSpawnWindupT` of the telegraph (0 = start, 1 = end). Default 0.5 (middle).
  */
 
 import { getWallCollisionRect, getObstacleCollisionRect, obstacleIntersectsRect } from '../../utils.js';
@@ -36,10 +39,51 @@ function getConeAttackImpactAnimatedSprite(attackId, range) {
       drawHeight
     });
   }
+  if (attackId === 'troll_cleave') {
+    return {
+      path: 'assets/Projectiles/Upward Slash.png',
+      frameWidth: 128,
+      frameHeight: 128,
+      frameCount: 9,
+      columns: 9,
+      fps: 16,
+      loop: false,
+      rotateWithVelocity: true,
+      baseAngleRad: 0,
+      anchorX: 0.5,
+      anchorY: 0.5,
+      drawWidth: Math.max(120, drawWidth),
+      drawHeight: Math.max(96, drawHeight)
+    };
+  }
   if (attackId === 'human_warrior_slash') {
     return getAnimatedSpritePreset('doubleStrike', {
       drawWidth: Math.max(64, drawWidth * 0.8),
       drawHeight: Math.max(56, drawHeight * 0.8)
+    });
+  }
+  if (attackId === 'skeleton_warrior_slash') {
+    return getAnimatedSpritePreset('downwardSlash', {
+      drawWidth,
+      drawHeight
+    });
+  }
+  if (attackId === 'death_lord_cleave') {
+    return getAnimatedSpritePreset('downwardSlash', {
+      drawWidth,
+      drawHeight
+    });
+  }
+  if (attackId === 'banshee_wail_slash') {
+    return getAnimatedSpritePreset('downwardSlash', {
+      drawWidth,
+      drawHeight
+    });
+  }
+  if (attackId === 'ud_warrior_kick') {
+    return getAnimatedSpritePreset('downwardSlash', {
+      drawWidth: Math.max(48, drawWidth * 0.55),
+      drawHeight: Math.max(40, drawHeight * 0.5)
     });
   }
   return null;
@@ -70,6 +114,8 @@ export class EnemyAttackController {
     this.enemy = enemy;
     this.state = "idle";
     this.currentAttack = null;
+    /** Set during recover after active; cleared when returning to idle (sprite FSM may still need attack id). */
+    this.recoveringAttackId = null;
     this.timer = 0;
     this.cooldowns = {}; // attackId -> remaining cooldown
     this.targetSnapshot = null; // { x, y } during windup
@@ -83,22 +129,60 @@ export class EnemyAttackController {
     this.regenBreakDamage = 0;
     this.orbitingOrbsUntil = null;
     this.orbitingOrbAngle = 0;
-    this.comboIndex = 0;
+    /** Multi-shot attacks (execute.comboShots): strict counts so we never chain an extra windup. */
+    this._comboShotTotal = 1;
+    this._comboShotsCompleted = 0;
+    /** Increments each windup start (idle→windup or combo chain); for sprite sync on sheet enemies. */
+    this._attackWindupCycle = 0;
     this.attackUses = {}; // attackId -> times executed (for maxUses-limited attacks)
     this.attackScale = enemy.attackScale ?? 1;
     this.enableHiddenAttacks = enemy.enableHiddenAttacks ?? false;
     this._activeDurationOverride = null;
+    /** Pending animation-driven hitbox spawn (kind-limited). */
+    this._pendingAnimationHitbox = null; // { hitboxTrigger, fired, lastFrameIndex, kind, payload }
+    /** For kind "projectile" windup: total telegraph duration and whether _execute already ran (spawn at mid-windup by default). */
+    this._projectileWindupTotal = 0;
+    this._projectileWindupExecuteDone = false;
+    /** Total windup duration for current windup phase (seconds). */
+    this._windupTotal = 0;
+    /** Windup cycle index that just transitioned to active (for sprite sync). */
+    this._enteredActiveCycle = 0;
+    /** Brute-sheet archetype: fixed-interval warcry schedule (see enemy.bruteSheetArchetype). */
+    this._bruteNextWarcryAt = 0;
     this.availableAttacks = this._getAvailableAttacks();
   }
 
   _getAvailableAttacks() {
-    const kit = ENEMY_ATTACK_KITS[this.enemy.name];
+    const kitKey = this.enemy.bruteSheetArchetype?.attackKitName || this.enemy.name;
+    const kit = ENEMY_ATTACK_KITS[kitKey];
     if (!kit) return [];
     let list = [...(kit.base || [])];
     if (this.enableHiddenAttacks && kit.hidden?.length) {
       list = [...list, ...kit.hidden];
     }
+    if (this.enemy.bruteSheetArchetype?.filterAttacksByRarityTier) {
+      list = list.filter((a) => this._bruteSheetArchetypeAttackAllowedByTier(a));
+    }
     return list;
+  }
+
+  /** Brute-sheet archetype: minion = normal only; elite = normal + uncommon; miniBoss = uncommon + rare. */
+  _bruteSheetArchetypeAttackTierBucket() {
+    const e = this.enemy;
+    const raw = e.enemyTier;
+    const t = raw === "miniboss" ? "miniBoss" : raw;
+    if (e.isMiniBoss || t === "miniBoss" || t === "boss") return "miniBoss";
+    if (e.isElite || t === "elite" || t === "special") return "elite";
+    return "minion";
+  }
+
+  _bruteSheetArchetypeAttackAllowedByTier(attack) {
+    const rarity = attack.rarity ?? "normal";
+    const bucket = this._bruteSheetArchetypeAttackTierBucket();
+    if (bucket === "minion") return rarity === "normal";
+    if (bucket === "elite") return rarity === "normal" || rarity === "uncommon";
+    if (bucket === "miniBoss") return rarity === "uncommon" || rarity === "rare";
+    return true;
   }
 
   canAct() {
@@ -108,6 +192,7 @@ export class EnemyAttackController {
     if (this.phaseUntil != null && (e._gameTime ?? 0) < this.phaseUntil) return false;
     if (this.regenChannelUntil != null && (e._gameTime ?? 0) < this.regenChannelUntil) return false;
     if ((e._monsterflyRecoverTimer || 0) > 0) return false;
+    if (e.bruteSheetArchetype && e._bruteBurstMove) return false;
     if (e._attackRollState) return false;
     if (e._cycloneState) return false;
     if ((e._cycloneEndTimer || 0) > 0) return false;
@@ -123,6 +208,20 @@ export class EnemyAttackController {
     const dx = px - cx;
     const dy = py - cy;
     const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+    const bsa = this.enemy.bruteSheetArchetype;
+    if (bsa?.attackIds?.warcry) {
+      const warcryId = bsa.attackIds.warcry;
+      const warcry = this.availableAttacks.find((a) => a?.id === warcryId);
+      if (warcry) {
+        const cdOk = (this.cooldowns[warcry.id] || 0) <= 0;
+        const timeOk = (game?.time || 0) >= (Number(this._bruteNextWarcryAt) || 0);
+        const minR = warcry.minRange ?? 0;
+        const maxR = warcry.maxRange ?? 999;
+        const rangeOk = dist >= minR && dist <= maxR;
+        if (cdOk && timeOk && rangeOk) return warcry;
+      }
+    }
 
     const candidates = this.availableAttacks.filter((a) => {
       if (this.cooldowns[a.id] > 0) return false;
@@ -154,6 +253,25 @@ export class EnemyAttackController {
     const player = game.player;
     enemy._gameTime = game.time;
 
+    if (enemy.bruteSheetArchetype && enemy._bruteBurstMove && this.state !== "idle") {
+      this.state = "idle";
+      this.currentAttack = null;
+      this.recoveringAttackId = null;
+      this.timer = 0;
+      this._windupTotal = 0;
+      this._enteredActiveCycle = 0;
+      this.targetSnapshot = null;
+      enemy._whirlwindBurstState = null;
+      enemy._whirlwindPulsePayload = null;
+      this._pendingAnimationHitbox = null;
+      this._projectileWindupTotal = 0;
+      this._projectileWindupExecuteDone = false;
+      this.dashDir = null;
+      this.dashTraveled = 0;
+      this.dashTotalDist = 0;
+      this.dashHitApplied = false;
+    }
+
     // Update cooldowns
     for (const id of Object.keys(this.cooldowns)) {
       let cd = this.cooldowns[id] - dt;
@@ -182,8 +300,25 @@ export class EnemyAttackController {
         this.currentAttack = attack;
         this.state = "windup";
         this.timer = (attack.telegraph?.windup ?? 0.5) / (this.rageUntil && game.time < this.rageUntil ? 1.2 : 1);
+        this._windupTotal = this.timer;
+      const warcryId = enemy.bruteSheetArchetype?.attackIds?.warcry;
+      if (warcryId && attack.id === warcryId) {
+        const cadence = Math.max(0.5, Number(enemy.bruteSheetArchetype.warcryCadenceSec) || 8);
+        this._bruteNextWarcryAt = (game.time || 0) + cadence;
+      }
         this.targetSnapshot = { x: px, y: py };
-        this.comboShotIndex = attack.execute?.comboShots ? 0 : undefined;
+        const rawCombo = Number(attack.execute?.comboShots);
+        this._comboShotTotal =
+          Number.isFinite(rawCombo) && rawCombo > 1 ? Math.max(2, Math.floor(rawCombo)) : 1;
+        this._comboShotsCompleted = 0;
+        this._attackWindupCycle = (this._attackWindupCycle ?? 0) + 1;
+        if (attack.kind === "projectile") {
+          this._projectileWindupTotal = this.timer;
+          this._projectileWindupExecuteDone = false;
+        } else {
+          this._projectileWindupTotal = 0;
+          this._projectileWindupExecuteDone = false;
+        }
         // 5px horizontal dead zone to avoid rapid left/right flipping when player is centered on enemy
         if (px >= ex + 5) enemy.facingRight = true;
         else if (px <= ex - 5) enemy.facingRight = false;
@@ -198,9 +333,45 @@ export class EnemyAttackController {
         this.targetSnapshot = { x: px, y: py };
       }
       this.timer -= dt;
+      if (
+        this.currentAttack?.kind === "projectile" &&
+        this._projectileWindupTotal > 0 &&
+        !this._projectileWindupExecuteDone
+      ) {
+        const rawT = Number(this.currentAttack.execute?.projectileSpawnWindupT);
+        const spawnT = Number.isFinite(rawT) ? Math.max(0, Math.min(1, rawT)) : 0.5;
+        const threshold = this._projectileWindupTotal * (1 - spawnT);
+        if (this.timer <= threshold + 1e-6) {
+          const px = player.position.x + player.size / 2;
+          const py = player.position.y + player.size / 2;
+          this.targetSnapshot = { x: px, y: py };
+          this._execute(game);
+          this._projectileWindupExecuteDone = true;
+        }
+      }
       if (this.timer <= 0) {
-        this._execute(game);
+        // If this attack defines an animation frame trigger for the hitbox, prime payload now and delay spawn.
+        const a = this.currentAttack;
+        const exec = a?.execute || {};
+        const hitboxTriggerRaw = exec?.hitboxTrigger;
+        const hitboxTrigger =
+          hitboxTriggerRaw == null || !Number.isFinite(Number(hitboxTriggerRaw))
+            ? null
+            : Math.floor(Number(hitboxTriggerRaw));
+        const shouldDelayAnimationHitbox =
+          (a?.kind === "cone" || a?.kind === "circle" || a?.kind === "whirlwind") &&
+          hitboxTrigger != null &&
+          hitboxTrigger >= 0 &&
+          hitboxTriggerRaw != null &&
+          Number.isInteger(Number(hitboxTriggerRaw));
+
+        if (shouldDelayAnimationHitbox) {
+          this._primeAnimationHitboxForCurrentAttack(game, { hitboxTrigger });
+        } else if (!(a?.kind === "projectile" && this._projectileWindupExecuteDone)) {
+          this._execute(game);
+        }
         this.state = "active";
+        this._enteredActiveCycle = this._attackWindupCycle ?? 0;
         this.timer = this._activeDurationOverride ?? 0.05;
         this._activeDurationOverride = null;
       }
@@ -208,6 +379,10 @@ export class EnemyAttackController {
     }
 
     if (this.state === "active") {
+      if (this.currentAttack?.kind === "frame_synced_circle" && enemy._frameSyncedCircleHits) {
+        this._tickFrameSyncedCircleHits(game);
+      }
+      this._tickWhirlwindScheduledBursts(game);
       const backstep = enemy._attackBackstepChainState;
       if (backstep) {
         if (this.timer > 0.5) {
@@ -232,12 +407,24 @@ export class EnemyAttackController {
         this.timer -= dt;
       }
       if (this.timer <= 0) {
-        const comboShots = this.currentAttack?.execute?.comboShots;
-        const comboIndex = this.comboShotIndex ?? 0;
-        if (comboShots != null && comboIndex + 1 < comboShots) {
-          this.comboShotIndex = comboIndex + 1;
+        // Clear pending hitbox when leaving active.
+        this._pendingAnimationHitbox = null;
+        if (enemy._frameSyncedCircleHits) {
+          enemy._frameSyncedCircleHits = null;
+        }
+        enemy._whirlwindBurstState = null;
+        enemy._whirlwindPulsePayload = null;
+        this._comboShotsCompleted++;
+        const total = Math.max(1, Math.floor(Number(this._comboShotTotal) || 1));
+        if (this._comboShotsCompleted < total) {
+          this._attackWindupCycle = (this._attackWindupCycle ?? 0) + 1;
           this.state = "windup";
           this.timer = (this.currentAttack.telegraph?.windup ?? 0.5) / (this.rageUntil && game.time < this.rageUntil ? 1.2 : 1);
+          this._windupTotal = this.timer;
+          if (this.currentAttack?.kind === "projectile") {
+            this._projectileWindupTotal = this.timer;
+            this._projectileWindupExecuteDone = false;
+          }
           if (game.player) {
             const px = game.player.position.x + game.player.size / 2;
             const py = game.player.position.y + game.player.size / 2;
@@ -248,8 +435,10 @@ export class EnemyAttackController {
           const recoverTime = this.currentAttack?.execute?.chainRecover ?? this.currentAttack?.recover ?? 0.2;
           this.timer = recoverTime * (this.attackScale > 1.2 ? 0.9 : 1);
           this.cooldowns[this.currentAttack.id] = (this.currentAttack.cooldown ?? 1.5) * (this.rageUntil && game.time < this.rageUntil ? 0.7 : 1);
+          this.recoveringAttackId = this.currentAttack?.id ?? null;
           this.currentAttack = null;
-          this.comboShotIndex = undefined;
+          this._comboShotsCompleted = 0;
+          this._comboShotTotal = 1;
         }
       }
       return;
@@ -259,7 +448,340 @@ export class EnemyAttackController {
       this.timer -= dt;
       if (this.timer <= 0) {
         this.state = "idle";
+        this.recoveringAttackId = null;
       }
+    }
+  }
+
+  _primeAnimationHitboxForCurrentAttack(game, { hitboxTrigger }) {
+    const enemy = this.enemy;
+    const a = this.currentAttack;
+    const exec = a?.execute || {};
+    if (!a || (a.kind !== "cone" && a.kind !== "circle" && a.kind !== "whirlwind")) return;
+
+    const player = game.player;
+    const ex = enemy.position.x + enemy.size / 2;
+    const ey = enemy.position.y + enemy.size / 2;
+    const tx = this.targetSnapshot?.x ?? (player ? player.position.x + player.size / 2 : ex);
+    const ty = this.targetSnapshot?.y ?? (player ? player.position.y + player.size / 2 : ey);
+
+    const dx = tx - ex;
+    const dy = ty - ey;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+    const dirAngle = Math.atan2(dirY, dirX);
+
+    const scale = this.attackScale * (enemy.attack ?? 10) / 10;
+    const baseDmg = Math.round((exec?.damage ?? 1) * scale);
+
+    // Active duration: match remaining animation frames exactly.
+    // We enter active on `hitboxTrigger` frame (see sprite FSM), so remaining frames are [hitboxTrigger .. last].
+    const animFps = Math.max(1, Number(exec?.animFps) || 14);
+    const animDur = Number(exec?.activeAnimDuration);
+    const totalFramesRaw =
+      Number(exec?.totalFrames) ||
+      (Number.isFinite(animDur) && animDur > 0 ? Math.round(animDur * animFps) : null) ||
+      15;
+    const totalFrames = Math.max(1, Math.floor(totalFramesRaw));
+    const trigger = Math.max(0, Math.min(totalFrames - 1, Math.floor(Number(hitboxTrigger) || 0)));
+    const remainingFrames = Math.max(1, totalFrames - trigger);
+    this._activeDurationOverride = Math.max(0.06, remainingFrames / animFps);
+
+    let payload = null;
+    if (a.kind === "cone") {
+      const range = exec?.range ?? 80;
+      const arc = exec?.arc ?? 90;
+      const arcRad = (arc * Math.PI) / 180;
+      payload = {
+        kind: a.kind,
+        attackId: a.id,
+        ex,
+        ey,
+        dirX,
+        dirY,
+        dirAngle,
+        range,
+        arc,
+        arcRad,
+        baseDmg,
+        knockback: exec.knockback,
+        attack: a
+      };
+    } else if (a.kind === "circle") {
+      const r = exec?.radius ?? 70;
+      // For animation-synced circle attacks we default to "around the enemy" unless explicitly atTarget.
+      const impactX = exec?.atTarget ? tx : ex;
+      const impactY = exec?.atTarget ? ty : ey;
+      payload = {
+        kind: a.kind,
+        attackId: a.id,
+        impactX,
+        impactY,
+        radius: r,
+        baseDmg,
+        attack: a
+      };
+    } else if (a.kind === "whirlwind") {
+      const r = exec?.radius ?? 100;
+      payload = {
+        kind: "whirlwind",
+        attackId: a.id,
+        impactX: ex,
+        impactY: ey,
+        radius: r,
+        baseDmg,
+        circleDurationMs: Math.max(1, Number(exec?.circleDurationMs) || 100),
+        attack: a
+      };
+    }
+    if (!payload) return;
+
+    this._pendingAnimationHitbox = {
+      hitboxTrigger,
+      fired: false,
+      lastFrameIndex: -1,
+      kind: a.kind,
+      payload
+    };
+  }
+
+  trySpawnAnimationHitboxOnFrame(game, spriteFrameIndex) {
+    if (this.state !== "active") return false;
+    const pending = this._pendingAnimationHitbox;
+    if (!pending || pending.fired) return false;
+    const cur = Number(spriteFrameIndex);
+    if (!Number.isFinite(cur)) return false;
+
+    // Spawn once when we reach/cross the trigger frame.
+    const prev = Number(pending.lastFrameIndex);
+    if (cur >= pending.hitboxTrigger && prev < pending.hitboxTrigger) {
+      pending.fired = true;
+      this._spawnPendingAnimationHitbox(game, pending.payload);
+      return true;
+    }
+
+    pending.lastFrameIndex = cur;
+    return false;
+  }
+
+  _spawnPendingAnimationHitbox(game, payload) {
+    const enemy = this.enemy;
+    const player = game.player;
+    if (!payload) return;
+    const k = payload.kind;
+    if (k === "cone") {
+      const attackId = payload.attackId;
+      const ex = payload.ex;
+      const ey = payload.ey;
+      const dirX = payload.dirX;
+      const dirY = payload.dirY;
+      const dirAngle = payload.dirAngle;
+      const range = payload.range;
+      const arc = payload.arc;
+      const arcRad = payload.arcRad;
+      const baseDmg = payload.baseDmg;
+      const a = payload.attack;
+
+      const coneImpactSprite = getConeAttackImpactAnimatedSprite(attackId, range);
+      if (coneImpactSprite && Array.isArray(game.skillEffects)) {
+        game.skillEffects.push({
+          type: "animatedSpriteImpact",
+          x: ex + dirX * (range * 0.45),
+          y: ey + dirY * (range * 0.45),
+          t: 0,
+          angleRad: dirAngle,
+          flipY: dirX < 0,
+          animatedSprite: coneImpactSprite
+        });
+      }
+
+      if (typeof game.spawnEnemyConeHitbox === "function") {
+        const kb = payload.knockback;
+        const coneOpts =
+          kb != null && Number.isFinite(Number(kb)) ? { knockback: Number(kb) } : {};
+        game.spawnEnemyConeHitbox(enemy, ex, ey, dirX, dirY, range, arc, baseDmg, attackId, coneOpts);
+        if (attackId !== "banshee_scream") this._applyDebuffs(game, a);
+      } else {
+        // Fallback to circle-in-cone test.
+        if (!player) return;
+        const px = player.position.x + player.size / 2;
+        const py = player.position.y + player.size / 2;
+        const pr = Math.max(2, (player.size || 0) * 0.5);
+        const kbFallback = payload.knockback;
+        if (this._isCircleInCone(ex, ey, dirAngle, range, arcRad, px, py, pr)) {
+          game.onPlayerDamaged(baseDmg, true);
+          game.lastDamagingEnemy = enemy;
+          if (
+            kbFallback != null &&
+            Number.isFinite(Number(kbFallback)) &&
+            typeof game.applyKnockback === "function"
+          ) {
+            game.applyKnockback("player", ex, ey, Number(kbFallback));
+          }
+          if (attackId !== "banshee_scream") this._applyDebuffs(game, a);
+        }
+      }
+    } else if (k === "circle") {
+      const attackId = payload.attackId;
+      const impactX = payload.impactX;
+      const impactY = payload.impactY;
+      const r = payload.radius;
+      const baseDmg = payload.baseDmg;
+      const a = payload.attack;
+      const effect = a?.execute?.effect;
+
+      if (effect === "warcry") {
+        const speedMult = Math.max(0, Number(a?.execute?.speedMult) || 1.2);
+        const buffDuration = Math.max(0, Number(a?.execute?.buffDuration) || 3);
+        if (game?.enemySystem?.enemies && Array.isArray(game.enemySystem.enemies)) {
+          const src = enemy;
+          const sx = src.position.x + src.size / 2;
+          const sy = src.position.y + src.size / 2;
+          for (const other of game.enemySystem.enemies) {
+            if (!other || other === src) continue;
+            if (other.isDead) continue;
+            const ox = other.position.x + other.size / 2;
+            const oy = other.position.y + other.size / 2;
+            if (Math.hypot(ox - sx, oy - sy) <= r) {
+              const until = (game.time || 0) + buffDuration;
+              other._warcrySpeedUntil = Math.max(Number(other._warcrySpeedUntil) || 0, until);
+              // (speedMult is currently fixed at 1.2 via Enemy.update; keep values in sync.)
+              other._warcrySpeedMult = speedMult;
+            }
+          }
+        }
+        return;
+      }
+
+      const circleImpactSprite = getCircleAttackImpactAnimatedSprite(attackId, r);
+      if (circleImpactSprite && Array.isArray(game.skillEffects)) {
+        game.skillEffects.push({
+          type: "animatedSpriteImpact",
+          x: impactX,
+          y: impactY,
+          t: 0,
+          animatedSprite: { ...circleImpactSprite }
+        });
+      }
+
+      if (typeof game.spawnEnemyCircleHitbox === "function") {
+        game.spawnEnemyCircleHitbox(enemy, impactX, impactY, r, baseDmg, attackId);
+        this._applyDebuffs(game, a);
+      } else if (player) {
+        const px = player.position.x + player.size / 2;
+        const py = player.position.y + player.size / 2;
+        if ((px - impactX) ** 2 + (py - impactY) ** 2 <= r * r) {
+          game.onPlayerDamaged(baseDmg, true);
+          game.lastDamagingEnemy = enemy;
+          this._applyDebuffs(game, a);
+        }
+      }
+    } else if (k === "whirlwind") {
+      const a = payload.attack;
+      const exec = a?.execute || {};
+      const burstCount = Math.max(1, Math.floor(Number(exec.burstCount) || 3));
+      const burstGap = Number.isFinite(Number(exec.burstGap)) ? Math.max(0, Number(exec.burstGap)) : 0.2;
+      this._spawnOneWhirlwindPulse(game, payload);
+      enemy._whirlwindPulsePayload = payload;
+      if (burstCount > 1) {
+        enemy._whirlwindBurstState = {
+          remaining: burstCount - 1,
+          nextAt: (game.time || 0) + burstGap,
+          gap: burstGap
+        };
+      } else {
+        enemy._whirlwindBurstState = null;
+      }
+    } else {
+      return;
+    }
+
+    // Clear pending after spawn.
+    this._pendingAnimationHitbox = null;
+  }
+
+  _spawnOneWhirlwindPulse(game, payload) {
+    const enemy = this.enemy;
+    const player = game.player;
+    const a = payload.attack;
+    const ex = enemy.position.x + enemy.size / 2;
+    const ey = enemy.position.y + enemy.size / 2;
+    const r = payload.radius;
+    const baseDmg = payload.baseDmg;
+    const attackId = payload.attackId;
+    const circleDur = Math.max(1, Number(payload.circleDurationMs) || 100);
+    const exec = a?.execute || {};
+    const scale = this.attackScale * (enemy.attack ?? 10) / 10;
+    const bladeDmg = Math.round((Number(exec.bladeDamage ?? exec.damage ?? 1)) * scale);
+    const speed = Math.max(80, Number(exec.bladeSpeed) || 380);
+    const size = Math.max(4, Number(exec.bladeSize) || 12);
+    const color = exec.bladeColor || "#bae6fd";
+    const angle = Math.random() * Math.PI * 2;
+    const dirX = Math.cos(angle);
+    const dirY = Math.sin(angle);
+    const vx = dirX * speed;
+    const vy = dirY * speed;
+
+    const circleImpactSprite = getCircleAttackImpactAnimatedSprite(attackId, r);
+    if (circleImpactSprite && Array.isArray(game.skillEffects)) {
+      game.skillEffects.push({
+        type: "animatedSpriteImpact",
+        x: ex,
+        y: ey,
+        t: 0,
+        animatedSprite: { ...circleImpactSprite }
+      });
+    }
+
+    const hitStunMs = Math.max(0, Number(exec.hitStunMs) || 0);
+    if (typeof game.spawnEnemyCircleHitbox === "function") {
+      game.spawnEnemyCircleHitbox(enemy, ex, ey, r, baseDmg, attackId, {
+        durationMs: circleDur,
+        hitStunMs: hitStunMs || undefined
+      });
+      this._applyDebuffs(game, a);
+    } else if (player) {
+      const px = player.position.x + player.size / 2;
+      const py = player.position.y + player.size / 2;
+      if ((px - ex) ** 2 + (py - ey) ** 2 <= r * r) {
+        game.onPlayerDamaged(baseDmg, true);
+        game.lastDamagingEnemy = enemy;
+        this._applyDebuffs(game, a);
+      }
+    }
+
+    if (exec.omitBlade === true) return;
+
+    const bladeOpts = {
+      lifetime: Number(exec.bladeLifetime) > 0 ? Number(exec.bladeLifetime) : 2.5,
+      speed: Number(exec.bladeSpeed) > 0 ? Number(exec.bladeSpeed) : undefined,
+      size: Number(exec.bladeSize) > 0 ? Number(exec.bladeSize) : undefined,
+      color: exec.bladeColor,
+      magicStyle: exec.magicStyle,
+      animatedSprite: exec.animatedSprite,
+      movementType: exec.movementType
+    };
+    const useHitbox = exec.useHitbox !== false && typeof game.spawnEnemyProjectileHitbox === "function";
+    if (useHitbox) {
+      game.spawnEnemyProjectileHitbox(ex, ey, dirX, dirY, bladeDmg, bladeOpts, enemy);
+    } else if (typeof game.spawnEnemyProjectile === "function") {
+      game.spawnEnemyProjectile(ex, ey, vx, vy, bladeDmg, size, color, bladeOpts, enemy);
+    }
+  }
+
+  _tickWhirlwindScheduledBursts(game) {
+    if (this.state !== "active" || this.currentAttack?.kind !== "whirlwind") return;
+    const enemy = this.enemy;
+    const st = enemy._whirlwindBurstState;
+    const pl = enemy._whirlwindPulsePayload;
+    if (!st || !pl || st.remaining <= 0) return;
+    const now = game.time || 0;
+    const gap = Math.max(0.001, Number(st.gap) || 0.2);
+    while (st.remaining > 0 && now >= st.nextAt) {
+      this._spawnOneWhirlwindPulse(game, pl);
+      st.remaining--;
+      st.nextAt += gap;
     }
   }
 
@@ -285,6 +807,7 @@ export class EnemyAttackController {
       case "cone": {
         const range = a.execute?.range ?? 80;
         const arc = a.execute?.arc ?? 90;
+        const kb = a.execute?.knockback;
         const coneImpactSprite = getConeAttackImpactAnimatedSprite(a.id, range);
         if (coneImpactSprite && Array.isArray(game.skillEffects)) {
           game.skillEffects.push({
@@ -363,7 +886,9 @@ export class EnemyAttackController {
           });
         }
         if (typeof game.spawnEnemyConeHitbox === "function") {
-          game.spawnEnemyConeHitbox(enemy, ex, ey, dirX, dirY, range, arc, baseDmg, a.id);
+          const coneOpts =
+            kb != null && Number.isFinite(Number(kb)) ? { knockback: Number(kb) } : {};
+          game.spawnEnemyConeHitbox(enemy, ex, ey, dirX, dirY, range, arc, baseDmg, a.id, coneOpts);
           if (a.id !== "banshee_scream") this._applyDebuffs(game, a);
         } else {
           const arcRad = (arc * Math.PI) / 180;
@@ -373,9 +898,38 @@ export class EnemyAttackController {
           if (this._isCircleInCone(ex, ey, dirAngle, range, arcRad, px, py, pr)) {
             game.onPlayerDamaged(baseDmg, true);
             game.lastDamagingEnemy = enemy;
+            if (kb != null && Number.isFinite(Number(kb)) && typeof game.applyKnockback === "function") {
+              game.applyKnockback("player", ex, ey, Number(kb));
+            }
             this._applyDebuffs(game, a);
           }
         }
+        {
+          const animDur = Number(a.execute?.activeAnimDuration);
+          if (Number.isFinite(animDur) && animDur > 0) {
+            this._activeDurationOverride = Math.max(0.06, animDur);
+          }
+        }
+        break;
+      }
+      case "frame_synced_circle": {
+        const fps = Math.max(1, Number(a.execute?.animFps) || 14);
+        const totalFrames = Math.max(1, Math.floor(Number(a.execute?.totalFrames) || 15));
+        const dur = totalFrames / fps;
+        const r = Math.max(24, Number(a.execute?.radius) || 120);
+        const rawHits = Array.isArray(a.execute?.hitFrames) ? a.execute.hitFrames : [7, 10, 14];
+        const hitFrames1Based = rawHits.map((n) => Math.max(1, Math.min(totalFrames, Math.floor(Number(n) || 0))));
+        enemy._frameSyncedCircleHits = {
+          damage: baseDmg,
+          radius: r,
+          attackId: a.id,
+          fps,
+          totalFrames,
+          hitFrames1Based,
+          fired: Object.create(null),
+          duration: dur
+        };
+        this._activeDurationOverride = Math.max(0.06, dur);
         break;
       }
       case "circle": {
@@ -1167,6 +1721,33 @@ export class EnemyAttackController {
 
     if (timed.elapsed >= timed.duration) {
       enemy._timedDoubleConeState = null;
+    }
+  }
+
+  _tickFrameSyncedCircleHits(game) {
+    const enemy = this.enemy;
+    const st = enemy._frameSyncedCircleHits;
+    if (!st || !this.currentAttack || this.state !== "active") return;
+    const D = st.duration;
+    const remaining = Math.max(0, Number(this.timer) || 0);
+    const elapsed = Math.max(0, D - remaining);
+    const idx1 = Math.min(st.totalFrames, Math.floor(elapsed * st.fps) + 1);
+    const ex = enemy.position.x + enemy.size / 2;
+    const ey = enemy.position.y + enemy.size / 2;
+    for (const hf of st.hitFrames1Based) {
+      if (st.fired[hf] || idx1 < hf) continue;
+      st.fired[hf] = true;
+      if (typeof game.spawnEnemyCircleHitbox === "function") {
+        game.spawnEnemyCircleHitbox(enemy, ex, ey, st.radius, st.damage, st.attackId);
+      } else if (game.player) {
+        const px = game.player.position.x + game.player.size / 2;
+        const py = game.player.position.y + game.player.size / 2;
+        if ((px - ex) ** 2 + (py - ey) ** 2 <= st.radius * st.radius) {
+          game.onPlayerDamaged(st.damage, true);
+          game.lastDamagingEnemy = enemy;
+        }
+      }
+      this._applyDebuffs(game, this.currentAttack);
     }
   }
 

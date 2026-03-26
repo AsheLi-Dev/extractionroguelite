@@ -220,10 +220,6 @@ function applyOracleSelfDebuff(game, debuffId) {
       duration: 0.2,
       sourceType: 'ancestor_debuff'
     });
-    if (game.playerDebuffVFX?.stun) {
-      game.playerDebuffVFX.stun.active = true;
-      game.playerDebuffVFX.stun.until = Math.max(game.playerDebuffVFX.stun.until || 0, game.time + 0.2);
-    }
   } else if (debuffId === "slow") {
     game.applyStatusToEntity?.('player', 'slow', {
       duration: 2,
@@ -318,7 +314,7 @@ function clearPlayerDebuffs(game) {
       game.playerDebuffVFX.weaken.crackTimer = 0;
     }
   }
-  if ((game.stunTimer || 0) > 0) {
+  if (game.statusManager?.hasStatus?.('player', 'stun')) {
     removed += 1;
     game.removeStatusFromEntity?.('player', 'stun');
     if (game.playerDebuffVFX?.stun) {
@@ -617,7 +613,7 @@ export function tickAncestorSystem(game, dt) {
     if (game.playerSlowUntil > game.time) game.adjustStatusDuration?.('player', 'slow', -extra);
     if (game.playerBurnUntil > game.time) game.adjustStatusDuration?.('player', 'burn', -extra);
     if (game.playerCursedWeakenUntil > game.time) game.adjustStatusDuration?.('player', 'weaken', -extra);
-    if ((game.stunTimer || 0) > 0) game.adjustStatusDuration?.('player', 'stun', -extra);
+    if (game.statusManager?.hasStatus?.('player', 'stun')) game.adjustStatusDuration?.('player', 'stun', -extra);
   }
 
   const hadBerserk = (runtime.tempMods || []).some((mod) => mod?.id === "ancestor_berserk_as");

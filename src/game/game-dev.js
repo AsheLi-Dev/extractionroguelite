@@ -158,7 +158,7 @@ export function applyGameDevMixin(Game) {
       const devSpawnMinibossBtn = document.getElementById("dev-spawn-miniboss");
       if (devMinibossSelect) {
         devMinibossSelect.innerHTML = '<option value="">-- Select enemy --</option>';
-        const attackKitEnemies = ["Orc", "Orc Wizard", "Goblin", "Goblin Archer", "Troll", "Ettin", "Big Slime", "Skeleton Archer", "Lich", "Death Knight", "Banshee", "Giant Spider", "Manticore", "Dryad", "Rock Golem", "Drake / Lesser Dragon"];
+        const attackKitEnemies = ["Orc", "Orc Wizard", "Goblin", "Goblin Archer", "Troll", "Ettin", "Big Slime", "Lich", "Death Knight", "Death Lord", "Banshee", "Giant Spider", "Manticore", "Dryad", "Rock Golem", "Drake / Lesser Dragon"];
         for (const name of attackKitEnemies) {
           const opt = document.createElement("option");
           opt.value = name;

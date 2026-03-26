@@ -172,7 +172,7 @@ export class DustEmitter {
     const moveSpeed = len * effectiveSpeed;
     const isDashing = !!game.dashActive;
     const isDead = game.currentHealth != null && game.currentHealth <= 0;
-    const isStunned = game.stunTimer != null && game.stunTimer > 0;
+    const isStunned = typeof game.isPlayerStunned === "function" && game.isPlayerStunned();
     return { ax, ay, len, moveSpeed, isDashing, isDead, isStunned, effectiveSpeed };
   }
 

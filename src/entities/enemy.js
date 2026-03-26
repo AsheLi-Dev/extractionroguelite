@@ -1,6 +1,13 @@
 import { Vec2 } from '../utils.js';
 import { pointToSegmentDist } from '../utils.js';
 import { getWallCollisionRect, getObstacleCollisionRect, obstacleIntersectsRect, assetUrl } from '../utils.js';
+import {
+  BRUTE_1_SPRITE_PROFILE,
+  WARRIOR_6_SPRITE_PROFILE,
+  bruteSheetRecoveringHoldAttackStrip,
+  bruteSheetStrikeAnimActive,
+  resolveBruteSheetArchetype
+} from './brute-sheet-archetype.js';
 import { getHumanSquadTypeDef, HUMAN_SQUAD_ENEMY_IDS } from '../data/human-squad-data.js';
 import {
   createHumanSquadAnimState,
@@ -11,8 +18,19 @@ import {
   getSheetFrameCount,
   loadHumanSquadSheets,
 } from './human-squad-anim.js';
+import {
+  buildHeroPackEnemySpriteSheets,
+  getHeroPackDirectionIndexFromWorld,
+  mirrorHeroPackDirectionForRow,
+  getHeroPackLoopLength,
+  mapHeroPackColumn,
+} from './hero-pack-enemy-sprites.js';
 
-loadHumanSquadSheets();
+const DISABLE_ENEMY_SHEET_PRELOADS =
+  typeof window !== "undefined" && !!window.__DISABLE_ENEMY_SHEET_PRELOADS__;
+if (!DISABLE_ENEMY_SHEET_PRELOADS) {
+  loadHumanSquadSheets();
+}
 
 // Archetype to color mapping
 const ARCHETYPE_COLORS = {
@@ -59,7 +77,9 @@ function convertEnemyData(enemyData) {
     notes: enemyData.notes,
     spawnPool: enemyData.spawnPool || "default",
     enemyFamily: enemyData.enemyFamily || null,
-    sourceEnemyId: enemyData.sourceEnemyId || null
+    sourceEnemyId: enemyData.sourceEnemyId || null,
+    spriteProfile: enemyData.spriteProfile || null,
+    bruteSheetArchetype: enemyData.bruteSheetArchetype
   };
 }
 
@@ -81,7 +101,7 @@ const NEW_ENEMY_DATA = [
   // Row 2  Giants
   {"id":"m_2a_ettin","name":"Ettin","atlas":{"row":2,"col":"a"},"archetype":"Demon","base":{"size":103,"hp":100,"atk":14,"speed":50,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Big threat. Great as Elite/Mini-boss."},
   {"id":"m_2b_two_headed_ettin","name":"Two-Headed Ettin","atlas":{"row":2,"col":"b"},"archetype":"Demon","base":{"size":103,"hp":100,"atk":15,"speed":52,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Stronger ettin variant. Perfect Mini-boss."},
-  {"id":"m_2c_troll","name":"Troll","atlas":{"row":2,"col":"c"},"archetype":"Demon","base":{"size":103,"hp":90,"atk":13,"speed":58,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Tanky brawler. Good with Weakening."},
+  {"id":"m_2c_troll","name":"Troll","atlas":{"row":2,"col":"c"},"spriteSet":"troll_regular","archetype":"Demon","base":{"size":103,"hp":90,"atk":13,"speed":58,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Tanky brawler. Good with Weakening."},
   {"id":"m_2d_rock_giant","name":"RockGiant","atlas":{"row":2,"col":"d"},"spriteSet":"rock_giant_regular","archetype":"Demon","base":{"size":120,"hp":400,"atk":18,"speed":35,"def":4},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Large. Attack A: 5 falling rocks 1s delay. Attack B: cone strike. Heals 10% once under 50%. Hit reaction when hit while walking."},
 
   // Row 3  Slimes
@@ -97,10 +117,12 @@ const NEW_ENEMY_DATA = [
 
   // Row 5  Undead set
   {"id":"m_5a_skeleton","name":"Skeleton","atlas":{"row":5,"col":"a"},"spriteSet":"skeleton_regular","archetype":"Skeleton","base":{"size":86,"hp":60,"atk":10,"speed":70,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Your existing Skeleton baseline. Randomly uses one of three 4-frame sprite variants."},
-  {"id":"m_5b_skeleton_archer","name":"Skeleton Archer","atlas":{"row":5,"col":"b"},"archetype":"Skeleton","base":{"size":86,"hp":55,"atk":9,"speed":75,"def":2},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"mid","notes":"Ranged skeleton. Great with Volatile."},
+  {"id":"m_5b_skeleton_archer","name":"Skeleton Archer","atlas":{"row":5,"col":"b"},"spriteSet":"skeleton_archer_regular","archetype":"Skeleton","base":{"size":172,"hp":58,"atk":9,"speed":94,"def":1},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"mid","notes":"Ranged skeleton archer using Skeleton Archer-Sheet atlas."},
+  {"id":"m_5bw_skeleton_warrior","name":"Skeleton Warrior","atlas":{"row":5,"col":"g"},"spriteSet":"skeleton_warrior_regular","archetype":"Skeleton","base":{"size":172,"hp":72,"atk":11,"speed":83,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","notes":"Melee skeleton with shield sheet; Skeleton_Warrior-Sheet atlas."},
   {"id":"m_5c_lich","name":"Lich","atlas":{"row":5,"col":"c"},"spriteSet":"lich_regular","archetype":"Demon","base":{"size":86,"hp":85,"atk":12,"speed":60,"def":3},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"high","notes":"Caster boss-lite. Great with Lasering."},
   {"id":"m_5d_death_knight","name":"Death Knight","atlas":{"row":5,"col":"d"},"spriteSet":"death_knight_regular","archetype":"Demon","base":{"size":103,"hp":100,"atk":15,"speed":50,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Top-tier melee. Perfect Mini-boss."},
   {"id":"m_5z_death_bringer","name":"DeathBringer","atlas":{"row":5,"col":"e"},"spriteSet":"death_bringer_regular","archetype":"Demon","base":{"size":206,"hp":90,"atk":12,"speed":55,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Caster with cone melee and delayed ground spell at player."},
+  {"id":"m_5dl_death_lord","name":"Death Lord","atlas":{"row":5,"col":"i"},"spriteSet":"death_lord_regular","archetype":"Demon","base":{"size":344,"hp":110,"atk":13,"speed":58,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Cone cleave and six-bolt volley; Death Knight-Sheet.png + Effect-Sheet volley (110x80 / 48x8)."},
   {"id":"m_5e_zombie","name":"Zombie","atlas":{"row":5,"col":"e"},"spriteSet":"zombie_regular","archetype":"Slime","base":{"size":86,"hp":70,"atk":8,"speed":55,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Slow tank. Good with Volatile/Orbiting."},
   {"id":"m_5g_small_dummy","name":"Small Dummy","atlas":{"row":5,"col":"e"},"spriteSet":"small_dummy_regular","archetype":"Slime","base":{"size":86,"hp":70,"atk":8,"speed":55,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Zombie-equivalent test enemy."},
   {"id":"m_5k_small_dwarfette","name":"Small Dwarfette","atlas":{"row":5,"col":"e"},"spriteSet":"small_dwarfette_regular","archetype":"Slime","base":{"size":86,"hp":70,"atk":8,"speed":55,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Small dummy variant with dash attack."},
@@ -124,7 +146,7 @@ const NEW_ENEMY_DATA = [
   {"id":"m_5f_ghoul","name":"Ghoul","atlas":{"row":5,"col":"f"},"archetype":"Bat","base":{"size":72,"hp":38,"atk":9,"speed":110,"def":1},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Fast undead. Great with Cursing."},
 
   // Row 6  Ghosts/Cult
-  {"id":"m_6a_banshee","name":"Banshee","atlas":{"row":6,"col":"a"},"archetype":"Wisp","base":{"size":72,"hp":22,"atk":6,"speed":125,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Fast ethereal. Great with Lasering."},
+  {"id":"m_6a_banshee","name":"Banshee","atlas":{"row":6,"col":"a"},"spriteSet":"banshee_regular","archetype":"Wisp","base":{"size":200,"hp":28,"atk":7,"speed":118,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Sheet: Banshee-Sheet (110x80); melee wail slash + magic scream cone."},
   {"id":"m_6b_reaper","name":"Reaper","atlas":{"row":6,"col":"b"},"archetype":"Demon","base":{"size":103,"hp":90,"atk":15,"speed":55,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Elite assassin. Great with Weakening/Cursing."},
   {"id":"m_6c_wraith","name":"Wraith","atlas":{"row":6,"col":"c"},"archetype":"Wisp","base":{"size":72,"hp":20,"atk":5,"speed":130,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"low","notes":"Your existing Wisp-like baseline."},
   {"id":"m_6d_cultist","name":"Cultist","atlas":{"row":6,"col":"d"},"spriteSet":"cultist_regular","archetype":"Bat","base":{"size":72,"hp":28,"atk":7,"speed":105,"def":0},"attackStyle":"ranged_projectile","xpBand":"basic","dropBand":"mid","notes":"Ranged/utility. Great with Weakening."},
@@ -162,8 +184,7 @@ const NEW_ENEMY_DATA = [
   {"id":"m_9b_drake_lesser_dragon","name":"Drake / Lesser Dragon","atlas":{"row":9,"col":"b"},"archetype":"Demon","base":{"size":103,"hp":85,"atk":14,"speed":70,"def":3},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"high","notes":"Elite ranged threat."},
   {"id":"m_9c_dragon","name":"Dragon","atlas":{"row":9,"col":"c"},"spriteSet":"dragon_regular","archetype":"Demon","base":{"size":103,"hp":100,"atk":15,"speed":55,"def":3},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"high","notes":"Boss-grade. Great Mini-boss."},
   {"id":"m_9d_cockatrice","name":"Cockatrice","atlas":{"row":9,"col":"d"},"archetype":"Bat","base":{"size":72,"hp":30,"atk":8,"speed":120,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Fast pecker. Great with Cursing."},
-  {"id":"m_9e_basilisk","name":"Basilisk","atlas":{"row":9,"col":"e"},"archetype":"Skeleton","base":{"size":86,"hp":75,"atk":12,"speed":65,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Heavy reptile. Great with Weakening."},
-  {"id":"m_9f_bastilisk","name":"Bastilisk","atlas":{"row":9,"col":"f"},"spriteSet":"bastilisk_regular","archetype":"Bat","base":{"size":72,"hp":28,"atk":7,"speed":115,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Small reptile. Ignores walls and obstacles. Random 4-frame sprite variant."},
+  {"id":"m_9f_bastilisk","name":"Basilisk","atlas":{"row":9,"col":"f"},"spriteSet":"bastilisk_regular","archetype":"Bat","base":{"size":72,"hp":28,"atk":7,"speed":115,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Small reptile. Ignores walls and obstacles. Random 4-frame sprite variant."},
 
   // Row 10  Canine kobolds
   {"id":"m_10a_small_kobold_canine","name":"Small Kobold (Canine)","atlas":{"row":10,"col":"a"},"archetype":"Bat","base":{"size":72,"hp":22,"atk":6,"speed":125,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"low","notes":"Small fast trash."},
@@ -180,7 +201,9 @@ const NEW_ENEMY_DATA = [
   // Row 13  Writhing masses
   {"id":"m_13a_small_writhing_mass","name":"Small Writhing Mass","atlas":{"row":13,"col":"a"},"archetype":"Slime","base":{"size":72,"hp":40,"atk":6,"speed":60,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Creepy slime-equivalent."},
   {"id":"m_13b_large_writhing_mass","name":"Large Writhing Mass","atlas":{"row":13,"col":"b"},"archetype":"Demon","base":{"size":103,"hp":90,"atk":12,"speed":50,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Elite tank horror."},
-  {"id":"m_13c_writhing_humanoid","name":"Writhing Humanoid","atlas":{"row":13,"col":"c"},"archetype":"Skeleton","base":{"size":86,"hp":60,"atk":11,"speed":70,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Medium elite horror. Great with Weakening/Cursing."}
+  {"id":"m_13c_writhing_humanoid","name":"Writhing Humanoid","atlas":{"row":13,"col":"c"},"archetype":"Skeleton","base":{"size":86,"hp":60,"atk":11,"speed":70,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Medium elite horror. Great with Weakening/Cursing."},
+  {"id":"m_ud_brute","name":"Undead Brute","atlas":{"row":5,"col":"e"},"archetype":"Skeleton","base":{"size":172,"hp":88,"atk":12,"speed":100,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","spawnPool":"default","spriteProfile":BRUTE_1_SPRITE_PROFILE,"notes":"1Brute assets; brute-sheet archetype (see brute-sheet-archetype.js, auto-enabled for this id)."},
+  {"id":"m_ud_warrior","name":"Undead Warrior","atlas":{"row":5,"col":"f"},"archetype":"Skeleton","base":{"size":160,"hp":76,"atk":11,"speed":102,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","spawnPool":"default","spriteProfile":WARRIOR_6_SPRITE_PROFILE,"notes":"6Warrior assets; brute-sheet archetype (legacy id m_ud_warrior). Attack1=up slash, Attack2=down, Attack3=double shield bash."}
 ];
 
 const ENEMY_DATA_BY_ID = new Map(NEW_ENEMY_DATA.map((enemyData) => [enemyData.id, enemyData]));
@@ -329,10 +352,15 @@ const zombieSheetCache = new Map();
 const smallSlimeSheetCache = new Map();
 const mediumSlimeSheetCache = new Map();
 const bigSlimeSheetCache = new Map();
+const trollSheetCache = new Map();
 const ghostSheetCache = new Map();
 const GHOST_VARIANT_IDS = ["1", "2", "3"];
 const skeletonSheetCache = new Map();
 const SKELETON_VARIANT_IDS = ["1", "2", "3"];
+const skeletonArcherSheetCache = new Map();
+const skeletonWarriorSheetCache = new Map();
+const deathLordSheetCache = new Map();
+const bansheeSheetCache = new Map();
 const bastiliskSheetCache = new Map();
 const BASTILISK_VARIANT_IDS = ["1", "2", "3"];
 const goblinKingSheetCache = new Map();
@@ -357,6 +385,51 @@ function shouldUseMovingAnim(enemy, moved) {
   const startThreshold = 0.16;
   const stopThreshold = 0.04;
   return isCurrentlyMoving ? moved > stopThreshold : moved > startThreshold;
+}
+
+/** Kind for sprite FSM: current strike, or last strike while in recover (currentAttack cleared). */
+function getEnemyAttackKindForSpriteAnim(attackCtrl) {
+  const a = attackCtrl?.currentAttack;
+  if (a?.kind) return a.kind;
+  const rid = attackCtrl?.recoveringAttackId;
+  if (!rid || !Array.isArray(attackCtrl?.availableAttacks)) return null;
+  const def = attackCtrl.availableAttacks.find((x) => x.id === rid);
+  return def?.kind ?? null;
+}
+
+function isConeLikeStrikeAttackKind(kind) {
+  return kind === "cone" || kind === "timed_double_cone";
+}
+
+/** True when sprite FSM is showing a strike sheet (not idle/move). */
+function isEnemyStrikeSpriteAnimState(nextState) {
+  if (!nextState || nextState === "idle" || nextState === "move") return false;
+  return nextState.startsWith("attack");
+}
+
+/**
+ * Generic FSM uses nextState "attack", but hero-pack multi-row enemies may only define attackDown/attackUp.
+ * Map cone strike ids so windup/active use a real sheet (fixes Undead Brute if brute-specific flags ever miss).
+ */
+function resolveConeMultiSheetAnimState(enemy, nextState, attackCtrl) {
+  if (
+    nextState !== "attack" ||
+    enemy.spriteSheets?.attack ||
+    !attackCtrl ||
+    (attackCtrl.state !== "windup" && attackCtrl.state !== "active")
+  ) {
+    return nextState;
+  }
+  const k = attackCtrl.currentAttack?.kind;
+  if (!isConeLikeStrikeAttackKind(k)) return nextState;
+  const id = String(attackCtrl.currentAttack?.id || "");
+  if (enemy.spriteSheets?.attackDown && (id.includes("downslash") || id.includes("down_slash") || id.includes("low_cleave"))) {
+    return "attackDown";
+  }
+  if (enemy.spriteSheets?.attackUp && (id.includes("upslash") || id.includes("up_slash") || id.includes("high_cleave"))) {
+    return "attackUp";
+  }
+  return nextState;
 }
 
 function getGoblinRegularSheets(variantId) {
@@ -1252,6 +1325,19 @@ function getBigSlimeSheets() {
   };
 }
 
+function getTrollSheets() {
+  const frameW = 128;
+  const frameH = 128;
+  const idleImage = getCachedSpriteImage(trollSheetCache, "assets/Enemies/Troll_Spritesheet/CAVETROLL_IDLE-Sheet.png", "Troll idle sheet");
+  const moveImage = getCachedSpriteImage(trollSheetCache, "assets/Enemies/Troll_Spritesheet/CAVETROLL_WALK-Sheet.png", "Troll move sheet");
+  const attackImage = getCachedSpriteImage(trollSheetCache, "assets/Enemies/Troll_Spritesheet/CAVETROLL_ATTACK-Sheet.png", "Troll attack sheet");
+  return {
+    idle: { image: idleImage, frames: 6, fps: 8, frameW, cropW: frameW, frameH },
+    move: { image: moveImage, frames: 6, fps: 10, frameW, cropW: frameW, frameH },
+    attack: { image: attackImage, frames: 6, fps: 12, frameW, cropW: frameW, frameH }
+  };
+}
+
 function getGhostSheets(variantId) {
   const id = String(variantId || "1");
   const path = `assets/Enemies/sprGhost${id}.png`;
@@ -1274,10 +1360,106 @@ function getSkeletonSheets(variantId) {
   };
 }
 
+function getSkeletonArcherSheets() {
+  const img = getCachedSpriteImage(
+    skeletonArcherSheetCache,
+    "assets/Enemies/Skeleton Archer/Skeleton_Archer-Sheet.png",
+    "Skeleton Archer sheet"
+  );
+
+  const frameW = 110;
+  const frameH = 80;
+
+  return {
+    idle: { image: img, frames: 4, fps: 8, loop: true, frameW, frameH, cropX: 0, cropY: 0, cropW: frameW, cropH: frameH },
+    // Use the "run" row as the general movement animation.
+    move: { image: img, frames: 8, fps: 12, loop: true, frameW, frameH, cropX: 0, cropY: 160, cropW: frameW, cropH: frameH },
+    attack: { image: img, frames: 9, fps: 18, loop: false, frameW, frameH, cropX: 0, cropY: 640, cropW: frameW, cropH: frameH },
+    death: { image: img, frames: 9, fps: 12, loop: false, frameW, frameH, cropX: 0, cropY: 400, cropW: frameW, cropH: frameH },
+
+    // Used as a flash overlay during hitFlashTimer; supports multi-row atlases via cropY.
+    hit: { image: img, frames: 4, fps: 10, loop: false, frameW, frameH, cropX: 0, cropY: 320, cropW: frameW, cropH: frameH }, // use "hit_flash" row
+
+    // Not currently driven by the enemy state machine, but included for completeness.
+    death_flash: { image: img, frames: 9, fps: 12, loop: false, frameW, frameH, cropX: 0, cropY: 480, cropW: frameW, cropH: frameH },
+    revive: { image: img, frames: 9, fps: 12, loop: false, frameW, frameH, cropX: 0, cropY: 560, cropW: frameW, cropH: frameH },
+    run: { image: img, frames: 8, fps: 14, loop: true, frameW, frameH, cropX: 0, cropY: 160, cropW: frameW, cropH: frameH },
+    walk: { image: img, frames: 8, fps: 12, loop: true, frameW, frameH, cropX: 0, cropY: 80, cropW: frameW, cropH: frameH }
+  };
+}
+
+function getDeathLordSheets() {
+  const img = getCachedSpriteImage(
+    deathLordSheetCache,
+    "assets/Enemies/Death Lord/Death Knight-Sheet.png",
+    "Death Lord sheet"
+  );
+  const frameW = 110;
+  const frameH = 80;
+  return {
+    idle: { image: img, frames: 8, fps: 8, loop: true, frameW, frameH, cropX: 0, cropY: 0, cropW: frameW, cropH: frameH },
+    move: { image: img, frames: 8, fps: 12, loop: true, frameW, frameH, cropX: 0, cropY: 160, cropW: frameW, cropH: frameH },
+    walk: { image: img, frames: 8, fps: 12, loop: true, frameW, frameH, cropX: 0, cropY: 80, cropW: frameW, cropH: frameH },
+    run: { image: img, frames: 8, fps: 14, loop: true, frameW, frameH, cropX: 0, cropY: 160, cropW: frameW, cropH: frameH },
+    attack_swing: { image: img, frames: 7, fps: 16, loop: false, frameW, frameH, cropX: 0, cropY: 560, cropW: frameW, cropH: frameH },
+    // Fallback while attackCtrl is in recover (currentAttack cleared) after cleave.
+    attack: { image: img, frames: 7, fps: 16, loop: false, frameW, frameH, cropX: 0, cropY: 560, cropW: frameW, cropH: frameH },
+    attack_cast: { image: img, frames: 10, fps: 12, loop: false, frameW, frameH, cropX: 0, cropY: 640, cropW: frameW, cropH: frameH },
+    death: { image: img, frames: 11, fps: 12, loop: false, frameW, frameH, cropX: 0, cropY: 400, cropW: frameW, cropH: frameH },
+    hit: { image: img, frames: 4, fps: 10, loop: false, frameW, frameH, cropX: 0, cropY: 240, cropW: frameW, cropH: frameH }
+  };
+}
+
+function getBansheeSheets() {
+  const img = getCachedSpriteImage(
+    bansheeSheetCache,
+    "assets/Enemies/Banshee/Banshee-Sheet.png",
+    "Banshee sheet"
+  );
+  const frameW = 110;
+  const frameH = 80;
+  return {
+    idle: { image: img, frames: 8, fps: 9, loop: true, frameW, frameH, cropX: 0, cropY: 0, cropW: frameW, cropH: frameH },
+    move: { image: img, frames: 6, fps: 13, loop: true, frameW, frameH, cropX: 0, cropY: 160, cropW: frameW, cropH: frameH },
+    walk: { image: img, frames: 6, fps: 11, loop: true, frameW, frameH, cropX: 0, cropY: 80, cropW: frameW, cropH: frameH },
+    run: { image: img, frames: 6, fps: 13, loop: true, frameW, frameH, cropX: 0, cropY: 160, cropW: frameW, cropH: frameH },
+    attack_melee: { image: img, frames: 8, fps: 16, loop: false, frameW, frameH, cropX: 0, cropY: 640, cropW: frameW, cropH: frameH },
+    attack_shout: { image: img, frames: 9, fps: 14, loop: false, frameW, frameH, cropX: 0, cropY: 720, cropW: frameW, cropH: frameH },
+    attack: { image: img, frames: 8, fps: 16, loop: false, frameW, frameH, cropX: 0, cropY: 640, cropW: frameW, cropH: frameH },
+    death: { image: img, frames: 7, fps: 12, loop: false, frameW, frameH, cropX: 0, cropY: 400, cropW: frameW, cropH: frameH },
+    death_flash: { image: img, frames: 7, fps: 12, loop: false, frameW, frameH, cropX: 0, cropY: 480, cropW: frameW, cropH: frameH },
+    dramatic_death: { image: img, frames: 14, fps: 14, loop: false, frameW, frameH, cropX: 0, cropY: 560, cropW: frameW, cropH: frameH },
+    hit: { image: img, frames: 4, fps: 12, loop: false, frameW, frameH, cropX: 0, cropY: 320, cropW: frameW, cropH: frameH }
+  };
+}
+
+function getSkeletonWarriorSheets() {
+  const img = getCachedSpriteImage(
+    skeletonWarriorSheetCache,
+    "assets/Enemies/Skeleton Warrior/Skeleton_Warrior-Sheet.png",
+    "Skeleton Warrior sheet"
+  );
+  const frameW = 110;
+  const frameH = 80;
+  return {
+    idle: { image: img, frames: 4, fps: 8, loop: true, frameW, frameH, cropX: 0, cropY: 0, cropW: frameW, cropH: frameH },
+    move: { image: img, frames: 8, fps: 12, loop: true, frameW, frameH, cropX: 0, cropY: 160, cropW: frameW, cropH: frameH },
+    attack: { image: img, frames: 7, fps: 18, loop: false, frameW, frameH, cropX: 0, cropY: 640, cropW: frameW, cropH: frameH },
+    death: { image: img, frames: 9, fps: 12, loop: false, frameW, frameH, cropX: 0, cropY: 400, cropW: frameW, cropH: frameH },
+    hit: { image: img, frames: 4, fps: 10, loop: false, frameW, frameH, cropX: 0, cropY: 320, cropW: frameW, cropH: frameH },
+    death_flash: { image: img, frames: 9, fps: 12, loop: false, frameW, frameH, cropX: 0, cropY: 480, cropW: frameW, cropH: frameH },
+    revive: { image: img, frames: 9, fps: 12, loop: false, frameW, frameH, cropX: 0, cropY: 560, cropW: frameW, cropH: frameH },
+    run: { image: img, frames: 8, fps: 14, loop: true, frameW, frameH, cropX: 0, cropY: 160, cropW: frameW, cropH: frameH },
+    walk: { image: img, frames: 8, fps: 12, loop: true, frameW, frameH, cropX: 0, cropY: 80, cropW: frameW, cropH: frameH },
+    hit_guard: { image: img, frames: 5, fps: 12, loop: false, frameW, frameH, cropX: 0, cropY: 720, cropW: frameW, cropH: frameH },
+    guard: { image: img, frames: 5, fps: 10, loop: true, frameW, frameH, cropX: 0, cropY: 800, cropW: frameW, cropH: frameH }
+  };
+}
+
 function getBastiliskSheets(variantId) {
   const id = String(variantId || "1");
   const path = `assets/Enemies/sprBatilisk${id}.png`;
-  const img = getCachedSpriteImage(bastiliskSheetCache, path, `Bastilisk ${id} sheet`);
+  const img = getCachedSpriteImage(bastiliskSheetCache, path, `Basilisk ${id} sheet`);
   const frames = 4;
   return {
     idle: { image: img, frames, fps: 8 },
@@ -1360,6 +1542,10 @@ function preloadBigSlimeSheets() {
   getBigSlimeSheets();
 }
 
+function preloadTrollSheets() {
+  getTrollSheets();
+}
+
 function preloadGhostSheets() {
   for (const variantId of GHOST_VARIANT_IDS) {
     getGhostSheets(variantId);
@@ -1370,6 +1556,22 @@ function preloadSkeletonSheets() {
   for (const variantId of SKELETON_VARIANT_IDS) {
     getSkeletonSheets(variantId);
   }
+}
+
+function preloadSkeletonArcherSheets() {
+  getSkeletonArcherSheets();
+}
+
+function preloadSkeletonWarriorSheets() {
+  getSkeletonWarriorSheets();
+}
+
+function preloadDeathLordSheets() {
+  getDeathLordSheets();
+}
+
+function preloadBansheeSheets() {
+  getBansheeSheets();
 }
 
 function preloadBastiliskSheets() {
@@ -1416,50 +1618,57 @@ function loadAffixIconAtlas() {
   return affixIconAtlas;
 }
 
-// Start loading the sprite atlas immediately
-loadEnemySpriteAtlas();
-loadAffixIconAtlas();
-preloadGoblinRegularSheets();
-preloadGoblinArcherSheets();
-preloadGoblinBruteSheets();
-preloadGoblinMageSheets();
-preloadOrcRegularSheets();
-preloadCultistSheets();
-preloadDeathKnightSheets();
-preloadLichSheets();
-preloadMinotaurSheets();
-preloadForestSpiritSheets();
-preloadSmallMyconidSheets();
-preloadSmallDummySheets();
-preloadMediumDummySheets();
-preloadAdvancedDummySheets();
-preloadLargeDummySheets();
-preloadSmallDwarfetteSheets();
-preloadMediumDwarfetteSheets();
-preloadStrongDwarfetteSheets();
-preloadLargeDwarfetteBallSheets();
-preloadSmallMimicSheets();
-preloadMediumMimicSheets();
-preloadStrongMimicSheets();
-preloadLargeMimicSheets();
-preloadSmallFrogSheets();
-preloadLargeFrogSheets();
-preloadCyclopArcherSheets();
-preloadMonsteryflySheets();
-preloadMonsterSlasherSheets();
-preloadVampireArcherSheets();
-preloadMercenarySheets();
-preloadDeathBringerSheets();
-preloadDragonSheets();
-preloadZombieSheets();
-preloadSmallSlimeSheets();
-preloadMediumSlimeSheets();
-preloadBigSlimeSheets();
-preloadGhostSheets();
-preloadSkeletonSheets();
-preloadBastiliskSheets();
-preloadGoblinKingSheets();
-preloadRockGiantSheets();
+// Start loading atlases + common sheets immediately (disabled in small preview tools).
+if (!DISABLE_ENEMY_SHEET_PRELOADS) {
+  loadEnemySpriteAtlas();
+  loadAffixIconAtlas();
+  preloadGoblinRegularSheets();
+  preloadGoblinArcherSheets();
+  preloadGoblinBruteSheets();
+  preloadGoblinMageSheets();
+  preloadOrcRegularSheets();
+  preloadCultistSheets();
+  preloadDeathKnightSheets();
+  preloadLichSheets();
+  preloadMinotaurSheets();
+  preloadForestSpiritSheets();
+  preloadSmallMyconidSheets();
+  preloadSmallDummySheets();
+  preloadMediumDummySheets();
+  preloadAdvancedDummySheets();
+  preloadLargeDummySheets();
+  preloadSmallDwarfetteSheets();
+  preloadMediumDwarfetteSheets();
+  preloadStrongDwarfetteSheets();
+  preloadLargeDwarfetteBallSheets();
+  preloadSmallMimicSheets();
+  preloadMediumMimicSheets();
+  preloadStrongMimicSheets();
+  preloadLargeMimicSheets();
+  preloadSmallFrogSheets();
+  preloadLargeFrogSheets();
+  preloadCyclopArcherSheets();
+  preloadMonsteryflySheets();
+  preloadMonsterSlasherSheets();
+  preloadVampireArcherSheets();
+  preloadMercenarySheets();
+  preloadDeathBringerSheets();
+  preloadDragonSheets();
+  preloadZombieSheets();
+  preloadSmallSlimeSheets();
+  preloadMediumSlimeSheets();
+  preloadBigSlimeSheets();
+  preloadTrollSheets();
+  preloadGhostSheets();
+  preloadSkeletonSheets();
+  preloadSkeletonArcherSheets();
+  preloadSkeletonWarriorSheets();
+  preloadDeathLordSheets();
+  preloadBansheeSheets();
+  preloadBastiliskSheets();
+  preloadGoblinKingSheets();
+  preloadRockGiantSheets();
+}
 
 function parseTileFrameKey(key) {
   const match = /^tile_\d+_r(\d+)_c(\d+)$/.exec(String(key || ""));
@@ -1742,6 +1951,7 @@ export class Enemy {
     this.size = (typeDef.size || 0) * 0.4;
     this.name = typeDef.name;
     this.enemyTypeId = typeDef.id || null;
+    this.bruteSheetArchetype = resolveBruteSheetArchetype(typeDef);
     this.color = typeDef.color;
     this.maxHealth = typeDef.maxHealth;
     this.health = typeDef.maxHealth;
@@ -1759,6 +1969,16 @@ export class Enemy {
     this.spriteSheetFlipInverted = false;
     this._attackRollEndTimer = 0;
     this._cycloneEndTimer = 0;
+    // Sprite windup hold: freeze on current frame during attack windup.
+    this._windupHoldCycle = null;
+    this._windupHoldState = null; // { state: string, frameIndex: number }
+    // Animation-synced hitbox: ensure we snap to trigger frame on active start.
+    this._hitboxTriggerSnapCycle = null;
+    // Recover anim: restart idle once when entering recover.
+    this._wasInRecoverState = false;
+    // Temporary speed buffs (e.g. Brute warcry).
+    this._warcrySpeedUntil = null;
+    this._warcrySpeedMult = 1.2;
 
     if (typeDef.spriteSet === "goblin_regular") {
       const variantId = GOBLIN_VARIANT_IDS[Math.floor(Math.random() * GOBLIN_VARIANT_IDS.length)] || "01";
@@ -2028,6 +2248,22 @@ export class Enemy {
         timer: 0,
         frameIndex: 0
       };
+    } else if (typeDef.spriteSet === "death_lord_regular") {
+      this.spriteSheets = getDeathLordSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "banshee_regular") {
+      this.spriteSheets = getBansheeSheets();
+      this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
     } else if (typeDef.spriteSet === "dragon_regular") {
       this.spriteSheets = getDragonSheets();
       this.spriteSheetFlipInverted = true;
@@ -2068,6 +2304,14 @@ export class Enemy {
         timer: 0,
         frameIndex: 0
       };
+    } else if (typeDef.spriteSet === "troll_regular") {
+      this.spriteSheets = getTrollSheets();
+      this.spriteSheetFlipInverted = false;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
     } else if (typeDef.spriteSet === "ghost_regular") {
       const variantId = GHOST_VARIANT_IDS[Math.floor(Math.random() * GHOST_VARIANT_IDS.length)] || "1";
       this.spriteVariantId = variantId;
@@ -2083,6 +2327,28 @@ export class Enemy {
       this.spriteVariantId = variantId;
       this.spriteSheets = getSkeletonSheets(variantId);
       this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "skeleton_archer_regular") {
+      this.spriteSheets = getSkeletonArcherSheets();
+      this.spriteSheetFlipInverted = true;
+      // Dead-but-revivable corpse: keep death animation visible and frozen.
+      this.keepDeadForRevive = true;
+      this._corpseDeathProcessed = false;
+      this.spriteAnimState = {
+        state: "idle",
+        timer: 0,
+        frameIndex: 0
+      };
+    } else if (typeDef.spriteSet === "skeleton_warrior_regular") {
+      this.spriteSheets = getSkeletonWarriorSheets();
+      this.spriteSheetFlipInverted = true;
+      // Dead-but-revivable corpse: keep death sprite visible for later revive mechanics.
+      this.keepDeadForRevive = true;
+      this._corpseDeathProcessed = false;
       this.spriteAnimState = {
         state: "idle",
         timer: 0,
@@ -2114,6 +2380,14 @@ export class Enemy {
     } else if (typeDef.spriteSet === "rock_giant_regular") {
       this.spriteSheets = getRockGiantSheets();
       this.spriteSheetFlipInverted = true;
+      this.spriteAnimState = { state: "idle", timer: 0, frameIndex: 0 };
+    } else if (typeDef.spriteProfile?.kind === "directional_spritesheet") {
+      this.heroPackSpriteProfile = typeDef.spriteProfile;
+      this.heroPackDirectional = true;
+      this.spriteSheets = buildHeroPackEnemySpriteSheets(typeDef.spriteProfile);
+      this.spriteSheetFlipInverted = false;
+      this.heroPackDrawFlipH = false;
+      this.heroPackRowIndex = 2;
       this.spriteAnimState = { state: "idle", timer: 0, frameIndex: 0 };
     }
 
@@ -2387,6 +2661,12 @@ export class Enemy {
       this._undyingRespawnTime = null;
     }
 
+    // If a dead-but-revivable corpse got revived (health restored), allow
+    // death side-effects to run again the next time it dies.
+    if (this.keepDeadForRevive && !this.isDead && this._corpseDeathProcessed) {
+      this._corpseDeathProcessed = false;
+    }
+
     if (this.enemyTypeId === "m_8f_forest_spirit" && this.forestSpiritSpecial) {
       const special = this.forestSpiritSpecial;
       if (special.active) {
@@ -2407,6 +2687,21 @@ export class Enemy {
       }
     }
 
+    // Always allow alerted/activated to update based on proximity, even if this enemy is
+    // currently stunned/rooted (those states should stop movement/attacks, not awareness).
+    if (player && (!this.activated || !this.alerted)) {
+      const cx0 = this.position.x + this.size / 2;
+      const cy0 = this.position.y + this.size / 2;
+      const px0 = player.position.x + player.size / 2;
+      const py0 = player.position.y + player.size / 2;
+      const dx0 = px0 - cx0;
+      const dy0 = py0 - cy0;
+      const dist0 = Math.sqrt(dx0 * dx0 + dy0 * dy0) || 0;
+      const alertedRange0 = detectionRange * 3;
+      if (!this.alerted && dist0 <= alertedRange0) this.alerted = true;
+      if (!this.activated && dist0 <= detectionRange) this.activated = true;
+    }
+
     if (this.stunUntil != null && gameTime < this.stunUntil) {
       if (this.attackTimer > 0) this.attackTimer -= dt;
       if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
@@ -2424,8 +2719,14 @@ export class Enemy {
     if (hasAffix("hive")) speedMult *= 0.5;
     if (this._auraBuffed) speedMult *= 1.2;
     if (this._totemSpeedMult != null) speedMult *= this._totemSpeedMult;
+    if (this._warcrySpeedUntil != null && gameTime < this._warcrySpeedUntil) {
+      speedMult *= Math.max(1, Number(this._warcrySpeedMult) || 1.2);
+    }
     const margin = 60;
-    const rooted = this.rootUntil != null && gameTime < this.rootUntil;
+    const corpseFrozen = !!(this.keepDeadForRevive && this.isDead);
+    const rooted = (this.rootUntil != null && gameTime < this.rootUntil) || corpseFrozen;
+    const inWindup = !!(this.attackCtrl && this.attackCtrl.state === "windup");
+    const inRecover = !!(this.attackCtrl && this.attackCtrl.state === "recover");
     if (!rooted) pushEnemyOutOfBlockers(this, game, margin);
     const cx = this.position.x + this.size / 2;
     const cy = this.position.y + this.size / 2;
@@ -2445,7 +2746,7 @@ export class Enemy {
       }
     }
 
-    if (!rooted && this._fleeFromPlayer && this.activated) {
+    if (!rooted && !inWindup && !inRecover && this._fleeFromPlayer && this.activated) {
       const px = player.position.x + player.size / 2;
       const py = player.position.y + player.size / 2;
       const dx = cx - px;
@@ -2457,7 +2758,7 @@ export class Enemy {
       const moveY = (dy / dist) * fleeSpeed * speedMult * flyingMult * dt;
       moveEnemyWithCollision(this, moveX, moveY, game, margin);
       if (Math.abs(moveX) > 0.1) this.facingRight = moveX > 0;
-    } else if (!rooted && hasAffix("evasive") && this.activated) {
+    } else if (!rooted && !inWindup && !inRecover && hasAffix("evasive") && this.activated) {
       this._evasiveTrail = this._evasiveTrail || [];
       this._evasiveTrail.push({ x: this.position.x, y: this.position.y });
       if (this._evasiveTrail.length > 6) this._evasiveTrail.shift();
@@ -2477,7 +2778,7 @@ export class Enemy {
       }
     } else this._evasiveTrail = null;
     if (hasAffix("evasive") && !this.activated) this._evasiveTrail = null;
-    if (!rooted && this.isFiery) {
+    if (!rooted && !inWindup && !inRecover && this.isFiery) {
       this.wanderTimer = (this.wanderTimer || 0) - dt;
       if (this.wanderTimer <= 0) {
         this.wanderDirection = this.wanderDirection || new Vec2(0, 0);
@@ -2526,9 +2827,68 @@ export class Enemy {
         this._cycloneState ||
         this._cycloneEndTimer > 0 ||
         this._frogSpitFlight?.active ||
-        this._monsterflyRecoverTimer > 0
+        this._monsterflyRecoverTimer > 0 ||
+        (this.enemyTypeId === "m_1f_goblin_archer" && this.attackCtrl.state === "recover")
       );
       let specialHealing = this.enemyTypeId === "m_8f_forest_spirit" && this.forestSpiritSpecial?.active;
+
+      // ----- Brute-sheet archetype: periodic burst movement (rolling / slide) -----
+      const bruteArche = this.bruteSheetArchetype;
+      let bruteDidBurstMove = false;
+      const bruteInAttackPhases = !!(
+        bruteArche &&
+        this.attackCtrl &&
+        (this.attackCtrl.state === "windup" || this.attackCtrl.state === "active" || this.attackCtrl.state === "recover")
+      );
+      if (bruteArche && this.activated && !rooted) {
+        if (this._bruteBurstMove && this._bruteBurstMove.duration > 0) {
+          this._bruteBurstMove.elapsed = (this._bruteBurstMove.elapsed || 0) + dt;
+          if (this._bruteBurstMove.elapsed >= this._bruteBurstMove.duration) {
+            this._bruteBurstMove = null;
+          }
+        }
+        if (bruteArche.enablePeriodicBurstMove) {
+          this._bruteBurstNextIn = Number.isFinite(this._bruteBurstNextIn) ? this._bruteBurstNextIn - dt : 0;
+          if (!this._bruteBurstMove && !bruteInAttackPhases && !specialHealing && (this._bruteBurstNextIn || 0) <= 0) {
+            const choices = ["rolling", "slide"];
+            const kind = choices[Math.floor(Math.random() * choices.length)] || "rolling";
+            const dir = dist > 0.0001
+              ? vecNormalize(dx, dy)
+              : (this.facingRight ? { x: 1, y: 0 } : { x: -1, y: 0 });
+            const duration = kind === "rolling" ? 1.0 : 1.0;
+            this._bruteBurstMove = {
+              kind,
+              dirX: dir.x,
+              dirY: dir.y,
+              elapsed: 0,
+              duration
+            };
+            this._bruteBurstNextIn = bruteArche.burstIntervalSec;
+          }
+        } else {
+          this._bruteBurstNextIn = null;
+        }
+      } else if (!bruteArche) {
+        this._bruteBurstMove = null;
+        this._bruteBurstNextIn = null;
+      }
+
+      if (bruteArche && this._bruteBurstMove && !rooted && !specialHealing && !bruteInAttackPhases) {
+        const t = Math.max(0, Math.min(1, (this._bruteBurstMove.elapsed || 0) / Math.max(0.0001, this._bruteBurstMove.duration)));
+        let burstMult = 1.0;
+        if (this._bruteBurstMove.kind === "rolling") burstMult = bruteArche.rollingSpeedMult;
+        else if (this._bruteBurstMove.kind === "slide") {
+          burstMult = bruteArche.slideSpeedMultStart - (bruteArche.slideSpeedMultStart - bruteArche.slideSpeedMultEnd) * t;
+        }
+        const flyingSpeedMult = this.affixes?.includes("flying") ? 1.1 : 1;
+        const burstSpeed = this.speed * speedMult * burstMult * flyingSpeedMult;
+        const moveX = this._bruteBurstMove.dirX * burstSpeed * dt;
+        const moveY = this._bruteBurstMove.dirY * burstSpeed * dt;
+        moveEnemyWithCollision(this, moveX, moveY, game, margin);
+        if (Math.abs(moveX) > 0.1) this.facingRight = moveX > 0;
+        // Skip normal steering move this frame; burst already moved us.
+        bruteDidBurstMove = true;
+      }
 
       if (!specialHealing && this.enemyTypeId === "m_8f_forest_spirit" && this.forestSpiritSpecial && this.activated) {
         const special = this.forestSpiritSpecial;
@@ -2543,7 +2903,7 @@ export class Enemy {
       }
 
       // Move based on behavior (WANDER_BURST can move even when not alerted)
-      const shouldMove = !specialHealing && !inAttackState && ((this.alerted || this.activated) || (this.moveBehavior === "WANDER_BURST"));
+      const shouldMove = !specialHealing && !inAttackState && !bruteDidBurstMove && ((this.alerted || this.activated) || (this.moveBehavior === "WANDER_BURST"));
       
       if (shouldMove) {
         // Use 0.4x speed if alerted but not activated, full speed if activated
@@ -2554,7 +2914,7 @@ export class Enemy {
         
         // Hive-affix spawned minions: always chase player directly at full speed.
         const forceDirectChase = !!this.forceDirectChase;
-        const behaviorDir = forceDirectChase
+        let behaviorDir = forceDirectChase
           ? vecNormalize(dx, dy)
           : this.computeBehaviorDirection(dt, player, speedMult);
         
@@ -2574,6 +2934,8 @@ export class Enemy {
             behaviorSpeedMult = baseMovementSpeedMult * 0.85; // orbitMult
           }
         }
+
+        // (Brute burst movement is applied earlier as a dedicated movement step.)
         
         // Store normalized player direction for use in obstacle avoidance
         const playerDirNorm = dist > 0.0001 ? vecNormalize(dx, dy) : { x: 0, y: 0 };
@@ -2750,6 +3112,21 @@ export class Enemy {
       updateHumanSquadAnim(this, dt);
     }
     if (this.spriteSheets && this.spriteAnimState) {
+      if (this.heroPackDirectional && this.heroPackSpriteProfile && game?.player?.position) {
+        const px = game.player.position.x + (game.player.size || 0) / 2;
+        const py = game.player.position.y + (game.player.size || 0) / 2;
+        const ex = this.position.x + this.size / 2;
+        const ey = this.position.y + this.size / 2;
+        const dirIdx = getHeroPackDirectionIndexFromWorld(px - ex, py - ey);
+        const mirrorOn = this.heroPackSpriteProfile.mirrorLeftFacing !== false;
+        const { rowIndex, flipH } = mirrorHeroPackDirectionForRow(dirIdx, mirrorOn);
+        this.heroPackRowIndex = rowIndex;
+        this.heroPackDrawFlipH = flipH;
+        for (const key of Object.keys(this.spriteSheets)) {
+          const def = this.spriteSheets[key];
+          if (def?.heroPackDirectional) def.row = rowIndex;
+        }
+      }
       const specialHealing = this.enemyTypeId === "m_8f_forest_spirit" && this.forestSpiritSpecial?.active;
       const isStunned = this.stunUntil != null && gameTime < this.stunUntil && this.spriteSheets?.stun;
       const isZombie = this.enemyTypeId === "m_5e_zombie";
@@ -2769,17 +3146,62 @@ export class Enemy {
       const isJumpAttack = !!(inAttack && this.attackCtrl?.currentAttack?.kind === "jump_slam" && this.spriteSheets?.attackJump);
       const isMonsteryflyPrepare = !!(inAttack && this.enemyTypeId === "m_5v_monsteryfly" && this.attackCtrl?.currentAttack?.kind === "jump_slam" && this.spriteSheets?.attackPrepare && !(this._monsterflyRecoverTimer > 0));
       const isMonsteryflyRecover = !!(this.enemyTypeId === "m_5v_monsteryfly" && this._monsterflyRecoverTimer > 0 && this.spriteSheets?.attackRecover);
+      const isBruteWhirlwindAnim = bruteSheetStrikeAnimActive(this, this.attackCtrl, "whirlwind", inAttack);
+      const isBruteCycloneAnim = bruteSheetStrikeAnimActive(this, this.attackCtrl, "cycloneSlash", inAttack);
+      const isBruteUpConeAnim = bruteSheetStrikeAnimActive(this, this.attackCtrl, "upslash", inAttack);
+      const isBruteDownConeAnim = bruteSheetStrikeAnimActive(this, this.attackCtrl, "downslash", inAttack);
+      const isBruteGroundSlamAnim = bruteSheetStrikeAnimActive(this, this.attackCtrl, "groundslam", inAttack);
+      const isBruteKickAnim = bruteSheetStrikeAnimActive(this, this.attackCtrl, "kick", inAttack);
+      const isBruteWarcryAnim = bruteSheetStrikeAnimActive(this, this.attackCtrl, "warcry", inAttack);
+      const isBruteBurstRolling = !!(
+        this.bruteSheetArchetype &&
+        this._bruteBurstMove &&
+        !inAttack &&
+        this._bruteBurstMove.kind === "rolling" &&
+        this.spriteSheets?.rolling
+      );
+      const burstSlideOneQuick = this.bruteSheetArchetype?.burstSlideSingleQuickSlide === true;
+      const isBruteBurstSlide = !!(
+        this.bruteSheetArchetype &&
+        this._bruteBurstMove &&
+        !inAttack &&
+        this._bruteBurstMove.kind === "slide" &&
+        ((burstSlideOneQuick && this.spriteSheets?.quickSlide) ||
+          (!burstSlideOneQuick && this.spriteSheets?.slideStart && this.spriteSheets?.slideEnd))
+      );
       const isCycloneAttack = !!this._cycloneState && !!this.spriteSheets?.attackCyclone;
       const isCycloneEnd = !isCycloneAttack && (this._cycloneEndTimer > 0) && !!this.spriteSheets?.attackCycloneEnd;
       const isRollAttack = !!this._attackRollState && !!this.spriteSheets?.attackRoll;
       const isRollEnd = !isRollAttack && (this._attackRollEndTimer > 0) && !!this.spriteSheets?.attackRollEnd;
+      const isDeathLordVolley = !!(
+        inAttack &&
+        this.spriteSheets?.attack_cast &&
+        (this.attackCtrl?.currentAttack?.id === "death_lord_volley" ||
+          this.attackCtrl?.recoveringAttackId === "death_lord_volley")
+      );
       const isDeathBringerCast = !!(inAttack && this.attackCtrl?.currentAttack?.id === "death_bringer_ground_spell" && this.spriteSheets?.attackCast);
+      const isDeathLordCleave = !!(inAttack && this.attackCtrl?.currentAttack?.id === "death_lord_cleave" && this.spriteSheets?.attack_swing);
+      const isBansheeMeleeCone = !!(
+        inAttack &&
+        this.enemyTypeId === "m_6a_banshee" &&
+        this.spriteSheets?.attack_melee &&
+        (this.attackCtrl?.currentAttack?.id === "banshee_wail_slash" ||
+          this.attackCtrl?.recoveringAttackId === "banshee_wail_slash")
+      );
+      const isBansheeScream = !!(
+        inAttack &&
+        this.enemyTypeId === "m_6a_banshee" &&
+        this.spriteSheets?.attack_shout &&
+        (this.attackCtrl?.currentAttack?.id === "banshee_scream" ||
+          this.attackCtrl?.recoveringAttackId === "banshee_scream")
+      );
       const isInRecoverWithRecoverSheet = !!(inAttack && this.attackCtrl?.state === "recover" && this.spriteSheets?.attackRecover);
       const isDeadWithDeathSheet = !!((this.health <= 0 || this.isDead) && this.spriteSheets?.death);
       const isRockGiant = this.name === "RockGiant" && this.spriteSheets?.healing;
       const zombieAttackAnimLeadTime = 0.2;
       const zombieWindupRemaining = this.attackCtrl?.state === "windup" ? Math.max(0, Number(this.attackCtrl?.timer) || 0) : 0;
       const zombieShowAttackAnim = !isZombie || this.attackCtrl?.state !== "windup" || zombieWindupRemaining <= zombieAttackAnimLeadTime;
+      const isAnyWindupHold = !!(this.attackCtrl && this.attackCtrl.state === "windup");
       let nextState = "idle";
       if (isRockGiant && this._rockGiantHealing) {
         nextState = "healing";
@@ -2795,16 +3217,70 @@ export class Enemy {
         nextState = "specialHeal";
       } else if (isDeadWithDeathSheet) {
         nextState = "death";
+      } else if (inRecover) {
+        // Recover: always show first idle frame and remain stationary.
+        nextState = "idle";
+      } else if (isBruteBurstRolling) {
+        nextState = "rolling";
+      } else if (isBruteBurstSlide) {
+        if (burstSlideOneQuick) {
+          nextState = "quickSlide";
+        } else {
+          const dur = Math.max(0.0001, Number(this._bruteBurstMove.duration) || 0);
+          const elapsed = Math.max(0, Number(this._bruteBurstMove.elapsed) || 0);
+          const progress = Math.max(0, Math.min(1, elapsed / dur));
+          nextState = progress < 0.5 ? "slideStart" : "slideEnd";
+        }
       } else if (isFrogSpitFlight) {
         nextState = "idle";
       } else if (isMonsteryflyRecover) {
         nextState = "attackRecover";
       } else if (isInRecoverWithRecoverSheet) {
         nextState = "attackRecover";
+      } else if (
+        this.attackCtrl?.state === "recover" &&
+        !this.spriteSheets?.attackRecover &&
+        !(this.spriteSheets?.attack_cast && this.attackCtrl?.recoveringAttackId === "death_lord_volley") &&
+        !(
+          this.enemyTypeId === "m_6a_banshee" &&
+          (this.attackCtrl?.recoveringAttackId === "banshee_scream" ||
+            this.attackCtrl?.recoveringAttackId === "banshee_wail_slash")
+        ) &&
+        !bruteSheetRecoveringHoldAttackStrip(this, this.attackCtrl?.recoveringAttackId) &&
+        !(
+          isConeLikeStrikeAttackKind(getEnemyAttackKindForSpriteAnim(this.attackCtrl)) &&
+          (this.spriteSheets?.attack_melee ||
+            this.spriteSheets?.attack_shout ||
+            this.spriteSheets?.attackDown ||
+            this.spriteSheets?.attackUp)
+        )
+      ) {
+        // No looping attack strip during recover; hold first idle frame until attack_ctrl is idle again.
+        nextState = "idle";
+      } else if (isDeathLordVolley) {
+        nextState = "attack_cast";
+      } else if (isBansheeScream) {
+        nextState = "attack_shout";
+      } else if (isBansheeMeleeCone) {
+        nextState = "attack_melee";
       } else if (isDeathBringerCast) {
         nextState = "attackCast";
       } else if (isMonsteryflyPrepare) {
         nextState = "attackPrepare";
+      } else if (isBruteWhirlwindAnim) {
+        nextState = "attackCyclone";
+      } else if (isBruteCycloneAnim) {
+        nextState = "attackCyclone";
+      } else if (isBruteGroundSlamAnim) {
+        nextState = "attackGroundSlam";
+      } else if (isBruteKickAnim) {
+        nextState = "attackKick";
+      } else if (isBruteWarcryAnim) {
+        nextState = "attackWarcry";
+      } else if (isBruteUpConeAnim) {
+        nextState = "attackUp";
+      } else if (isBruteDownConeAnim) {
+        nextState = "attackDown";
       } else if (isCycloneAttack) {
         nextState = "attackCyclone";
       } else if (isCycloneEnd) {
@@ -2814,25 +3290,153 @@ export class Enemy {
       } else if (isRollEnd) {
         nextState = "attackRollEnd";
       } else if (inAttack && zombieShowAttackAnim) {
-        if (isBurpAttack) nextState = "attackBurp";
+        if (isDeathLordCleave) nextState = "attack_swing";
+        else if (isBurpAttack) nextState = "attackBurp";
         else if (isJumpAttack) nextState = "attackJump";
         else if (isDashAttack) nextState = "attackDash";
         else nextState = "attack";
       } else {
         nextState = useMovingAnim ? "move" : "idle";
       }
+
+      const rawHitboxTrigger = this.attackCtrl?.currentAttack?.execute?.hitboxTrigger;
+      const hitboxTrigger =
+        rawHitboxTrigger == null || !Number.isFinite(Number(rawHitboxTrigger))
+          ? null
+          : Math.floor(Number(rawHitboxTrigger));
+      const hasAnimSyncedHitboxTrigger =
+        isAnyWindupHold &&
+        (this.attackCtrl?.currentAttack?.kind === "cone" ||
+          this.attackCtrl?.currentAttack?.kind === "circle" ||
+          this.attackCtrl?.currentAttack?.kind === "whirlwind") &&
+        hitboxTrigger != null &&
+        hitboxTrigger >= 0 &&
+        rawHitboxTrigger != null &&
+        Number.isInteger(Number(rawHitboxTrigger));
+
+      // Generic windup hold: default behavior freezes on first idle frame; start attack strip on active.
+      if (
+        isAnyWindupHold &&
+        nextState.startsWith("attack") &&
+        !isStunned &&
+        !specialHealing &&
+        !isDeadWithDeathSheet &&
+        !(isRockGiant && (this._rockGiantHealing || this._rockGiantHitReaction))
+      ) {
+        // If this attack uses an animation-synced hitboxTrigger, we want to play the attack strip during windup
+        // up to (but not including) the trigger frame.
+        if (!hasAnimSyncedHitboxTrigger) {
+          nextState = "idle";
+        }
+      } else {
+        // Not in windup (or not an attack strip): clear any old hold data.
+        this._windupHoldCycle = null;
+        this._windupHoldState = null;
+      }
+      nextState = resolveConeMultiSheetAnimState(this, nextState, this.attackCtrl);
       if (this.spriteAnimState.state !== nextState) {
         this.spriteAnimState.state = nextState;
         this.spriteAnimState.timer = 0;
         this.spriteAnimState.frameIndex = 0;
       }
+      if (
+        this.enemyTypeId === "m_1f_goblin_archer" &&
+        this.attackCtrl &&
+        this.spriteAnimState
+      ) {
+        const cy = this.attackCtrl._attackWindupCycle ?? 0;
+        if (cy !== this._goblinArcherSeenWindupCycle) {
+          this._goblinArcherSeenWindupCycle = cy;
+          this.spriteAnimState.frameIndex = 0;
+          this.spriteAnimState.timer = 0;
+        }
+      }
       const animDef = this.spriteSheets[nextState];
-      const frames = Math.max(1, animDef?.frames || 1);
+      const sheetFrameCount = Math.max(1, animDef?.frames || 1);
+      let frames = sheetFrameCount;
+      if (animDef?.heroPackDirectional && this.heroPackSpriteProfile) {
+        frames = getHeroPackLoopLength(this.heroPackSpriteProfile, animDef.profileStateKey, sheetFrameCount);
+      }
       const fps = Math.max(1, animDef?.fps || 1);
       const shouldLoop = animDef?.loop !== false;
       if (specialHealing && nextState === "specialHeal") {
         const progress = Math.max(0, Math.min(1, this.forestSpiritSpecial.timer / this.forestSpiritSpecial.duration));
         this.spriteAnimState.frameIndex = Math.min(frames - 1, Math.floor(progress * frames));
+      } else if (inRecover && nextState === "idle") {
+        // Recover: restart idle from frame 0, then let it animate normally during recover.
+        if (!this._wasInRecoverState) {
+          this.spriteAnimState.timer = 0;
+          this.spriteAnimState.frameIndex = 0;
+          this._wasInRecoverState = true;
+        }
+      } else if (
+        this.attackCtrl &&
+        (this.attackCtrl.state === "windup" || this.attackCtrl.state === "active") &&
+        (this.attackCtrl.currentAttack?.kind === "cone" ||
+          this.attackCtrl.currentAttack?.kind === "circle" ||
+          this.attackCtrl.currentAttack?.kind === "whirlwind") &&
+        this.attackCtrl.currentAttack?.execute?.hitboxTrigger != null &&
+        Number.isInteger(Number(this.attackCtrl.currentAttack.execute.hitboxTrigger)) &&
+        frames > 1 &&
+        isEnemyStrikeSpriteAnimState(nextState)
+      ) {
+        const trigger = Math.max(0, Math.min(frames - 1, Math.floor(Number(this.attackCtrl.currentAttack.execute.hitboxTrigger))));
+        if (this.attackCtrl.state === "windup") {
+          const total = Math.max(0.0001, Number(this.attackCtrl._windupTotal) || 0.0001);
+          const remaining = Math.max(0, Number(this.attackCtrl.timer) || 0);
+          const progress = Math.max(0, Math.min(1, 1 - remaining / total));
+          const preCount = Math.max(0, Math.min(trigger, frames));
+          const idx =
+            preCount <= 1 ? 0 : Math.min(preCount - 1, Math.floor(progress * preCount));
+          this.spriteAnimState.timer = 0;
+          this.spriteAnimState.frameIndex = idx;
+        } else {
+          // On the first active tick after windup, snap to the trigger frame so the hitbox spawns immediately.
+          const cy = this.attackCtrl._enteredActiveCycle ?? 0;
+          if (this._hitboxTriggerSnapCycle !== cy) {
+            this._hitboxTriggerSnapCycle = cy;
+            this.spriteAnimState.timer = 0;
+            this.spriteAnimState.frameIndex = trigger;
+          }
+          // Continue advancing the strike strip during active.
+          this.spriteAnimState.timer += dt;
+          const frameDuration = 1 / fps;
+          while (this.spriteAnimState.timer >= frameDuration) {
+            this.spriteAnimState.timer -= frameDuration;
+            if (shouldLoop) {
+              this.spriteAnimState.frameIndex = (this.spriteAnimState.frameIndex + 1) % frames;
+            } else {
+              this.spriteAnimState.frameIndex = Math.min(frames - 1, this.spriteAnimState.frameIndex + 1);
+            }
+          }
+        }
+      } else if (
+        isAnyWindupHold &&
+        nextState === "idle"
+      ) {
+        // Freeze on the first idle frame for the entire windup.
+        this.spriteAnimState.timer = 0;
+        this.spriteAnimState.frameIndex = 0;
+      } else if (
+        this.bruteSheetArchetype &&
+        this._bruteBurstMove &&
+        (nextState === "rolling" ||
+          nextState === "slideStart" ||
+          nextState === "slideEnd" ||
+          nextState === "quickSlide")
+      ) {
+        const dur = Math.max(0.0001, Number(this._bruteBurstMove.duration) || 0);
+        const elapsed = Math.max(0, Number(this._bruteBurstMove.elapsed) || 0);
+        const progress = Math.max(0, Math.min(1, elapsed / dur));
+        const localProgress =
+          nextState === "slideStart"
+            ? Math.max(0, Math.min(1, progress / 0.5))
+            : nextState === "slideEnd"
+              ? Math.max(0, Math.min(1, (progress - 0.5) / 0.5))
+              : progress;
+        const fi = Math.min(frames - 1, Math.floor(localProgress * frames));
+        this.spriteAnimState.timer = 0;
+        this.spriteAnimState.frameIndex = fi;
       } else if (isZombie && nextState === "attack" && frames >= 7) {
         const zombieHoldFrameIndex = Math.min(frames - 1, 6);
         const zombieRecoverFrameCount = Math.max(0, frames - (zombieHoldFrameIndex + 1));
@@ -2859,6 +3463,92 @@ export class Enemy {
           this.spriteAnimState.timer = 0;
           this.spriteAnimState.frameIndex = zombieHoldFrameIndex;
         }
+      } else if (
+        this.bruteSheetArchetype &&
+        nextState === "attackCyclone" &&
+        getEnemyAttackKindForSpriteAnim(this.attackCtrl) === "frame_synced_circle" &&
+        (this.attackCtrl.state === "windup" ||
+          this.attackCtrl.state === "active" ||
+          (this.attackCtrl.state === "recover" &&
+            this.attackCtrl.recoveringAttackId === this.bruteSheetArchetype.attackIds.cycloneSlash))
+      ) {
+        const cycloneId = this.bruteSheetArchetype.attackIds.cycloneSlash;
+        const exec =
+          this.attackCtrl.currentAttack?.execute ||
+          this.attackCtrl.availableAttacks?.find((x) => x.id === cycloneId)?.execute ||
+          {};
+        const syncFps = Math.max(1, Number(exec.animFps) || 14);
+        const totalFrames = Math.max(1, Math.floor(Number(exec.totalFrames) || 15));
+        const dur = totalFrames / syncFps;
+        if (this.attackCtrl.state === "windup") {
+          this.spriteAnimState.timer = 0;
+          this.spriteAnimState.frameIndex = 0;
+        } else if (this.attackCtrl.state === "active") {
+          const remaining = Math.max(0, Number(this.attackCtrl.timer) || 0);
+          const elapsed = Math.max(0, dur - remaining);
+          const idx1 = Math.min(totalFrames, Math.floor(elapsed * syncFps) + 1);
+          this.spriteAnimState.timer = 0;
+          this.spriteAnimState.frameIndex = Math.min(totalFrames - 1, idx1 - 1);
+        } else {
+          this.spriteAnimState.timer = 0;
+          this.spriteAnimState.frameIndex = Math.min(
+            totalFrames - 1,
+            Math.max(0, this.spriteAnimState.frameIndex | 0)
+          );
+        }
+      } else if (
+        this.bruteSheetArchetype &&
+        nextState === "attackCyclone" &&
+        getEnemyAttackKindForSpriteAnim(this.attackCtrl) === "whirlwind" &&
+        this.attackCtrl.state === "recover" &&
+        this.attackCtrl.recoveringAttackId === this.bruteSheetArchetype.attackIds.whirlwind
+      ) {
+        const whirlId = this.bruteSheetArchetype.attackIds.whirlwind;
+        const exec =
+          this.attackCtrl.availableAttacks?.find((x) => x.id === whirlId)?.execute || {};
+        const syncFps = Math.max(1, Number(exec.animFps) || 14);
+        const animDur = Number(exec.activeAnimDuration);
+        const totalFrames = Math.max(
+          1,
+          Math.floor(
+            Number(exec.totalFrames) ||
+              (Number.isFinite(animDur) && animDur > 0 ? Math.round(animDur * syncFps) : 15)
+          )
+        );
+        this.spriteAnimState.timer = 0;
+        this.spriteAnimState.frameIndex = Math.min(
+          totalFrames - 1,
+          Math.max(0, this.spriteAnimState.frameIndex | 0)
+        );
+      } else if (
+        animDef &&
+        frames > 1 &&
+        isEnemyStrikeSpriteAnimState(nextState) &&
+        isConeLikeStrikeAttackKind(getEnemyAttackKindForSpriteAnim(this.attackCtrl)) &&
+        (this.attackCtrl.state === "windup" ||
+          this.attackCtrl.state === "active" ||
+          this.attackCtrl.state === "recover")
+      ) {
+        // Cone strike strips: advance on active; hold last pose in recover.
+        // (Windup is handled earlier by staying in idle/move and freezing there.)
+        if (this.attackCtrl.state === "active") {
+          this.spriteAnimState.timer += dt;
+          const frameDuration = 1 / fps;
+          while (this.spriteAnimState.timer >= frameDuration) {
+            this.spriteAnimState.timer -= frameDuration;
+            if (shouldLoop) {
+              this.spriteAnimState.frameIndex = (this.spriteAnimState.frameIndex + 1) % frames;
+            } else {
+              this.spriteAnimState.frameIndex = Math.min(frames - 1, this.spriteAnimState.frameIndex + 1);
+            }
+          }
+        } else {
+          this.spriteAnimState.timer = 0;
+          this.spriteAnimState.frameIndex = Math.min(
+            frames - 1,
+            Math.max(0, this.spriteAnimState.frameIndex | 0)
+          );
+        }
       } else if (frames > 1) {
         this.spriteAnimState.timer += dt;
         const frameDuration = 1 / fps;
@@ -2874,6 +3564,8 @@ export class Enemy {
         this.spriteAnimState.timer = 0;
         this.spriteAnimState.frameIndex = 0;
       }
+      // Spawn animation-driven hitboxes once the sprite strip reaches the configured frame.
+      this.attackCtrl?.trySpawnAnimationHitboxOnFrame?.(game, this.spriteAnimState.frameIndex);
       if (isRockGiant) {
         const fi = this.spriteAnimState.frameIndex;
         const healFrame = Math.min(20, Math.max(0, frames - 1));
@@ -2887,6 +3579,9 @@ export class Enemy {
           this._rockGiantHitReaction = false;
         }
       }
+    }
+    if (!inRecover && this._wasInRecoverState) {
+      this._wasInRecoverState = false;
     }
     this.lastPosition.set(this.position.x, this.position.y);
   }
@@ -2927,7 +3622,7 @@ export class Enemy {
     const hasAffix = (id) => this.affixes?.includes(id);
 
     // Draw attack telegraphs (above ground, below sprites)
-    if (this.attackCtrl) {
+    if (this.attackCtrl && !(this.keepDeadForRevive && this.isDead)) {
       this.attackCtrl.draw(ctx, camera);
     }
     if (hasAffix("invisible") && gameTime != null && (this._invisibleUntil || 0) > gameTime) {
@@ -3017,29 +3712,36 @@ export class Enemy {
 
       const centerX = sx + this.size / 2;
       const centerY = sy + this.size / 2;
-      const shouldFlip = this.spriteSheetFlipInverted ? !this.facingRight : this.facingRight;
+      const animDef = this.spriteSheets[this.spriteAnimState.state] || this.spriteSheets.idle;
+      let shouldFlip = this.spriteSheetFlipInverted ? !this.facingRight : this.facingRight;
+      if (animDef?.heroPackDirectional) {
+        shouldFlip = !!this.heroPackDrawFlipH;
+      }
       if (shouldFlip) {
         ctx.translate(centerX, centerY);
         ctx.scale(-1, 1);
         ctx.translate(-centerX, -centerY);
       }
 
-      const animDef = this.spriteSheets[this.spriteAnimState.state] || this.spriteSheets.idle;
       const image = animDef?.image || null;
-      const frames = Math.max(1, animDef?.frames || 1);
+      const sheetCols = Math.max(1, animDef?.frames || 1);
       if (image && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
         const totalRows = animDef?.totalRows ?? 1;
         const rowIndex = animDef?.row ?? 0;
         const useExplicitCrop = animDef?.frameW != null && animDef?.cropW != null;
-        const frameW = useExplicitCrop ? animDef.frameW : Math.max(1, Math.floor(image.naturalWidth / frames));
+        const frameW = useExplicitCrop ? animDef.frameW : Math.max(1, Math.floor(image.naturalWidth / sheetCols));
         const frameH = useExplicitCrop ? (animDef.frameH ?? image.naturalHeight) : (totalRows > 1 ? Math.max(1, Math.floor(image.naturalHeight / totalRows)) : Math.max(1, image.naturalHeight));
         const cropX = useExplicitCrop ? (animDef.cropX ?? 0) : 0;
         const srcY = useExplicitCrop ? (animDef.cropY ?? 0) : (totalRows > 1 ? rowIndex * frameH : 0);
         const cropRightRatio = useExplicitCrop ? 0 : Math.max(0, Math.min(1, animDef?.cropRightRatio ?? 0));
         const srcW = useExplicitCrop ? animDef.cropW : Math.max(1, Math.floor(frameW * (1 - cropRightRatio)));
         const srcH = useExplicitCrop ? (animDef.cropH ?? frameH) : frameH;
-        const frameIndex = Math.min(frames - 1, Math.max(0, this.spriteAnimState.frameIndex | 0));
-        const srcX = frameIndex * frameW + cropX;
+        let drawCol = Math.min(sheetCols - 1, Math.max(0, this.spriteAnimState.frameIndex | 0));
+        if (animDef?.heroPackDirectional && this.heroPackSpriteProfile) {
+          drawCol = mapHeroPackColumn(this.heroPackSpriteProfile, animDef.profileStateKey, this.spriteAnimState.frameIndex | 0);
+          drawCol = Math.min(sheetCols - 1, Math.max(0, drawCol));
+        }
+        const srcX = drawCol * frameW + cropX;
         ctx.drawImage(image, srcX, srcY, srcW, srcH, sx, sy, this.size, this.size);
       } else {
         ctx.fillStyle = fillColor;
@@ -3074,10 +3776,20 @@ export class Enemy {
         if (hitImage && hitImage.complete && hitImage.naturalWidth > 0 && hitImage.naturalHeight > 0) {
           const hitProgress = 1 - Math.max(0, Math.min(1, this.hitFlashTimer / 0.12));
           const hitFrameIndex = Math.min(hitFrames - 1, Math.floor(hitProgress * hitFrames));
-          const hitFrameW = Math.max(1, Math.floor(hitImage.naturalWidth / hitFrames));
-          const hitFrameH = Math.max(1, hitImage.naturalHeight);
-          const hitSrcX = hitFrameIndex * hitFrameW;
-          ctx.drawImage(hitImage, hitSrcX, 0, hitFrameW, hitFrameH, sx, sy, this.size, this.size);
+
+          // Support two conventions:
+          // 1) Single-row strip (legacy): frames laid out horizontally from y=0.
+          // 2) Multi-row atlas with explicit crop: frameW/cropW/cropY provided.
+          const useExplicitCrop = hitDef.frameW != null && hitDef.cropW != null;
+          const hitFrameW = useExplicitCrop ? hitDef.frameW : Math.max(1, Math.floor(hitImage.naturalWidth / hitFrames));
+          const hitFrameH = useExplicitCrop ? (hitDef.frameH ?? (hitDef.cropH ?? hitImage.naturalHeight)) : hitImage.naturalHeight;
+
+          const hitSrcX = hitFrameIndex * hitFrameW + (useExplicitCrop ? (hitDef.cropX ?? 0) : 0);
+          const hitSrcY = useExplicitCrop ? (hitDef.cropY ?? 0) : 0;
+          const hitSrcW = useExplicitCrop ? (hitDef.cropW ?? hitFrameW) : hitFrameW;
+          const hitSrcH = useExplicitCrop ? (hitDef.cropH ?? hitFrameH) : hitFrameH;
+
+          ctx.drawImage(hitImage, hitSrcX, hitSrcY, hitSrcW, hitSrcH, sx, sy, this.size, this.size);
         }
       }
 
@@ -3216,22 +3928,32 @@ export class Enemy {
         } else if (this.spriteSheets && this.spriteAnimState) {
           const centerX = tsx + this.size / 2;
           const centerY = tsy + this.size / 2;
-          const shouldFlip = this.spriteSheetFlipInverted ? !this.facingRight : this.facingRight;
-          if (shouldFlip) {
+          const animDef = this.spriteSheets[this.spriteAnimState.state] || this.spriteSheets.idle;
+          let shouldFlipTrail = this.spriteSheetFlipInverted ? !this.facingRight : this.facingRight;
+          if (animDef?.heroPackDirectional) {
+            shouldFlipTrail = !!this.heroPackDrawFlipH;
+          }
+          if (shouldFlipTrail) {
             ctx.translate(centerX, centerY);
             ctx.scale(-1, 1);
             ctx.translate(-centerX, -centerY);
           }
-          const animDef = this.spriteSheets[this.spriteAnimState.state] || this.spriteSheets.idle;
           const image = animDef?.image || null;
-          const frames = Math.max(1, animDef?.frames || 1);
+          const sheetCols = Math.max(1, animDef?.frames || 1);
           if (image && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
-            const frameW = Math.max(1, Math.floor(image.naturalWidth / frames));
-            const frameH = Math.max(1, image.naturalHeight);
-            const frameIndex = Math.min(frames - 1, Math.max(0, this.spriteAnimState.frameIndex | 0));
-            const srcX = frameIndex * frameW;
+            const totalRows = animDef?.totalRows ?? 1;
+            const rowIndex = animDef?.row ?? 0;
+            const frameW = Math.max(1, Math.floor(image.naturalWidth / sheetCols));
+            const frameH = totalRows > 1 ? Math.max(1, Math.floor(image.naturalHeight / totalRows)) : Math.max(1, image.naturalHeight);
+            const srcY = totalRows > 1 ? rowIndex * frameH : 0;
+            let drawCol = Math.min(sheetCols - 1, Math.max(0, this.spriteAnimState.frameIndex | 0));
+            if (animDef?.heroPackDirectional && this.heroPackSpriteProfile) {
+              drawCol = mapHeroPackColumn(this.heroPackSpriteProfile, animDef.profileStateKey, this.spriteAnimState.frameIndex | 0);
+              drawCol = Math.min(sheetCols - 1, Math.max(0, drawCol));
+            }
+            const srcX = drawCol * frameW;
             ctx.imageSmoothingEnabled = false;
-            ctx.drawImage(image, srcX, 0, frameW, frameH, tsx, tsy, this.size, this.size);
+            ctx.drawImage(image, srcX, srcY, frameW, frameH, tsx, tsy, this.size, this.size);
             drewSprite = true;
           }
         } else if (enemySpriteAtlasLoaded && enemySpriteAtlas && enemySpriteAtlas.complete) {
@@ -3423,48 +4145,53 @@ export class Enemy {
     }
     if (hasAffix("phantom")) ctx.globalAlpha = 1;
 
-    const barW = this.size;
-    const barH = isMiniBoss ? 7 : 5;
-    const barY = sy - (isMiniBoss ? 12 : 8);
-    ctx.fillStyle = "#1f2937";
-    ctx.fillRect(sx, barY, barW, barH);
-    const pct = Math.max(0, this.health / this.maxHealth);
-    const hpColor = pct > 0.5 ? "#4ade80" : pct > 0.25 ? "#facc15" : "#ef4444";
-    ctx.fillStyle = hpColor;
-    ctx.fillRect(sx, barY, Math.round(barW * pct), barH);
-    if (isMiniBoss || isSpecial) {
-      ctx.strokeStyle = isSpecial ? "#22d3ee" : "#facc15";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(sx, barY, barW, barH);
-    }
-
-    if (this.affixes && this.affixes.length > 0) {
-      const iconSize = 14;
-      const iconY = barY - iconSize - 2;
-      const totalW = this.affixes.length * (iconSize + 2);
-      let iconX = sx + (barW - totalW) / 2 + iconSize / 2 + 1;
+    const hideHpBarForCorpse = !!(this.keepDeadForRevive && this.isDead);
+    if (hideHpBarForCorpse) {
       this._affixRects = [];
-      for (const affixId of this.affixes) {
-        const def = getAffixDef(affixId);
-        const rx = iconX - iconSize / 2 - 1;
-        ctx.fillStyle = def.color;
-        ctx.beginPath();
-        ctx.arc(iconX, iconY + iconSize / 2, iconSize / 2 + 1, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "rgba(0,0,0,0.5)";
+    } else {
+      const barW = this.size;
+      const barH = isMiniBoss ? 7 : 5;
+      const barY = sy - (isMiniBoss ? 12 : 8);
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(sx, barY, barW, barH);
+      const pct = Math.max(0, this.health / this.maxHealth);
+      const hpColor = pct > 0.5 ? "#4ade80" : pct > 0.25 ? "#facc15" : "#ef4444";
+      ctx.fillStyle = hpColor;
+      ctx.fillRect(sx, barY, Math.round(barW * pct), barH);
+      if (isMiniBoss || isSpecial) {
+        ctx.strokeStyle = isSpecial ? "#22d3ee" : "#facc15";
         ctx.lineWidth = 1;
-        ctx.stroke();
-        const spriteDrawn = drawAffixIcon(ctx, def.icon, iconX - iconSize / 2, iconY, iconSize);
-        if (!spriteDrawn) {
-          const fallback = typeof def.icon === "string" && def.icon.length === 1 ? def.icon : def.name?.charAt(0) || "?";
-          ctx.fillStyle = "#fff";
-          ctx.font = `${iconSize - 2}px sans-serif`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText(fallback, iconX, iconY + iconSize / 2);
+        ctx.strokeRect(sx, barY, barW, barH);
+      }
+
+      if (this.affixes && this.affixes.length > 0) {
+        const iconSize = 14;
+        const iconY = barY - iconSize - 2;
+        const totalW = this.affixes.length * (iconSize + 2);
+        let iconX = sx + (barW - totalW) / 2 + iconSize / 2 + 1;
+        this._affixRects = [];
+        for (const affixId of this.affixes) {
+          const def = getAffixDef(affixId);
+          const rx = iconX - iconSize / 2 - 1;
+          ctx.fillStyle = def.color;
+          ctx.beginPath();
+          ctx.arc(iconX, iconY + iconSize / 2, iconSize / 2 + 1, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(0,0,0,0.5)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          const spriteDrawn = drawAffixIcon(ctx, def.icon, iconX - iconSize / 2, iconY, iconSize);
+          if (!spriteDrawn) {
+            const fallback = typeof def.icon === "string" && def.icon.length === 1 ? def.icon : def.name?.charAt(0) || "?";
+            ctx.fillStyle = "#fff";
+            ctx.font = `${iconSize - 2}px sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(fallback, iconX, iconY + iconSize / 2);
+          }
+          this._affixRects.push({ x: rx, y: iconY, w: iconSize + 2, h: iconSize + 2, name: def.name });
+          iconX += iconSize + 2;
         }
-        this._affixRects.push({ x: rx, y: iconY, w: iconSize + 2, h: iconSize + 2, name: def.name });
-        iconX += iconSize + 2;
       }
     }
     const cx = sx + this.size / 2;

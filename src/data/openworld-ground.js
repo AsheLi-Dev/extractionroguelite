@@ -5,18 +5,11 @@ export const OPENWORLD_GROUND_TYPES = {
   grassA: {
     id: 'grassA',
     baseSheetSrc: 'assets/Environments/1. OpenWorld/1.First Layer/mainGround1280px.png',
-    baseTileWidth: 640,
-    baseTileHeight: 640,
+    baseTileWidth: 960,
+    baseTileHeight: 960,
     baseColumns: 2,
     baseRows: 2,
-    seamBreakup: {
-      layerId: 'grassA_1',
-      alpha: 0.5,
-      stampsPerVerticalSeam: 3,
-      stampsPerHorizontalSeam: 3,
-      edgePadding: 24,
-      jitter: 48,
-    },
+    seamBreakup: null,
     overlayLayers: [
       {
         id: 'grassA_1',
@@ -65,27 +58,9 @@ export const OPENWORLD_GROUND_TYPES = {
     boulderLayer: {
       sprites: [
         {
-          id: 'boulder_large_1',
-          src: 'assets/Environments/1. OpenWorld/4.SingleObj/Decorative/Rocks/rockAA_01.png',
-          role: 'lead',
-          weight: 4,
-        },
-        {
           id: 'boulder_flat_1',
           src: 'assets/Environments/1. OpenWorld/4.SingleObj/Decorative/Rocks/rockAA_09.png',
           role: 'support',
-          weight: 3,
-        },
-        {
-          id: 'boulder_crystal_1',
-          src: 'assets/Environments/1. OpenWorld/4.SingleObj/Decorative/Rocks/rockA_11.png',
-          role: 'support',
-          weight: 2,
-        },
-        {
-          id: 'boulder_round_2',
-          src: 'assets/Environments/1. OpenWorld/4.SingleObj/Decorative/Rocks/rockAA_08.png',
-          role: 'lead',
           weight: 3,
         },
         {
@@ -114,7 +89,135 @@ export const OPENWORLD_GROUND_TYPES = {
   },
 };
 
+OPENWORLD_GROUND_TYPES.grass_magic = {
+  ...OPENWORLD_GROUND_TYPES.grassA,
+  id: 'grass_magic',
+  flowerLayer: {
+    ...(OPENWORLD_GROUND_TYPES.grassA.flowerLayer || {}),
+    defsSrc: 'assets/Environments/1. OpenWorld/3.Third Layer/fourFlowers_blue.json',
+  },
+  shrubLayer: {
+    ...(OPENWORLD_GROUND_TYPES.grassA.shrubLayer || {}),
+    sheetSrc: 'assets/Environments/1. OpenWorld/4.SingleObj/Shrubs/magic shrubs.png',
+  },
+  overlayLayers: (OPENWORLD_GROUND_TYPES.grassA.overlayLayers || []).map((layer) => {
+    if (layer?.id !== 'grassA_1') return { ...layer };
+    return {
+      ...layer,
+      patchSheetSrc: 'assets/Environments/1. OpenWorld/1.First Layer/grassE_1.png',
+      // Same layout as grassA_1 atlas; safe to reuse defs.
+      patchDefsSrc: 'assets/Environments/1. OpenWorld/1.First Layer/grassA_1.json',
+    };
+  }),
+};
+
+OPENWORLD_GROUND_TYPES.grass_swamp = {
+  ...OPENWORLD_GROUND_TYPES.grassA,
+  id: 'grass_swamp',
+  flowerLayer: {
+    ...(OPENWORLD_GROUND_TYPES.grassA.flowerLayer || {}),
+    defsSrc: 'assets/Environments/1. OpenWorld/3.Third Layer/fourFlowers_mint.json',
+  },
+  shrubLayer: {
+    ...(OPENWORLD_GROUND_TYPES.grassA.shrubLayer || {}),
+    sheetSrc: 'assets/Environments/1. OpenWorld/4.SingleObj/Shrubs/swamp&deepspider shrubs.png',
+  },
+  overlayLayers: (OPENWORLD_GROUND_TYPES.grassA.overlayLayers || []).map((layer) => {
+    if (layer?.id !== 'grassA_1') return { ...layer };
+    return {
+      ...layer,
+      patchSheetSrc: 'assets/Environments/1. OpenWorld/1.First Layer/grassC_1.png',
+      patchDefsSrc: 'assets/Environments/1. OpenWorld/1.First Layer/grassA_1.json',
+    };
+  }),
+};
+
+OPENWORLD_GROUND_TYPES.grass_woods = {
+  ...OPENWORLD_GROUND_TYPES.grassA,
+  id: 'grass_woods',
+  flowerLayer: {
+    ...(OPENWORLD_GROUND_TYPES.grassA.flowerLayer || {}),
+    defsSrc: 'assets/Environments/1. OpenWorld/3.Third Layer/fourFlowers_mint.json',
+  },
+  shrubLayer: {
+    ...(OPENWORLD_GROUND_TYPES.grassA.shrubLayer || {}),
+    sheetSrc: 'assets/Environments/1. OpenWorld/4.SingleObj/Shrubs/shrubsA_01.png',
+  },
+};
+
+OPENWORLD_GROUND_TYPES.grass_deep_spider = {
+  ...OPENWORLD_GROUND_TYPES.grassA,
+  id: 'grass_deep_spider',
+  flowerLayer: {
+    ...(OPENWORLD_GROUND_TYPES.grassA.flowerLayer || {}),
+    defsSrc: 'assets/Environments/1. OpenWorld/3.Third Layer/fourFlowers_red.json',
+  },
+  shrubLayer: {
+    ...(OPENWORLD_GROUND_TYPES.grassA.shrubLayer || {}),
+    sheetSrc: 'assets/Environments/1. OpenWorld/4.SingleObj/Shrubs/swamp&deepspider shrubs.png',
+  },
+  overlayLayers: (OPENWORLD_GROUND_TYPES.grassA.overlayLayers || []).map((layer) => {
+    if (layer?.id !== 'grassA_1') return { ...layer };
+    return {
+      ...layer,
+      patchSheetSrc: 'assets/Environments/1. OpenWorld/1.First Layer/grassD_1.png',
+      patchDefsSrc: 'assets/Environments/1. OpenWorld/1.First Layer/grassA_1.json',
+    };
+  }),
+};
+
+OPENWORLD_GROUND_TYPES.grass_dead = {
+  ...OPENWORLD_GROUND_TYPES.grassA,
+  id: 'grass_dead',
+  flowerLayer: {
+    ...(OPENWORLD_GROUND_TYPES.grassA.flowerLayer || {}),
+    defsSrc: 'assets/Environments/1. OpenWorld/3.Third Layer/fourFlowers_purple.json',
+  },
+  shrubLayer: {
+    ...(OPENWORLD_GROUND_TYPES.grassA.shrubLayer || {}),
+    sheetSrc: 'assets/Environments/1. OpenWorld/4.SingleObj/Shrubs/3 Shrubs for Dead.png',
+    // Dead atlas: 3 sprites with fixed cell size 72x90.
+    columns: 3,
+    rows: 1,
+    spriteWidth: 72,
+    spriteHeight: 90,
+    // Keep draw size similar to the old shrubLayer defaults (approx).
+    scale: 0.38,
+  },
+  overlayLayers: (OPENWORLD_GROUND_TYPES.grassA.overlayLayers || []).map((layer) => {
+    if (layer?.id !== 'grassA_1') return { ...layer };
+    return {
+      ...layer,
+      patchSheetSrc: 'assets/Environments/1. OpenWorld/1.First Layer/grassF_1.png',
+      patchDefsSrc: 'assets/Environments/1. OpenWorld/1.First Layer/grassA_1.json',
+    };
+  }),
+};
+
+OPENWORLD_GROUND_TYPES.grass_shallow_spider = {
+  ...OPENWORLD_GROUND_TYPES.grassA,
+  id: 'grass_shallow_spider',
+  flowerLayer: {
+    ...(OPENWORLD_GROUND_TYPES.grassA.flowerLayer || {}),
+    defsSrc: 'assets/Environments/1. OpenWorld/3.Third Layer/fourFlowers_red.json',
+  },
+  shrubLayer: {
+    ...(OPENWORLD_GROUND_TYPES.grassA.shrubLayer || {}),
+    sheetSrc: 'assets/Environments/1. OpenWorld/4.SingleObj/Shrubs/Shallow Spider Shrubs.png',
+  },
+  overlayLayers: (OPENWORLD_GROUND_TYPES.grassA.overlayLayers || []).map((layer) => {
+    if (layer?.id !== 'grassA_1') return { ...layer };
+    return {
+      ...layer,
+      patchSheetSrc: 'assets/Environments/1. OpenWorld/1.First Layer/grassB_1.png',
+      patchDefsSrc: 'assets/Environments/1. OpenWorld/1.First Layer/grassA_1.json',
+    };
+  }),
+};
+
 const groundPatchDefsPromiseCache = new Map();
+const CLIFF_AVOID_OVERLAY_IDS = new Set(['grassA_1', 'grassA_2', 'rocksA']);
+const CLIFF_AVOID_TILE_PADDING = 2;
 
 function toFiniteNumber(value) {
   const parsed = Number(value);
@@ -179,6 +282,40 @@ function rectFitsWalkableFloor(world, rect) {
   return true;
 }
 
+/** True if `rect` overlaps any biome macro cell with archetype `empty` (matches maps.js BIOME_ARCHETYPE.EMPTY). */
+function rectOverlapsBiomeEmptyCell(world, rect) {
+  const ag = world?.archetypeGrid?.grid;
+  if (!Array.isArray(ag) || !ag.length || !Array.isArray(ag[0]) || !ag[0].length) return false;
+  const tileSize = Math.max(1, Number(world?.tileSize) || 32);
+  const worldW = Number(world.width) || 0;
+  const worldH = Number(world.height) || 0;
+  if (worldW <= 0 || worldH <= 0) return false;
+  const macroCols = ag[0].length;
+  const macroRows = ag.length;
+  const cellPxX = worldW / macroCols;
+  const cellPxY = worldH / macroRows;
+
+  const gx0 = Math.max(0, Math.floor(rect.x / tileSize));
+  const gy0 = Math.max(0, Math.floor(rect.y / tileSize));
+  const maxGx = Math.max(0, Math.floor((worldW - 1) / tileSize));
+  const maxGy = Math.max(0, Math.floor((worldH - 1) / tileSize));
+  const gx1 = Math.min(maxGx, Math.ceil((rect.x + rect.w) / tileSize) - 1);
+  const gy1 = Math.min(maxGy, Math.ceil((rect.y + rect.h) / tileSize) - 1);
+
+  for (let gy = gy0; gy <= gy1; gy += 1) {
+    for (let gx = gx0; gx <= gx1; gx += 1) {
+      const px = gx * tileSize + tileSize * 0.5;
+      const py = gy * tileSize + tileSize * 0.5;
+      const col = Math.floor(px / cellPxX);
+      const row = Math.floor(py / cellPxY);
+      if (row >= 0 && row < macroRows && col >= 0 && col < macroCols && ag[row][col] === 'empty') {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function rectIntersectionArea(a, b) {
   const x0 = Math.max(a.x, b.x);
   const y0 = Math.max(a.y, b.y);
@@ -198,6 +335,57 @@ function overlapsTooMuch(candidate, accepted, maxOverlapRatio) {
     if (ratio > maxOverlapRatio) return true;
   }
   return false;
+}
+
+function rectIntersectsTileKeySet(rect, tileKeys, tileSize, tilePadding = 0) {
+  if (!tileKeys?.size) return false;
+  const pad = Math.max(0, Math.floor(tilePadding));
+  const gx0 = Math.floor(rect.x / tileSize) - pad;
+  const gy0 = Math.floor(rect.y / tileSize) - pad;
+  const gx1 = Math.ceil((rect.x + rect.w) / tileSize) - 1 + pad;
+  const gy1 = Math.ceil((rect.y + rect.h) / tileSize) - 1 + pad;
+  for (let gy = gy0; gy <= gy1; gy += 1) {
+    for (let gx = gx0; gx <= gx1; gx += 1) {
+      if (tileKeys.has(`${gx},${gy}`)) return true;
+    }
+  }
+  return false;
+}
+
+function tileIsInBiomeEmptyCell(world, gx, gy, tileSize = Math.max(1, Number(world?.tileSize) || 32)) {
+  const ag = world?.archetypeGrid?.grid;
+  if (!Array.isArray(ag) || !ag.length || !Array.isArray(ag[0]) || !ag[0].length) return false;
+  const worldW = Number(world?.width) || 0;
+  const worldH = Number(world?.height) || 0;
+  if (worldW <= 0 || worldH <= 0) return false;
+  const macroCols = ag[0].length;
+  const macroRows = ag.length;
+  const cellPxX = worldW / macroCols;
+  const cellPxY = worldH / macroRows;
+  const px = gx * tileSize + tileSize * 0.5;
+  const py = gy * tileSize + tileSize * 0.5;
+  const col = Math.floor(px / cellPxX);
+  const row = Math.floor(py / cellPxY);
+  return row >= 0 && row < macroRows && col >= 0 && col < macroCols && ag[row][col] === 'empty';
+}
+
+function addPlacementTilesToSet(tileKeys, placements, tileSize, options = {}) {
+  if (!tileKeys || !Array.isArray(placements) || !placements.length) return;
+  const maxY = Number.isFinite(options.maxY) ? options.maxY : null;
+  for (const p of placements) {
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.sw) || !Number.isFinite(p.sh)) continue;
+    if (maxY != null && p.y > maxY) continue;
+    const gx0 = Math.floor(p.x / tileSize);
+    const gy0 = Math.floor(p.y / tileSize);
+    const gx1 = Math.floor((p.x + p.sw - 1) / tileSize);
+    const gy1 = Math.floor((p.y + p.sh - 1) / tileSize);
+    for (let gy = gy0; gy <= gy1; gy += 1) {
+      for (let gx = gx0; gx <= gx1; gx += 1) {
+        if (gx < 0 || gy < 0) continue;
+        tileKeys.add(`${gx},${gy}`);
+      }
+    }
+  }
 }
 
 function pickWeightedPatchDef(patchDefs, totalWeight, rand) {
@@ -284,6 +472,8 @@ export function buildOpenWorldGroundPlacements(world, patchDefs, seed, options =
   const targetArea = floorTileCount * tileSize * tileSize * targetCoverage;
   const maxOverlapRatio = Math.max(0, Math.min(1, Number(options.maxOverlapRatio) || 0.18));
   const maxPlacementAttempts = Math.max(100, Math.floor(Number(options.maxPlacementAttempts) || 5000));
+  const avoidTileKeys = options.avoidTileKeys instanceof Set ? options.avoidTileKeys : null;
+  const avoidTilePadding = Math.max(0, Math.floor(Number(options.avoidTilePadding) || 0));
   const totalWeight = patchDefs.reduce((sum, patchDef) => sum + Math.max(0, patchDef.weight), 0);
   if (totalWeight <= 0 || targetArea <= 0) return [];
 
@@ -303,6 +493,8 @@ export function buildOpenWorldGroundPlacements(world, patchDefs, seed, options =
       h: patchDef.h,
     };
     if (!rectFitsWalkableFloor(world, rect)) continue;
+    if (rectOverlapsBiomeEmptyCell(world, rect)) continue;
+    if (avoidTileKeys && rectIntersectsTileKeySet(rect, avoidTileKeys, tileSize, avoidTilePadding)) continue;
     if (overlapsTooMuch(rect, placements, maxOverlapRatio)) continue;
     placements.push({
       patchId: patchDef.id,
@@ -486,7 +678,7 @@ function getWorldZoneBounds(world) {
   const zones = [];
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
-      if (grid[row][col] == null) continue;
+      if (grid[row][col] == null || grid[row][col] === 'empty') continue;
       zones.push({
         id: `${row}_${col}`,
         x: col * zoneWidth,
@@ -518,6 +710,7 @@ function getAllWalkableTileCandidates(world) {
   for (let gy = 0; gy < grid.length; gy += 1) {
     for (let gx = 0; gx < grid[gy].length; gx += 1) {
       if (grid[gy][gx] === WALL) continue;
+      if (tileIsInBiomeEmptyCell(world, gx, gy, tileSize)) continue;
       candidates.push({
         gx,
         gy,
@@ -568,6 +761,7 @@ export function buildOpenWorldFlowerPlacements(world, families, seed, options = 
       const y = Math.floor(zone.y + rand() * Math.max(1, maxY - zone.y + 1));
       const rect = { x, y, w: tile.w, h: tile.h };
       if (!rectFitsWalkableFloor(world, rect)) continue;
+      if (rectOverlapsBiomeEmptyCell(world, rect)) continue;
       placements.push({
         familyId: family.id,
         tileId: tile.id,
@@ -625,6 +819,7 @@ function getGapTileCandidates(world, exclusionPlacements, paddingTiles = 1) {
   for (let gy = 0; gy < grid.length; gy += 1) {
     for (let gx = 0; gx < grid[gy].length; gx += 1) {
       if (grid[gy][gx] === WALL) continue;
+      if (tileIsInBiomeEmptyCell(world, gx, gy, tileSize)) continue;
       const tileRect = {
         x: gx * tileSize - padding,
         y: gy * tileSize - padding,
@@ -693,6 +888,10 @@ export function buildOpenWorldShrubPlacements(world, seed, exclusionPlacements =
         const y = Math.round(baselineY - drawHeight + offset.dy + jitterY);
         const rect = { x, y, w: drawWidth, h: drawHeight };
         if (!rectFitsWalkableFloor(world, rect)) {
+          validCluster = false;
+          break;
+        }
+        if (rectOverlapsBiomeEmptyCell(world, rect)) {
           validCluster = false;
           break;
         }
@@ -830,7 +1029,11 @@ export function buildOpenWorldBoulderPlacements(world, sprites, seed, exclusionP
       w: leadSprite.w,
       h: leadSprite.h,
     };
-    if (rectFitsWalkableFloor(world, leadRect) && !overlapsTooMuch(leadRect, placements, maxOverlapRatio)) {
+    if (
+      rectFitsWalkableFloor(world, leadRect) &&
+      !rectOverlapsBiomeEmptyCell(world, leadRect) &&
+      !overlapsTooMuch(leadRect, placements, maxOverlapRatio)
+    ) {
       placements.push({
         clusterId,
         spriteId: leadSprite.id,
@@ -866,6 +1069,7 @@ export function buildOpenWorldBoulderPlacements(world, sprites, seed, exclusionP
           h: sprite.h,
         };
         if (!rectFitsWalkableFloor(world, rect)) continue;
+        if (rectOverlapsBiomeEmptyCell(world, rect)) continue;
         if (overlapsTooMuch(rect, placements, maxOverlapRatio)) continue;
         placements.push({
           clusterId,
@@ -899,6 +1103,16 @@ export async function buildOpenWorldCosmeticFloor(world, seed, groundTypeId = 'g
   const flowerLayerConfig = groundType.flowerLayer || null;
   const shrubLayerConfig = groundType.shrubLayer || null;
   const boulderLayerConfig = groundType.boulderLayer || null;
+  const cliffOccludeTiles = world?.upperCliff?.occludeTiles || world?.rockBorder?.occludeTiles || null;
+  const tileSize = Math.max(1, Number(world?.tileSize) || 32);
+  const cliffPlacements = world?.upperCliff?.rockBorder?.placements || world?.rockBorder?.placements || [];
+  let layer2AvoidTileKeys = null;
+  if (cliffOccludeTiles?.size || cliffPlacements.length) {
+    layer2AvoidTileKeys = new Set(cliffOccludeTiles || []);
+    // Extra guard: include all current cliff sprite footprints so layer-2 patches
+    // cannot sit on top of cliff pieces even if occlude tiles are incomplete.
+    addPlacementTilesToSet(layer2AvoidTileKeys, cliffPlacements, tileSize);
+  }
   const overlayAssets = await Promise.all(
     overlayLayerConfigs.map(async (layerConfig) => {
       const [patchSheetImage, patchDefs] = await Promise.all([
@@ -928,11 +1142,16 @@ export async function buildOpenWorldCosmeticFloor(world, seed, groundTypeId = 'g
   const overlayLayers = [];
   for (let index = 0; index < overlayAssets.length; index += 1) {
     const { layerConfig, patchSheetImage, patchDefs } = overlayAssets[index];
+    const shouldAvoidCliff =
+      !!layer2AvoidTileKeys?.size &&
+      CLIFF_AVOID_OVERLAY_IDS.has(layerConfig.id || '');
     const placements = buildOpenWorldGroundPlacements(
       world,
       patchDefs,
       (((Number(seed) || 0) + index * 0x9e37) >>> 0),
-      layerConfig
+      shouldAvoidCliff
+        ? { ...layerConfig, avoidTileKeys: layer2AvoidTileKeys, avoidTilePadding: CLIFF_AVOID_TILE_PADDING }
+        : layerConfig
     );
     overlayLayers.push({
       id: layerConfig.id || `overlay_${index + 1}`,

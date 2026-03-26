@@ -1,0 +1,7 @@
+{
+  "image": "2 large dark pillars.png",
+  "objects": [
+    { "id": "dark_pillar_large_1", "x": 0, "y": 0, "w": 66, "h": 289, "weight": 1 },
+    { "id": "dark_pillar_large_2", "x": 66, "y": 0, "w": 66, "h": 289, "weight": 1 }
+  ]
+}

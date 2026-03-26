@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Ensure asset URLs resolve from repo root (same as the main game pages). -->
+    <base href="/" />
+    <title>Brute Preview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1020;
+        --panel: rgba(255, 255, 255, 0.06);
+        --border: rgba(255, 255, 255, 0.12);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.62);
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+          "Apple Color Emoji", "Segoe UI Emoji";
+        background: radial-gradient(1200px 600px at 30% 10%, #101a3a 0%, var(--bg) 60%);
+        color: var(--text);
+      }
+      .wrap {
+        display: grid;
+        grid-template-columns: 360px 1fr;
+        gap: 16px;
+        padding: 16px;
+        height: 100%;
+        box-sizing: border-box;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        overflow: auto;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0 0 10px;
+        letter-spacing: 0.2px;
+      }
+      .sub {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 12px;
+        line-height: 1.4;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+      button {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        padding: 9px 10px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 600;
+        letter-spacing: 0.1px;
+      }
+      button:hover {
+        background: rgba(255, 255, 255, 0.07);
+      }
+      button:active {
+        transform: translateY(1px);
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-top: 10px;
+      }
+      .row label {
+        font-size: 12px;
+        color: var(--muted);
+        min-width: 70px;
+      }
+      input[type="range"] {
+        width: 100%;
+      }
+      .status {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        font-size: 12px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: rgba(255, 255, 255, 0.86);
+        margin-top: 10px;
+        border-top: 1px solid var(--border);
+        padding-top: 10px;
+      }
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 12px;
+        border: 1px solid var(--border);
+      }
+      .hint {
+        margin-top: 10px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.86);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="panel">
+        <h1>Undead Brute Preview</h1>
+        <div class="sub">
+          Buttons force the Brute’s animation kit (burst moves + attacks).<br />
+          For burst moves, the sprite is duration-locked (frame index derived from elapsed/duration).
+        </div>
+
+        <div class="grid">
+          <button id="btnIdle">Idle</button>
+          <button id="btnMove">Move (toggle)</button>
+          <button id="btnRolling">Rolling</button>
+          <button id="btnSlide">Slide (Start→End)</button>
+          <button id="btnHit">Hit flash</button>
+          <button id="btnAtkDown">Attack Down (cone)</button>
+          <button id="btnAtkUp">Attack Up (cone)</button>
+          <button id="btnCyclone">Cyclone</button>
+          <button id="btnGroundSlam">Ground Slam</button>
+          <button id="btnStopAttack">Stop attack</button>
+          <button id="btnReset">Reset</button>
+        </div>
+
+        <div class="row">
+          <label for="dtScale">dt scale</label>
+          <input id="dtScale" type="range" min="0.1" max="2" step="0.05" value="1" />
+          <code id="dtScaleVal">1.00</code>
+        </div>
+
+        <div class="row">
+          <label for="burstDur">burst dur</label>
+          <input id="burstDur" type="range" min="0.2" max="2.5" step="0.05" value="1.0" />
+          <code id="burstDurVal">1.00s</code>
+        </div>
+
+        <div class="status" id="status"></div>
+        <div class="hint">
+          Run via a local server (ES modules). From repo root:
+          <br />
+          <code>python -m http.server 8000</code>
+          <br />
+          Then open <code>/tools/brute-preview.html</code>.
+        </div>
+      </div>
+
+      <canvas id="c"></canvas>
+    </div>
+
+    <script>
+      // This page only needs the Brute sheets; avoid preloading the entire enemy roster.
+      window.__DISABLE_ENEMY_SHEET_PRELOADS__ = true;
+    </script>
+    <script type="module" src="/tools/brute-preview.js"></script>
+  </body>
+</html>
+

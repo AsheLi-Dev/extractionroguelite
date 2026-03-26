@@ -277,15 +277,6 @@ export class EnemySystem {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const x = minX + Math.random() * rangeX;
       const y = minY + Math.random() * rangeY;
-      if (game?._biomeCellArchetype === BIOME_ARCHETYPE.CORRIDORS && this.world.tileGrid) {
-        const ts = this.world.tileSize || 32;
-        const gx = Math.floor((x + size / 2) / ts);
-        const gy = Math.floor((y + size / 2) / ts);
-        const grid = this.world.tileGrid;
-        if (gy < 0 || gy >= grid.length || gx < 0 || gx >= grid[0].length) continue;
-        // Corridor cells are mostly walls; require the spawn center tile to be on carved FLOOR.
-        if (grid[gy][gx] === 1) continue;
-      }
       if (this.isOnWall(x, y, size)) continue;
       if (this.isOnBlockingObstacle(x, y, size, game)) continue;
       if (this.isInsideEntrySafeZone(x, y, size, game)) continue;
@@ -324,9 +315,6 @@ export class EnemySystem {
     if (base.name === "GoblinKing") hp = 2000;
     else if (base.name === "GoblinElite") hp = 100;
     else if (base.name === "GoblinNormal") hp = 50;
-    if (game?._biomeCellArchetype === BIOME_ARCHETYPE.CORRIDORS) {
-      size = Math.max(8, Math.round(size / 3));
-    }
     if (this.hasCond("enemyHp")) hp = Math.round(hp * 1.15);
     if (this.hasCond("enemyDmg")) atk = Math.round(atk * 1.15);
     if (this.hasCond("enemySpeed")) spd = Math.round(spd * 1.2);
@@ -822,6 +810,8 @@ export class EnemySystem {
   spawnInitialBiome(game = null) {
     const data = this.world.archetypeGrid;
     if (!data?.grid) return;
+    // Hook point only: variant-specific pool is resolved and cached for future spawn routing.
+    this.forestVariantEnemyPool = game?.getActiveForestEnemyPool?.() || null;
     if (game) game._goblinKingSpawnRolled = false;
     for (let row = 0; row < BIOME_GRID_ROWS; row++) {
       for (let col = 0; col < BIOME_GRID_COLS; col++) {
@@ -839,8 +829,6 @@ export class EnemySystem {
             for (let i = 0; i < 3; i++) this.spawnGroup('minion', game);
             if (Math.random() < 0.7) this.spawnGroup('elite', game);
             if (Math.random() < 0.5) this.spawnGroup('elite', game);
-          } else if (archetype === BIOME_ARCHETYPE.CORRIDORS) {
-            for (let i = 0; i < 2; i++) this.spawnGroup('elite', game, { onlySizeCategory: 'small' });
           } else if (archetype === BIOME_ARCHETYPE.LOST_CAMPS) {
             for (let i = 0; i < 3; i++) this.spawnGroup('elite', game);
             if (Math.random() < 0.5) this.spawnGroup('elite', game);

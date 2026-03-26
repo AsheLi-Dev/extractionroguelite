@@ -153,6 +153,12 @@ export function updateHumanSquadAnim(enemy, dt) {
     a.frameCount = m.frameCount;
   }
   const frameDur = 1 / Math.max(1, a.fps);
+  const ac = enemy.attackCtrl;
+  if (ac?.state === "windup" && ac?.currentAttack?.kind === "cone" && a.state === "attack") {
+    a.timer = 0;
+    a.frameIndex = 0;
+    return;
+  }
   a.timer += dt;
   while (a.timer >= frameDur && a.frameCount > 0) {
     a.timer -= frameDur;

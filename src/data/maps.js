@@ -1,8 +1,9 @@
 import { Vec2 } from '../utils.js';
 import { drawTile, drawTileByName, isTileAtlasLoaded } from '../entities/tile-system.js';
-import { generateBlockerMap, WALL, PRESET_SMALL, PRESET_MEDIUM, PRESET_LARGE, PRESET_BIOME, generateCorridorCell, stampRect, mulberry32 } from '../map-gen-blockers.js';
+import { generateBlockerMap, WALL, PRESET_SMALL, PRESET_MEDIUM, PRESET_LARGE, PRESET_BIOME, stampRect, mulberry32 } from '../map-gen-blockers.js';
 import { drawOpenWorldGroundBase, drawOpenWorldGroundDetails } from './openworld-ground.js';
-import { drawUpperCliffDecor, drawUpperCliffGroundCap } from '../game/biome-upper-cliff.js';
+import { drawUpperCliffDecor } from '../game/biome-upper-cliff.js';
+import { UPPER_CLIFF_MID_STRIP_FILL_HEX } from '../game/upper-cliff-ground-mask.js';
 import {
   LOST_CAMP_TILE_DATA,
   LOST_CAMP_OBJECTS,
@@ -250,7 +251,7 @@ export const PRESET_FOREST_BIOME_TEST = {
   W: 240,
   H: 120,
   config: {
-    borderThickness: 1,
+    borderThickness: 0,
     corridorWidth: 10,
     waypointCount: 6,
     blockerCount: 0,
@@ -303,7 +304,6 @@ export const BIOME_ARCHETYPE = {
   EXIT: 'exit',
   MINIBOSS: 'miniboss',
   OPEN_SPACE: 'openSpace',
-  CORRIDORS: 'corridors',
   LOST_CAMPS: 'lostCamps',
   RUINS: 'ruins',
   VAULT: 'vault',
@@ -313,18 +313,16 @@ export const BIOME_ARCHETYPE = {
   EMPTY: 'empty',
 };
 
-/** Biome archetypes that never have a subarea (start room, corridor, exit, empty). */
+/** Biome archetypes that never have a subarea (start room, exit, empty). */
 export const ARCHETYPES_WITHOUT_SUBAREA = [
   BIOME_ARCHETYPE.START,
   BIOME_ARCHETYPE.EXIT,
-  BIOME_ARCHETYPE.CORRIDORS,
   BIOME_ARCHETYPE.EMPTY,
 ];
 
 const BIOME_ARCHETYPE_POOL = [
   BIOME_ARCHETYPE.MINIBOSS,
   BIOME_ARCHETYPE.OPEN_SPACE,
-  BIOME_ARCHETYPE.CORRIDORS,
   BIOME_ARCHETYPE.LOST_CAMPS,
   BIOME_ARCHETYPE.RUINS,
   BIOME_ARCHETYPE.VAULT,
@@ -332,8 +330,9 @@ const BIOME_ARCHETYPE_POOL = [
 ];
 
 /**
- * Build 4x4 archetype grid. Middle two rows (1–2): start/exit/miniboss/corridors/vault/pool as before.
- * Top row (0) and bottom row (3): 1 or 2 cells randomly get OPEN_SPACE, rest EMPTY (walled later).
+ * Build 4x4 archetype grid. Middle two rows (1–2): start/exit/miniboss/vault/pool as before.
+ * Top row (0): exactly one cell randomly gets OPEN_SPACE (single extra playable macro cell); rest EMPTY.
+ * Bottom row (3): 1 or 2 cells randomly get OPEN_SPACE, rest EMPTY (walled later).
  * Start/exit are derived from world.startPixel/exitPixel (expected in middle rows).
  * Miniboss is always column 3 (fourth column), row 1 preferred else row 2 if that cell is start/exit.
  * Returns { grid, startCell, exitCell }. grid[row][col] = archetype id.
@@ -368,8 +367,10 @@ export function buildArchetypeGrid(world) {
 
   const rng = () => Math.random();
 
-  // Top row (0) and bottom row (3): 1 or 2 random columns become active (OPEN_SPACE), rest EMPTY
-  const pickActiveCols = () => {
+  // Top row (0): exactly one extra playable OPEN_SPACE macro cell (random column).
+  const topActiveCols = [Math.floor(rng() * cols)];
+  // Bottom row (3): 1 or 2 random columns become active (OPEN_SPACE), rest EMPTY
+  const pickBottomActiveCols = () => {
     const count = Math.random() < 0.5 ? 1 : 2;
     const indices = [0, 1, 2, 3];
     for (let i = indices.length - 1; i > 0; i--) {
@@ -378,8 +379,7 @@ export function buildArchetypeGrid(world) {
     }
     return indices.slice(0, count);
   };
-  const topActiveCols = pickActiveCols();
-  const bottomActiveCols = pickActiveCols();
+  const bottomActiveCols = pickBottomActiveCols();
 
   // Miniboss: always column 3 (fourth column), row 1 or 2 — prefer row 1 unless start/exit occupies it.
   const MINIBOSS_COL = 3;
@@ -391,7 +391,7 @@ export function buildArchetypeGrid(world) {
     break;
   }
 
-  // Candidates for corridor/vault only in middle two rows (1, 2).
+  // Candidates for vault only in middle two rows (1, 2).
   const candidates = [];
   for (let row = 1; row <= 2; row++) {
     for (let col = 0; col < cols; col++) {
@@ -401,22 +401,15 @@ export function buildArchetypeGrid(world) {
       candidates.push({ row, col });
     }
   }
-  const corridorPick = candidates.length
+  const vaultPick = candidates.length
     ? candidates[Math.floor(rng() * candidates.length)]
     : null;
 
-  const vaultCandidates = candidates.filter(
-    (c) => !corridorPick || c.row !== corridorPick.row || c.col !== corridorPick.col
-  );
-  const vaultPick = vaultCandidates.length
-    ? vaultCandidates[Math.floor(rng() * vaultCandidates.length)]
-    : null;
-
   const grid = [];
-  const poolNoCorridorsMinibossVault = BIOME_ARCHETYPE_POOL.filter(
-    (a) => a !== BIOME_ARCHETYPE.CORRIDORS && a !== BIOME_ARCHETYPE.MINIBOSS && a !== BIOME_ARCHETYPE.VAULT
+  const poolNoMinibossVault = BIOME_ARCHETYPE_POOL.filter(
+    (a) => a !== BIOME_ARCHETYPE.MINIBOSS && a !== BIOME_ARCHETYPE.VAULT
   );
-  const poolNoLostCamps = poolNoCorridorsMinibossVault.filter((a) => a !== BIOME_ARCHETYPE.LOST_CAMPS);
+  const poolNoLostCamps = poolNoMinibossVault.filter((a) => a !== BIOME_ARCHETYPE.LOST_CAMPS);
   const maxLostCamps = 2;
   let lostCampsCount = 0;
   for (let row = 0; row < rows; row++) {
@@ -434,12 +427,10 @@ export function buildArchetypeGrid(world) {
         r.push(BIOME_ARCHETYPE.OPEN_SPACE);
       } else if (minibossPick && minibossPick.row === row && minibossPick.col === col) {
         r.push(BIOME_ARCHETYPE.MINIBOSS);
-      } else if (corridorPick && corridorPick.row === row && corridorPick.col === col) {
-        r.push(BIOME_ARCHETYPE.CORRIDORS);
       } else if (vaultPick && vaultPick.row === row && vaultPick.col === col) {
         r.push(BIOME_ARCHETYPE.VAULT);
       } else {
-        const pool = lostCampsCount >= maxLostCamps ? poolNoLostCamps : poolNoCorridorsMinibossVault;
+        const pool = lostCampsCount >= maxLostCamps ? poolNoLostCamps : poolNoMinibossVault;
         const choice = pool[Math.floor(rng() * pool.length)];
         if (choice === BIOME_ARCHETYPE.LOST_CAMPS) lostCampsCount++;
         r.push(choice);
@@ -468,7 +459,7 @@ export function buildForestBiomeTestArchetypeGrid(world) {
   return {
     grid: [
       Array.from({ length: cols }, (_, col) => topActiveCols.has(col) ? BIOME_ARCHETYPE.OPEN_SPACE : BIOME_ARCHETYPE.EMPTY),
-      [BIOME_ARCHETYPE.START, BIOME_ARCHETYPE.OPEN_SPACE, BIOME_ARCHETYPE.WOODS, BIOME_ARCHETYPE.RUINS, BIOME_ARCHETYPE.OPEN_SPACE, BIOME_ARCHETYPE.WOODS, BIOME_ARCHETYPE.CORRIDORS, BIOME_ARCHETYPE.OPEN_SPACE],
+      [BIOME_ARCHETYPE.START, BIOME_ARCHETYPE.OPEN_SPACE, BIOME_ARCHETYPE.WOODS, BIOME_ARCHETYPE.RUINS, BIOME_ARCHETYPE.OPEN_SPACE, BIOME_ARCHETYPE.WOODS, BIOME_ARCHETYPE.RUINS, BIOME_ARCHETYPE.OPEN_SPACE],
       [BIOME_ARCHETYPE.EMPTY, BIOME_ARCHETYPE.RUINS, BIOME_ARCHETYPE.VAULT, BIOME_ARCHETYPE.WOODS, BIOME_ARCHETYPE.OPEN_SPACE, BIOME_ARCHETYPE.RUINS, BIOME_ARCHETYPE.MINIBOSS, BIOME_ARCHETYPE.EMPTY],
       Array.from({ length: cols }, (_, col) => bottomActiveCols.has(col) ? BIOME_ARCHETYPE.OPEN_SPACE : BIOME_ARCHETYPE.EMPTY)
     ],
@@ -543,7 +534,7 @@ export function buildSubareaGridForCell(archetype, col, row, rng) {
 
 /**
  * Build subarea grids for all biome cells that support them. Sets world.subareaGrids[key] = { grid }
- * where key is `${row}_${col}`. Cells with START, EXIT, CORRIDORS, EMPTY get no subarea.
+ * where key is `${row}_${col}`. Cells with START, EXIT, EMPTY get no subarea.
  * @param {import('./maps.js').World} world
  * @param {{ grid: string[][] }} archetypeGrid
  * @param {function(): number} rng
@@ -811,9 +802,11 @@ export function createProceduralWorld(preset = PRESET_MEDIUM, seed = Date.now(),
 }
 
 /**
- * For 4x4 biome: stamp WALL on tile grid for each EMPTY cell in top row (0) and bottom row (3).
- * Each such 30×30 space gets one large blocker chunk from the spritesheet (drawn instead of brick tiles).
- * Collision is unchanged (tileWallRects). Call after applyCorridorCellLayouts.
+ * For 4x4 biome: stamp WALL on tile grid for each EMPTY cell in **bottom** row (3) only, and draw a large
+ * blocker chunk per 30×30 space (instead of brick tiles). Row 0 EMPTY is left unchanged so the upper band
+ * stays open (void / upper-cliff backdrop), not big chunk art. Row 0 EMPTY still gets invisible
+ * collision via `tileWallRects` entries marked `_biomeInvisibleBarrier` (full macro cell, no draw).
+ * Collision for row 3 follows stamped walls.
  * @param {number} [mapSeed] - Seed for deterministic chunk choice per cell.
  */
 export function applyBiomeTopBottomWalls(world, archetypeGrid, mapSeed = 0) {
@@ -829,11 +822,11 @@ export function applyBiomeTopBottomWalls(world, archetypeGrid, mapSeed = 0) {
   const tileSize = world.tileSize || 32;
 
   const blockerCells = [];
-  for (const row of [0, 3]) {
-    if (row >= data.grid.length) continue;
+  const bottomRow = rows - 1;
+  if (bottomRow >= 0 && bottomRow < data.grid.length) {
     for (let col = 0; col < cols; col++) {
-      if (data.grid[row][col] !== BIOME_ARCHETYPE.EMPTY) continue;
-      blockerCells.push({ col, row });
+      if (data.grid[bottomRow][col] !== BIOME_ARCHETYPE.EMPTY) continue;
+      blockerCells.push({ col, row: bottomRow });
     }
   }
 
@@ -877,6 +870,22 @@ export function applyBiomeTopBottomWalls(world, archetypeGrid, mapSeed = 0) {
     world.blockerChunkAtlas.src = BLOCKER_CHUNK_ATLAS_SRC;
   }
   rebuildTileWallRectsFromGrid(world);
+
+  const topRow = 0;
+  if (topRow < data.grid.length) {
+    for (let col = 0; col < cols; col++) {
+      if (data.grid[topRow][col] !== BIOME_ARCHETYPE.EMPTY) continue;
+      const originGx = col * cellW;
+      const originGy = topRow * cellH;
+      world.tileWallRects.push({
+        x: originGx * tileSize,
+        y: originGy * tileSize,
+        w: cellW * tileSize,
+        h: cellH * tileSize,
+        _biomeInvisibleBarrier: true,
+      });
+    }
+  }
 }
 
 /** Cobblestone path: Forest Land decorative_props.png, 32×32 tiles. 15 variants. */
@@ -888,7 +897,7 @@ const COBBLE_VARIANTS = [
 ];
 
 /**
- * Build a 2-tile-wide cobblestone path from start room to exit room. Uses corridor middle points if present.
+ * Build a 2-tile-wide cobblestone path from start room to exit room.
  * Sets world.cobblestonePathTiles (Map "gx,gy" -> variant 0..14), world.cobblestonePathAtlas, world.cobblestonePathVariants.
  */
 export function buildCobblestonePath(world, archetypeGrid, rng = Math.random) {
@@ -911,31 +920,10 @@ export function buildCobblestonePath(world, archetypeGrid, rng = Math.random) {
     return { gx: Math.max(0, Math.min(W - 1, gx)), gy: Math.max(0, Math.min(H - 1, gy)) };
   }
 
-  const waypoints = [];
-  waypoints.push(cellCenterTile(startCell.col, startCell.row));
-  const corridorPoints = world.corridorMiddlePoints || {};
-  let corridorKey = null;
-  for (let row = 0; row < data.length; row++) {
-    for (let col = 0; col < data[row].length; col++) {
-      if (data[row][col] === BIOME_ARCHETYPE.CORRIDORS) {
-        corridorKey = `${row}_${col}`;
-        break;
-      }
-    }
-    if (corridorKey) break;
-  }
-  if (corridorKey && corridorPoints[corridorKey]) {
-    const [p1, p2] = corridorPoints[corridorKey];
-    const start = waypoints[0];
-    const d1 = (p1.gx - start.gx) ** 2 + (p1.gy - start.gy) ** 2;
-    const d2 = (p2.gx - start.gx) ** 2 + (p2.gy - start.gy) ** 2;
-    if (d1 <= d2) {
-      waypoints.push(p1, p2);
-    } else {
-      waypoints.push(p2, p1);
-    }
-  }
-  waypoints.push(cellCenterTile(exitCell.col, exitCell.row));
+  const waypoints = [
+    cellCenterTile(startCell.col, startCell.row),
+    cellCenterTile(exitCell.col, exitCell.row),
+  ];
 
   const pathSet = new Set();
   const WALL = 1;
@@ -983,7 +971,7 @@ export function buildCobblestonePath(world, archetypeGrid, rng = Math.random) {
   }
 }
 
-/** Rebuild world.tileWallRects from world.tileGrid (e.g. after editing grid for corridor cells). */
+/** Rebuild world.tileWallRects from world.tileGrid after tile edits. */
 export function rebuildTileWallRectsFromGrid(world) {
   const grid = world.tileGrid;
   if (!grid || !grid.length) return;
@@ -1003,33 +991,6 @@ export function rebuildTileWallRectsFromGrid(world) {
       }
     }
   }
-}
-
-/**
- * For each cell with archetype CORRIDORS, overwrite that cell's region with corridor layout,
- * then rebuild tileWallRects. rng() should return [0, 1) (e.g. mulberry32(seed)).
- */
-export function applyCorridorCellLayouts(world, archetypeGrid, rng) {
-  const data = archetypeGrid;
-  if (!data?.grid) return;
-  const grid = world.tileGrid;
-  if (!grid?.length) return;
-  world.corridorMiddlePoints = world.corridorMiddlePoints || {};
-  const W = grid[0].length;
-  const H = grid.length;
-  const { cols, rows } = getBiomeGridDimensions(world);
-  const cellW = Math.floor(W / cols);
-  const cellH = Math.floor(H / rows);
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      if (data.grid[row][col] !== BIOME_ARCHETYPE.CORRIDORS) continue;
-      const originGx = col * cellW;
-      const originGy = row * cellH;
-      const points = generateCorridorCell(grid, originGx, originGy, cellW, cellH, rng);
-      if (points) world.corridorMiddlePoints[`${row}_${col}`] = [points.p1, points.p2];
-    }
-  }
-  rebuildTileWallRectsFromGrid(world);
 }
 
 /**
@@ -1241,7 +1202,7 @@ export class World {
     this._cropTileByGrid = null;
     this.rockBorder = null;
     this._rockBorderBoundsCacheKey = null;
-    /** Macro-driven upper cliff (see biome-upper-cliff.js); decorative only */
+    /** Macro-driven upper cliff (see biome-upper-cliff.js); collision via `_upperCliffRockCollision` wall rects */
     this.upperCliff = null;
   }
 
@@ -1379,16 +1340,27 @@ export class World {
     return this.height / rows;
   }
 
-  _getTopRowPlayableMacroRects() {
+  /**
+   * Full macro-cell rects for archetype row 0 (non-empty).
+   * @param {Set<number> | number[] | null | undefined} excludeCols — e.g. row-0 island columns use {@link groundClipRects} only.
+   */
+  _getTopRowPlayableMacroRects(excludeCols = null) {
     const grid = this.archetypeGrid?.grid;
     if (!Array.isArray(grid) || !grid.length || !Array.isArray(grid[0]) || !grid[0].length) return [];
     const rows = grid.length;
     const cols = grid[0].length;
     const cellW = this.width / cols;
     const cellH = this.height / rows;
+    const skip =
+      excludeCols instanceof Set
+        ? excludeCols
+        : Array.isArray(excludeCols)
+          ? new Set(excludeCols)
+          : null;
     const rects = [];
     const topRow = grid[0];
     for (let col = 0; col < cols; col++) {
+      if (skip?.has(col)) continue;
       const archetype = topRow[col];
       if (!archetype || archetype === 'empty') continue;
       rects.push({
@@ -1401,18 +1373,108 @@ export class World {
     return rects;
   }
 
+  /**
+   * Full macro-cell rects for one archetype row (non-empty cells).
+   * @param {number} rowIndex — 0-based (e.g. 1 = second macro row).
+   */
+  _getMacroRowPlayableRects(rowIndex) {
+    const grid = this.archetypeGrid?.grid;
+    if (!Array.isArray(grid) || !grid.length || !Array.isArray(grid[0]) || !grid[0].length) return [];
+    if (rowIndex < 0 || rowIndex >= grid.length) return [];
+    const cols = grid[0].length;
+    const cellW = this.width / cols;
+    const cellH = this.height / grid.length;
+    const row = grid[rowIndex];
+    const rects = [];
+    for (let col = 0; col < cols; col++) {
+      const archetype = row[col];
+      if (!archetype || archetype === 'empty') continue;
+      rects.push({
+        x: col * cellW,
+        y: rowIndex * cellH,
+        w: cellW,
+        h: cellH,
+      });
+    }
+    return rects;
+  }
+
+  /** Row 0–1 mid-strip: solid underlay only (not part of ground clip). */
+  _drawUpperCliffMidStripFillLayer(ctx, ox, oy) {
+    const rects = this.upperCliff?.midStripFillRects;
+    if (!Array.isArray(rects) || !rects.length) return;
+    ctx.fillStyle = UPPER_CLIFF_MID_STRIP_FILL_HEX;
+    for (const r of rects) {
+      if (r.w > 0 && r.h > 0) {
+        ctx.fillRect(ox + r.x, oy + r.y, r.w, r.h);
+      }
+    }
+  }
+
+  /** Row 0–1 top-strip ground mask: #6f7559 on base ground (layer 1), after floor tiles, before cliff art. */
+  _drawUpperCliffRow01GroundMaskFillLayer(ctx, ox, oy) {
+    const rects = this.upperCliff?.row01GroundMaskRects;
+    if (!Array.isArray(rects) || !rects.length) return;
+    ctx.fillStyle = UPPER_CLIFF_MID_STRIP_FILL_HEX;
+    for (const r of rects) {
+      if (r.w > 0 && r.h > 0) {
+        ctx.fillRect(ox + r.x, oy + r.y, r.w, r.h);
+      }
+    }
+  }
+
   _applyUpperCliffVisibleRegionClip(ctx, ox, oy) {
     if (!this._shouldMaskTopUnplayableForUpperCliff()) return false;
+    const uc = this.upperCliff;
+    /** Row-0 island under-cliff precision only (see `row01GroundMaskRects` for top-strip strips). */
+    const islandClipRects = uc?.groundClipRects;
+    const row01MaskRects = uc?.row01GroundMaskRects;
+
     const cutoffY = this._getTopUnplayableCutoffY();
-    const playableTopRects = this._getTopRowPlayableMacroRects();
+    const row1BottomY = 2 * cutoffY;
+    const islandTopCols = uc?.row0IslandGroundMaskMacroCols;
+    const playableTopRects = this._getTopRowPlayableMacroRects(islandTopCols);
+
     ctx.save();
     ctx.beginPath();
-    // Always keep rows below top macro row visible.
-    ctx.rect(ox, oy + cutoffY, this.width, Math.max(0, this.height - cutoffY));
-    // Re-open any row-0 macro cell that is actually playable.
-    for (const r of playableTopRects) {
-      ctx.rect(ox + r.x, oy + r.y, r.w, r.h);
+    let anyRegion = false;
+
+    // Macro rows 2..end — full-width ground. Row 1 is visible only where explicit masks add regions.
+    if (row1BottomY < this.height) {
+      ctx.rect(ox, oy + row1BottomY, this.width, this.height - row1BottomY);
+      anyRegion = true;
     }
+
+    // Row 0 playable macro columns (wings, openings, top island cell).
+    for (const r of playableTopRects) {
+      if (r.w > 0 && r.h > 0) {
+        ctx.rect(ox + r.x, oy + r.y, r.w, r.h);
+        anyRegion = true;
+      }
+    }
+
+    if (Array.isArray(islandClipRects)) {
+      for (const r of islandClipRects) {
+        if (r.w > 0 && r.h > 0) {
+          ctx.rect(ox + r.x, oy + r.y, r.w, r.h);
+          anyRegion = true;
+        }
+      }
+    }
+
+    if (Array.isArray(row01MaskRects)) {
+      for (const r of row01MaskRects) {
+        if (r.w > 0 && r.h > 0) {
+          ctx.rect(ox + r.x, oy + r.y, r.w, r.h);
+          anyRegion = true;
+        }
+      }
+    }
+
+    if (!anyRegion) {
+      ctx.rect(ox, oy, this.width, this.height);
+    }
+
     ctx.clip();
     return true;
   }
@@ -1680,7 +1742,10 @@ export class World {
           OPENWORLD_NEG_SPACE_BACKDROP_DRAW_H
         );
       }
+      this._drawUpperCliffMidStripFillLayer(ctx, ox, oy);
       this._applyUpperCliffVisibleRegionClip(ctx, ox, oy);
+    } else {
+      this._drawUpperCliffMidStripFillLayer(ctx, ox, oy);
     }
 
     if (canDrawCosmeticGroundBase) {
@@ -1717,6 +1782,24 @@ export class World {
             ctx.fillRect(screenX, screenY, tileSize, tileSize);
           }
         }
+      }
+    }
+
+    if (maskTopUnplayable) {
+      this._drawUpperCliffRow01GroundMaskFillLayer(ctx, ox, oy);
+    }
+
+    let activeTopMask = maskTopUnplayable;
+    if (this.upperCliff?.enabled) {
+      if (activeTopMask) {
+        ctx.restore();
+        activeTopMask = false;
+      }
+      // Draw cliff between base ground (layer 1) and grass/rock detail layer (layer 2).
+      drawUpperCliffDecor(ctx, this, ox, oy, camera);
+      if (maskTopUnplayable) {
+        this._applyUpperCliffVisibleRegionClip(ctx, ox, oy);
+        activeTopMask = true;
       }
     }
 
@@ -1785,15 +1868,8 @@ export class World {
       ctx.imageSmoothingEnabled = true;
       ctx.restore();
     }
-    if (maskTopUnplayable) {
+    if (activeTopMask) {
       ctx.restore();
-    }
-    // Draw upper-cliff visuals after mask restore so unplayable-area masking never hides them.
-    if (this.upperCliff?.enabled) {
-      drawUpperCliffGroundCap(ctx, this, ox, oy);
-    }
-    if (this.upperCliff?.enabled) {
-      drawUpperCliffDecor(ctx, this, ox, oy, camera);
     }
   }
 

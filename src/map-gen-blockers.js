@@ -505,7 +505,7 @@ export const PRESET_BIOME = {
   W: 120,
   H: 120,
   config: {
-    borderThickness: 1,
+    borderThickness: 0,
     corridorWidth: 10,
     waypointCount: 6,
     blockerCount: 0,

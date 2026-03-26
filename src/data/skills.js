@@ -219,7 +219,7 @@ export function applyElementDebuffsFromMods(game, enemy, mods, skillDamage, game
         sourceId: "player",
         sourceType: "skill_mod"
       });
-    } else {
+    } else if (enemy.attackCtrl?.state !== 'active') {
       enemy.stunUntil = Math.max(enemy.stunUntil || 0, gameTime + 0.5);
     }
   }

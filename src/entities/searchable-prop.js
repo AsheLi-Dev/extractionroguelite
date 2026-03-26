@@ -28,6 +28,7 @@ export class SearchableProp {
     const def = SEARCHABLE_PROP_DEFS[typeId];
     if (!def) throw new Error(`Unknown searchable prop type: ${typeId}`);
     this.def = def;
+    this.value = (def && typeof def.value === "string" ? def.value : "low");
     this.isSearched = false;
     this.searchProgress = 0;
     this.width = def.width ?? 32;

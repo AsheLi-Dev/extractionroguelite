@@ -1,8 +1,32 @@
-import { Vec2, obstacleIntersectsRect } from '../utils.js';
+import { Vec2, obstacleIntersectsRect, assetUrl } from '../utils.js';
 import { drawTile, drawTileByName, isTileAtlasLoaded } from './tile-system.js';
 
 /** @type {HTMLCanvasElement | null} */
 let treeRadialScratch = null;
+
+const obstacleAtlasDefsPromiseCache = new Map();
+const obstacleAtlasSheetCache = new Map();
+
+function loadObstacleAtlasDefs(defsSrc) {
+  const key = String(defsSrc || "").trim();
+  if (!key) return Promise.resolve(null);
+  if (obstacleAtlasDefsPromiseCache.has(key)) return obstacleAtlasDefsPromiseCache.get(key);
+  const promise = fetch(assetUrl(key))
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+  obstacleAtlasDefsPromiseCache.set(key, promise);
+  return promise;
+}
+
+function getObstacleAtlasSheet(sheetSrc) {
+  const key = String(sheetSrc || "").trim();
+  if (!key) return null;
+  if (obstacleAtlasSheetCache.has(key)) return obstacleAtlasSheetCache.get(key);
+  const img = new Image();
+  img.src = assetUrl(key);
+  obstacleAtlasSheetCache.set(key, img);
+  return img;
+}
 
 function getTreeRadialScratch(w, h) {
   if (!treeRadialScratch) treeRadialScratch = document.createElement('canvas');
@@ -30,10 +54,36 @@ export class Obstacle {
     this.size = typeDef.size;
     this.blocksMovement = typeDef.blocksMovement;
     this.blocksProjectiles = typeDef.blocksProjectiles;
+    this.blocksAttackHitboxes =
+      typeDef.blocksAttackHitboxes != null ? !!typeDef.blocksAttackHitboxes : !!typeDef.blocksMovement;
     this.meltTimer = typeDef.meltTime || null;
     this.destroyed = false;
     this.lastBurnTick = 0;
     this.triggered = false; // For bone pile
+
+    this._atlasSheetImage = null;
+    this._atlasFrame = null;
+    if (typeDef.atlas?.sheetSrc && typeDef.atlas?.defsSrc && Array.isArray(typeDef.atlas?.frameIds)) {
+      this._atlasSheetImage = getObstacleAtlasSheet(typeDef.atlas.sheetSrc);
+      const frames = typeDef.atlas.frameIds.filter(Boolean);
+      const chosenId = frames.length ? frames[Math.floor(Math.random() * frames.length)] : null;
+      this._atlasFrameId = chosenId;
+      if (chosenId) {
+        loadObstacleAtlasDefs(typeDef.atlas.defsSrc).then((json) => {
+          const objects = Array.isArray(json?.objects) ? json.objects : [];
+          const match = objects.find((o) => o?.id === chosenId);
+          if (!match) return;
+          const sx = Math.floor(Number(match.x) || 0);
+          const sy = Math.floor(Number(match.y) || 0);
+          const sw = Math.max(1, Math.floor(Number(match.w) || 0));
+          const sh = Math.max(1, Math.floor(Number(match.h) || 0));
+          this._atlasFrame = { sx, sy, sw, sh };
+          // Ensure obstacle uses the frame size for collision + draw footprint.
+          this.size = { w: sw, h: sh };
+        });
+      }
+    }
+
     if (typeDef.spriteSources && typeDef.spriteSources.length) {
       const src = typeDef.spriteSources[Math.floor(Math.random() * typeDef.spriteSources.length)];
       this._spriteImage = new Image();
@@ -254,8 +304,10 @@ export class Obstacle {
     
     const sx = Math.floor(this.position.x - camera.position.x);
     const sy = Math.floor(this.position.y - camera.position.y);
-    const scale =
-      this.type === "ruinPillar" || this.type === "giantRock" || this.type === "ancientTree" ? 1 : 2;
+    const explicitScale = Number(this.typeDef?.drawScale);
+    const scale = Number.isFinite(explicitScale) && explicitScale > 0
+      ? explicitScale
+      : (this.type === "ruinPillar" || this.type === "giantRock" || this.type === "ancientTree" ? 1 : 2);
     const drawW = this.size.w * scale;
     const drawH = this.size.h * scale;
     const drawX = sx - (drawW - this.size.w) / 2;
@@ -271,6 +323,27 @@ export class Obstacle {
 
     ctx.fillStyle = this.typeDef.shadowColor || "rgba(0, 0, 0, 0.3)";
     ctx.fillRect(floorDrawX + 4, floorDrawY + drawH - 8, drawW, 12);
+
+    if (this._atlasSheetImage && this._atlasFrame) {
+      const img = this._atlasSheetImage;
+      if (img.complete && img.naturalWidth > 0) {
+        const prevSmoothing = ctx.imageSmoothingEnabled;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(
+          img,
+          this._atlasFrame.sx,
+          this._atlasFrame.sy,
+          this._atlasFrame.sw,
+          this._atlasFrame.sh,
+          floorDrawX,
+          floorDrawY,
+          drawW,
+          drawH
+        );
+        ctx.imageSmoothingEnabled = prevSmoothing;
+        return;
+      }
+    }
 
     if (
       (this.type === "ruinPillar" ||
@@ -311,10 +384,7 @@ export class Obstacle {
 
     // Try to use tiles if available
     if (isTileAtlasLoaded()) {
-      if (this.type === "barrel") {
-        drawTileByName(ctx, "barrel", drawX, drawY, drawW);
-        return;
-      } else if (this.type === "bonePile") {
+      if (this.type === "bonePile") {
         drawTileByName(ctx, "corpse", drawX, drawY, drawW);
         return;
       }
@@ -343,20 +413,6 @@ export class Obstacle {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(drawX + 24, drawY + 16, 8, 8);
       ctx.fillRect(drawX + 64, drawY + 48, 6, 6);
-    } else if (this.type === "barrel") {
-      ctx.fillStyle = this.typeDef.color;
-      ctx.fillRect(drawX, drawY, drawW, drawH);
-      ctx.strokeStyle = "#654321";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(drawX, drawY, drawW, drawH);
-      ctx.strokeStyle = "#5a3a1a";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(drawX, drawY + 24);
-      ctx.lineTo(drawX + drawW, drawY + 24);
-      ctx.moveTo(drawX, drawY + 56);
-      ctx.lineTo(drawX + drawW, drawY + 56);
-      ctx.stroke();
     } else if (this.type === "bonePile") {
       ctx.fillStyle = this.typeDef.color;
       ctx.fillRect(drawX + 8, drawY + 16, 16, 24);

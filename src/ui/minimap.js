@@ -60,6 +60,7 @@ export function setMinimapWorld(world) {
   if (walls) {
     ctx.fillStyle = "rgba(148, 163, 184, 0.95)";
     for (const w of walls) {
+      if (w._upperCliffRockCollision) continue;
       const nx = (w.x || 0) / worldWidth;
       const ny = (w.y || 0) / worldHeight;
       const nw = (w.w || 0) / worldWidth;

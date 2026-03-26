@@ -148,7 +148,7 @@ export const ENEMY_ATTACK_KITS = {
       {
         id: "goblin_archer_arrow",
         kind: "projectile",
-        telegraph: { shape: "line", windup: 0.5, color: "fast" },
+        telegraph: { shape: "line", windup: 0.82, color: "fast" },
         execute: {
           damage: 0.85,
           speed: 380,
@@ -226,14 +226,14 @@ export const ENEMY_ATTACK_KITS = {
   Troll: {
     base: [
       {
-        id: "troll_heavy_smash",
-        kind: "circle",
-        telegraph: { shape: "circle", windup: 0.85, color: "heavy" },
-        execute: { damage: 1.3, radius: 170 },
-        recover: 0.45,
-        cooldown: 3,
-        minRange: 0,
-        maxRange: 120,
+        id: "troll_cleave",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.65, color: "heavy" },
+        execute: { damage: 1.3, range: 240, arc: 95 },
+        recover: 0.4,
+        cooldown: 2.8,
+        minRange: 20,
+        maxRange: 130,
         weight: 1,
         flags: { heavy: true }
       }
@@ -335,49 +335,6 @@ export const ENEMY_ATTACK_KITS = {
         minRange: 0,
         maxRange: 999,
         weight: 0,
-        flags: { summon: true }
-      }
-    ]
-  },
-
-  "Skeleton Archer": {
-    base: [
-      {
-        id: "skeleton_archer_arrow",
-        kind: "projectile",
-        telegraph: { shape: "line", windup: 0.55, color: "fast" },
-        execute: { damage: 0.9, speed: 350, count: 1, color: "#e2e8f0", size: 10, useHitbox: true },
-        recover: 0.2,
-        cooldown: 2.2,
-        minRange: 100,
-        maxRange: 400,
-        weight: 1,
-        flags: { fast: true }
-      }
-    ],
-    hidden: [
-      {
-        id: "skeleton_archer_bone_barrage",
-        kind: "projectile",
-        telegraph: { shape: "cone", windup: 0.6, color: "magic" },
-        execute: { damage: 0.6, speed: 320, count: 5, spread: 25, color: "#e2e8f0", size: 8, useHitbox: true },
-        recover: 0.35,
-        cooldown: 6,
-        minRange: 120,
-        maxRange: 350,
-        weight: 0.5,
-        flags: { magic: true }
-      },
-      {
-        id: "skeleton_archer_summon",
-        kind: "summon",
-        telegraph: { shape: "circle", windup: 0.8, color: "magic" },
-        execute: { count: 2, spawnType: "m_5a_skeleton" },
-        recover: 0.4,
-        cooldown: 18,
-        minRange: 0,
-        maxRange: 200,
-        weight: 0.3,
         flags: { summon: true }
       }
     ]
@@ -714,6 +671,48 @@ export const ENEMY_ATTACK_KITS = {
     ]
   },
 
+  "Skeleton Archer": {
+    base: [
+      {
+        id: "skeleton_archer_arrow",
+        kind: "projectile",
+        telegraph: { shape: "circle", windup: 0.35, color: "fast" },
+        execute: {
+          damage: 0.9,
+          speed: 360,
+          count: 1,
+          color: "#e2e8f0",
+          size: 12,
+          spritePath: "assets/Enemies/Arrow.png",
+          useHitbox: true
+        },
+        recover: 0.55,
+        cooldown: 2.2,
+        minRange: 100,
+        maxRange: 420,
+        weight: 1,
+        flags: { fast: true }
+      }
+    ]
+  },
+
+  "Skeleton Warrior": {
+    base: [
+      {
+        id: "skeleton_warrior_slash",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.45, color: "heavy" },
+        execute: { damage: 1.05, range: 100, arc: 100 },
+        recover: 0.3,
+        cooldown: 2.0,
+        minRange: 20,
+        maxRange: 130,
+        weight: 1,
+        flags: { heavy: true }
+      }
+    ]
+  },
+
   "Cyclop Archer": {
     base: [
       {
@@ -859,8 +858,71 @@ export const ENEMY_ATTACK_KITS = {
     ]
   },
 
+  "Death Lord": {
+    base: [
+      {
+        id: "death_lord_cleave",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.52, color: "heavy" },
+        execute: { damage: 1.05, range: 270, arc: 96 },
+        recover: 0.38,
+        cooldown: 2.35,
+        minRange: 38,
+        maxRange: 135,
+        weight: 1,
+        flags: { heavy: true }
+      },
+      {
+        id: "death_lord_volley",
+        kind: "projectile",
+        telegraph: { shape: "circle", windup: 0.88, color: "magic" },
+        execute: {
+          damage: 0.88,
+          speed: 290,
+          count: 6,
+          arcSpreadDeg: 52,
+          color: "#c4b5fd",
+          size: 16,
+          useHitbox: true,
+          animatedSprite: {
+            path: "assets/Enemies/Death Lord/Effect-Sheet.png",
+            frameWidth: 48,
+            frameHeight: 48,
+            frameCount: 8,
+            columns: 8,
+            fps: 14,
+            loop: true,
+            rotateWithVelocity: true,
+            anchorX: 0.5,
+            anchorY: 0.5,
+            drawWidth: 30,
+            drawHeight: 30
+          }
+        },
+        recover: 0.45,
+        cooldown: 3.8,
+        minRange: 72,
+        maxRange: 400,
+        weight: 0.8,
+        flags: { magic: true }
+      }
+    ]
+  },
+
   Banshee: {
     base: [
+      {
+        id: "banshee_wail_slash",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.48, color: "heavy" },
+        execute: { damage: 0.9, range: 130, arc: 88 },
+        recover: 0.3,
+        cooldown: 2.2,
+        minRange: 12,
+        maxRange: 105,
+        weight: 1,
+        flags: { heavy: true }
+      },
       {
         id: "banshee_scream",
         kind: "cone",
@@ -870,7 +932,7 @@ export const ENEMY_ATTACK_KITS = {
         cooldown: 3,
         minRange: 50,
         maxRange: 150,
-        weight: 1,
+        weight: 0.85,
         flags: { magic: true }
       }
     ],
@@ -1322,6 +1384,247 @@ export const ENEMY_ATTACK_KITS = {
         maxRange: 170,
         weight: 1,
         flags: { heavy: true }
+      }
+    ]
+  },
+
+  "Undead Brute": {
+    base: [
+      {
+        id: "ud_brute_downslash",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.58, color: "heavy" },
+        execute: {
+          damage: 1.12,
+          range: 220,
+          arc: 95,
+          // 0-based animation frame index (frame 7 == 8th frame) when to spawn the hitbox.
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.34,
+        cooldown: 2.15,
+        minRange: 35,
+        maxRange: 175,
+        weight: 1,
+        flags: { heavy: true },
+        rarity: "normal"
+      },
+      {
+        id: "ud_brute_upslash",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.58, color: "heavy" },
+        execute: {
+          damage: 1.12,
+          range: 210,
+          arc: 95,
+          // 0-based animation frame index (frame 7 == 8th frame) when to spawn the hitbox.
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.34,
+        cooldown: 2.15,
+        minRange: 35,
+        maxRange: 170,
+        weight: 1,
+        flags: { heavy: true },
+        rarity: "normal"
+      },
+      {
+        id: "ud_brute_cyclone_slash",
+        kind: "frame_synced_circle",
+        telegraph: { shape: "circle", windup: 0.48, color: "heavy" },
+        execute: {
+          damage: 1.05,
+          radius: 150,
+          totalFrames: 15,
+          animFps: 14,
+          hitFrames: [7, 10, 14]
+        },
+        recover: 0.4,
+        cooldown: 3.2,
+        minRange: 0,
+        maxRange: 185,
+        weight: 0.9,
+        flags: { heavy: true },
+        rarity: "uncommon"
+      },
+      {
+        id: "ud_brute_whirlwind",
+        kind: "whirlwind",
+        telegraph: { shape: "circle", windup: 0.52, color: "heavy" },
+        execute: {
+          damage: 1,
+          radius: 130,
+          circleDurationMs: 100,
+          hitboxTrigger: 4,
+          activeAnimDuration: 15 / 14,
+          animFps: 14,
+          burstCount: 3,
+          burstGap: 0.2,
+          bladeDamage: 0.9,
+          bladeSpeed: 400,
+          bladeSize: 14,
+          bladeColor: "#93c5fd",
+          useHitbox: true,
+          magicStyle: { preset: "lightningBolt" }
+        },
+        recover: 0.38,
+        cooldown: 4.5,
+        minRange: 0,
+        maxRange: 200,
+        weight: 0.85,
+        flags: { heavy: true },
+        rarity: "rare"
+      },
+      {
+        id: "ud_brute_groundslam",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 0.62, color: "heavy" },
+        execute: {
+          damage: 1.15,
+          radius: 165,
+          // 0-based animation frame index (frame 11 == 12th frame) when to spawn the hitbox.
+          hitboxTrigger: 11,
+          // Brute groundSlam strip is authored like the other 15f @ 14fps attacks.
+          activeAnimDuration: 15 / 14,
+          animFps: 14
+        },
+        recover: 0.38,
+        cooldown: 3.4,
+        minRange: 0,
+        maxRange: 140,
+        weight: 0.75,
+        flags: { heavy: true },
+        rarity: "rare"
+      },
+      {
+        id: "ud_brute_warcry",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 0.62, color: "heavy" },
+        execute: {
+          effect: "warcry",
+          radius: 300,
+          speedMult: 1.2,
+          buffDuration: 3,
+          // 0-based animation frame index (frame 7 == 8th frame) when to apply the buff.
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14,
+          animFps: 14
+        },
+        recover: 0.4,
+        cooldown: 8,
+        minRange: 0,
+        maxRange: 999,
+        weight: 0.35,
+        flags: { heavy: true },
+        rarity: "uncommon"
+      }
+    ]
+  },
+
+  "Undead Warrior": {
+    base: [
+      {
+        id: "ud_warrior_downslash",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.56, color: "heavy" },
+        execute: {
+          damage: 1.05,
+          range: 200,
+          arc: 92,
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.32,
+        cooldown: 2.05,
+        minRange: 30,
+        maxRange: 165,
+        weight: 1,
+        flags: { heavy: true },
+        rarity: "normal"
+      },
+      {
+        id: "ud_warrior_upslash",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.56, color: "heavy" },
+        execute: {
+          damage: 1.05,
+          range: 195,
+          arc: 92,
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.32,
+        cooldown: 2.05,
+        minRange: 30,
+        maxRange: 160,
+        weight: 1,
+        flags: { heavy: true },
+        rarity: "normal"
+      },
+      {
+        id: "ud_warrior_kick",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.42, color: "heavy" },
+        execute: {
+          damage: 0.72,
+          range: 108,
+          arc: 62,
+          knockback: 70,
+          hitboxTrigger: 6,
+          activeAnimDuration: 15 / 14,
+          animFps: 14
+        },
+        recover: 0.28,
+        cooldown: 2.35,
+        minRange: 0,
+        maxRange: 128,
+        weight: 0.92,
+        flags: { heavy: false },
+        rarity: "uncommon"
+      },
+      {
+        id: "ud_warrior_shield_bash",
+        kind: "whirlwind",
+        telegraph: { shape: "circle", windup: 0.48, color: "heavy" },
+        execute: {
+          damage: 0.95,
+          radius: 52,
+          circleDurationMs: 100,
+          hitboxTrigger: 6,
+          activeAnimDuration: 15 / 14,
+          animFps: 14,
+          burstCount: 2,
+          burstGap: 0.3,
+          omitBlade: true
+        },
+        recover: 0.35,
+        cooldown: 4.2,
+        minRange: 0,
+        maxRange: 155,
+        weight: 0.9,
+        flags: { heavy: true },
+        rarity: "uncommon"
+      },
+      {
+        id: "ud_warrior_groundslam",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 0.62, color: "heavy" },
+        execute: {
+          damage: 1.15,
+          radius: 165,
+          hitboxTrigger: 11,
+          activeAnimDuration: 15 / 14,
+          animFps: 14
+        },
+        recover: 0.38,
+        cooldown: 3.4,
+        minRange: 0,
+        maxRange: 140,
+        weight: 0.75,
+        flags: { heavy: true },
+        rarity: "rare"
       }
     ]
   },
