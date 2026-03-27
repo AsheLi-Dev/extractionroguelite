@@ -522,6 +522,9 @@ export const PLAYABLE_CHARACTERS = [
         attack2: 15,
         attack3: 15
       },
+      loopFrames: {
+        walk: 14
+      },
       attackStates: ['attack', 'attack2', 'attack3'],
       castStates: ['cast', 'cast2', 'cast3', 'cast4'],
       loopSequence: {

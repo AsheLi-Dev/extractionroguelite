@@ -39,16 +39,16 @@ const HIDDEN_ENEMY_SPAWN_IDS = new Set([
   "m_9d_cockatrice"
 ]);
 const TIER_MULTIPLIERS = {
-  minion: { hp: 0.5, atk: 1, xp: 0.7, size: 1.4 },
-  elite: { hp: 1, atk: 1.2, xp: 1.4, size: 1 },
-  miniBoss: { hp: 5, atk: 2, xp: 5, size: 1.2 },
+  minion: { hp: 0.5, atk: 1, xp: 0.7, size: 1.0 },
+  elite: { hp: 1, atk: 1.2, xp: 1.4, size: 1.2 },
+  miniBoss: { hp: 5, atk: 2, xp: 5, size: 1.4 },
   [SPECIAL_ENEMY_TIER]: { hp: 2.2, atk: 1.5, xp: 2.5, size: 1.08 }
 };
 
 /** Movement speed multiplier by size category: large -40%, medium -25%, small -15%. */
 function getSizeCategorySpeedMult(baseSize) {
   if (baseSize == null || baseSize <= 80) return 0.85; // small
-  if (baseSize > 100) return 0.6;  // large
+  if (baseSize > 100) return 0.8;  // large
   return 0.75; // medium
 }
 

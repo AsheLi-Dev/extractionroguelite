@@ -330,7 +330,7 @@ export function updateHitboxes(dt, world) {
 
     // IMPORTANT: call as a method to preserve `this` binding (Game.getTargetsByFaction uses `this.enemySystem`).
     if (typeof world?.getTargetsByFaction === 'function') {
-      const targets = world.getTargetsByFaction(h.faction);
+      const targets = world.getTargetsByFaction(h.faction, h);
       for (const target of targets) {
         if (!target || target.radius == null) continue;
         if (hitboxOverlapsTarget(h, target)) {

@@ -15,6 +15,7 @@ import {
   getTelegraphColor
 } from './telegraph-renderer.js';
 import { ENEMY_ATTACK_KITS } from './enemy-attack-kits.js';
+import { ENEMY_TYPES } from '../enemy.js';
 import { getAnimatedSpritePreset } from '../../vfx/animated-sprite-presets.js';
 
 function getConeAttackImpactAnimatedSprite(attackId, range) {
@@ -86,6 +87,19 @@ function getConeAttackImpactAnimatedSprite(attackId, range) {
       drawHeight: Math.max(40, drawHeight * 0.5)
     });
   }
+  if (attackId === 'ud_archer_kick') {
+    return getAnimatedSpritePreset('downwardSlash', {
+      drawWidth: Math.max(48, drawWidth * 0.55),
+      drawHeight: Math.max(40, drawHeight * 0.5)
+    });
+  }
+  if (attackId === 'ud_necromancer_dark_wave') {
+    return getAnimatedSpritePreset('darkSlash', {
+      drawWidth: Math.max(88, drawWidth * 0.95),
+      drawHeight: Math.max(72, drawHeight * 0.85),
+      baseAngleRad: Math.PI / 2
+    });
+  }
   return null;
 }
 
@@ -143,13 +157,35 @@ export class EnemyAttackController {
     /** For kind "projectile" windup: total telegraph duration and whether _execute already ran (spawn at mid-windup by default). */
     this._projectileWindupTotal = 0;
     this._projectileWindupExecuteDone = false;
+    this._sameStripConeCombo = null;
     /** Total windup duration for current windup phase (seconds). */
     this._windupTotal = 0;
     /** Windup cycle index that just transitioned to active (for sprite sync). */
     this._enteredActiveCycle = 0;
     /** Brute-sheet archetype: fixed-interval warcry schedule (see enemy.bruteSheetArchetype). */
     this._bruteNextWarcryAt = 0;
+    /** Game time (`game.time`) until ANY next attack may start; separate from per-attack cooldowns. */
+    this._globalAttackCooldownUntil = 0;
     this.availableAttacks = this._getAvailableAttacks();
+  }
+
+  /**
+   * Lockout after completing an attack (minion 4s, elite 3s, miniboss 1s). Main bosses skip.
+   */
+  _globalAttackCooldownSec() {
+    const e = this.enemy;
+    if (e?.isBoss || e?.enemyTier === "boss") return 0;
+    const raw = e?.enemyTier;
+    const t = raw === "miniboss" ? "miniBoss" : raw;
+    if (e?.isMiniBoss || t === "miniBoss") return 1;
+    if (e?.isElite || t === "elite" || t === "special") return 3;
+    return 4;
+  }
+
+  _applyGlobalAttackCooldown(game) {
+    const sec = this._globalAttackCooldownSec();
+    if (sec <= 0) return;
+    this._globalAttackCooldownUntil = (game?.time || 0) + sec;
   }
 
   _getAvailableAttacks() {
@@ -191,6 +227,10 @@ export class EnemyAttackController {
     if (e._undyingRespawnTime != null && (e._gameTime ?? 0) < e._undyingRespawnTime) return false;
     if (this.phaseUntil != null && (e._gameTime ?? 0) < this.phaseUntil) return false;
     if (this.regenChannelUntil != null && (e._gameTime ?? 0) < this.regenChannelUntil) return false;
+    if (e._arrowRainUntil != null && (e._gameTime ?? 0) < e._arrowRainUntil) return false;
+    if (e._fireThrowerUntil != null && (e._gameTime ?? 0) < e._fireThrowerUntil) return false;
+    if (e._earthquakeUntil != null && (e._gameTime ?? 0) < e._earthquakeUntil) return false;
+    if (e._volcanoEruptionUntil != null && (e._gameTime ?? 0) < e._volcanoEruptionUntil) return false;
     if ((e._monsterflyRecoverTimer || 0) > 0) return false;
     if (e.bruteSheetArchetype && e._bruteBurstMove) return false;
     if (e._attackRollState) return false;
@@ -201,6 +241,9 @@ export class EnemyAttackController {
   }
 
   _pickAttack(player, game) {
+    const now = game?.time || 0;
+    if (now < (this._globalAttackCooldownUntil || 0)) return null;
+
     const cx = this.enemy.position.x + this.enemy.size / 2;
     const cy = this.enemy.position.y + this.enemy.size / 2;
     const px = player.position.x + player.size / 2;
@@ -263,6 +306,15 @@ export class EnemyAttackController {
       this.targetSnapshot = null;
       enemy._whirlwindBurstState = null;
       enemy._whirlwindPulsePayload = null;
+      enemy._fireThrowerState = null;
+      enemy._fireThrowerUntil = null;
+      enemy._fireThrowerFreezeUntil = null;
+      enemy._fireWaveBackstep = null;
+      enemy._fireLeapState = null;
+      enemy._earthquakeState = null;
+      enemy._earthquakeUntil = null;
+      enemy._volcanoEruptionState = null;
+      enemy._volcanoEruptionUntil = null;
       this._pendingAnimationHitbox = null;
       this._projectileWindupTotal = 0;
       this._projectileWindupExecuteDone = false;
@@ -270,6 +322,7 @@ export class EnemyAttackController {
       this.dashTraveled = 0;
       this.dashTotalDist = 0;
       this.dashHitApplied = false;
+      this._globalAttackCooldownUntil = 0;
     }
 
     // Update cooldowns
@@ -284,6 +337,11 @@ export class EnemyAttackController {
     if (this.regenChannelUntil != null && game.time >= this.regenChannelUntil) this.regenChannelUntil = null;
     if (this.orbitingOrbsUntil != null && game.time >= this.orbitingOrbsUntil) this.orbitingOrbsUntil = null;
 
+    this._tickArrowRain(game);
+    this._tickFireThrower(game);
+    this._tickEarthquake(game);
+    this._tickVolcanoEruption(game);
+
     if (this.state === "idle") {
       if (!this.canAct()) return;
       if (!enemy.activated) return;
@@ -297,6 +355,9 @@ export class EnemyAttackController {
 
       const attack = this._pickAttack(player, game);
       if (attack) {
+        if (enemy?.enemyTypeId === "m_ud_dark_knight_3") {
+          console.log(`[DarkKnight Attack] ${attack.id}`);
+        }
         this.currentAttack = attack;
         this.state = "windup";
         this.timer = (attack.telegraph?.windup ?? 0.5) / (this.rageUntil && game.time < this.rageUntil ? 1.2 : 1);
@@ -307,6 +368,22 @@ export class EnemyAttackController {
         this._bruteNextWarcryAt = (game.time || 0) + cadence;
       }
         this.targetSnapshot = { x: px, y: py };
+        if (attack.id === "ud_wizard_fire_leap") {
+          const ex = enemy.position.x + enemy.size / 2;
+          const ey = enemy.position.y + enemy.size / 2;
+          const dx = px - ex;
+          const dy = py - ey;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          this._fireLeapDir = { x: dx / dist, y: dy / dist };
+          enemy._fireLeapState = {
+            active: true,
+            dirX: dx / dist,
+            dirY: dy / dist,
+            elapsed: 0,
+            duration: Math.max(0.01, Number(attack.telegraph?.windup) || 1.2),
+            distance: Math.max(0, Number(attack.execute?.leapDistance) || 240)
+          };
+        }
         const rawCombo = Number(attack.execute?.comboShots);
         this._comboShotTotal =
           Number.isFinite(rawCombo) && rawCombo > 1 ? Math.max(2, Math.floor(rawCombo)) : 1;
@@ -327,6 +404,14 @@ export class EnemyAttackController {
     }
 
     if (this.state === "windup") {
+      if (enemy._fireLeapState?.active && this.currentAttack?.id === "ud_wizard_fire_leap") {
+        const st = enemy._fireLeapState;
+        const dur = Math.max(0.01, Number(st.duration) || 1.2);
+        const speed = (Math.max(0, Number(st.distance) || 240) / dur) || 0;
+        enemy.position.x += (Number(st.dirX) || 0) * speed * dt;
+        enemy.position.y += (Number(st.dirY) || 0) * speed * dt;
+        st.elapsed = (Number(st.elapsed) || 0) + dt;
+      }
       if (this.currentAttack?.kind === "projectile" && this.timer > 0.2 && this.timer - dt <= 0.2) {
         const px = player.position.x + player.size / 2;
         const py = player.position.y + player.size / 2;
@@ -338,15 +423,22 @@ export class EnemyAttackController {
         this._projectileWindupTotal > 0 &&
         !this._projectileWindupExecuteDone
       ) {
-        const rawT = Number(this.currentAttack.execute?.projectileSpawnWindupT);
-        const spawnT = Number.isFinite(rawT) ? Math.max(0, Math.min(1, rawT)) : 0.5;
-        const threshold = this._projectileWindupTotal * (1 - spawnT);
-        if (this.timer <= threshold + 1e-6) {
-          const px = player.position.x + player.size / 2;
-          const py = player.position.y + player.size / 2;
-          this.targetSnapshot = { x: px, y: py };
-          this._execute(game);
-          this._projectileWindupExecuteDone = true;
+        const execEarly = this.currentAttack.execute || {};
+        const deferToAnimTrigger =
+          execEarly.hitboxTrigger != null &&
+          Number.isInteger(Number(execEarly.hitboxTrigger)) &&
+          execEarly.projectileSpawnWindupT == null;
+        if (!deferToAnimTrigger) {
+          const rawT = Number(this.currentAttack.execute?.projectileSpawnWindupT);
+          const spawnT = Number.isFinite(rawT) ? Math.max(0, Math.min(1, rawT)) : 0.5;
+          const threshold = this._projectileWindupTotal * (1 - spawnT);
+          if (this.timer <= threshold + 1e-6) {
+            const px = player.position.x + player.size / 2;
+            const py = player.position.y + player.size / 2;
+            this.targetSnapshot = { x: px, y: py };
+            this._execute(game);
+            this._projectileWindupExecuteDone = true;
+          }
         }
       }
       if (this.timer <= 0) {
@@ -358,8 +450,19 @@ export class EnemyAttackController {
           hitboxTriggerRaw == null || !Number.isFinite(Number(hitboxTriggerRaw))
             ? null
             : Math.floor(Number(hitboxTriggerRaw));
+        const animFrameProjectile =
+          a?.kind === "projectile" &&
+          hitboxTrigger != null &&
+          hitboxTrigger >= 0 &&
+          hitboxTriggerRaw != null &&
+          Number.isInteger(Number(hitboxTriggerRaw)) &&
+          exec?.projectileSpawnWindupT == null;
         const shouldDelayAnimationHitbox =
-          (a?.kind === "cone" || a?.kind === "circle" || a?.kind === "whirlwind") &&
+          (a?.kind === "cone" ||
+            a?.kind === "circle" ||
+            a?.kind === "whirlwind" ||
+            a?.kind === "summon" ||
+            animFrameProjectile) &&
           hitboxTrigger != null &&
           hitboxTrigger >= 0 &&
           hitboxTriggerRaw != null &&
@@ -370,6 +473,9 @@ export class EnemyAttackController {
         } else if (!(a?.kind === "projectile" && this._projectileWindupExecuteDone)) {
           this._execute(game);
         }
+        if (a?.id === "ud_wizard_fire_leap" && enemy._fireLeapState) {
+          enemy._fireLeapState.active = false;
+        }
         this.state = "active";
         this._enteredActiveCycle = this._attackWindupCycle ?? 0;
         this.timer = this._activeDurationOverride ?? 0.05;
@@ -379,10 +485,24 @@ export class EnemyAttackController {
     }
 
     if (this.state === "active") {
+      this._tickSameStripConeCombo(game);
       if (this.currentAttack?.kind === "frame_synced_circle" && enemy._frameSyncedCircleHits) {
         this._tickFrameSyncedCircleHits(game);
       }
       this._tickWhirlwindScheduledBursts(game);
+      const fireWave = enemy._fireWaveBackstep;
+      if (fireWave) {
+        const mv = Math.max(0, Number(fireWave.speed) || 0);
+        const dur = Math.max(0.001, Number(fireWave.duration) || 0.5);
+        fireWave.elapsed = (Number(fireWave.elapsed) || 0) + dt;
+        const dirX = Number(fireWave.dirX) || 0;
+        const dirY = Number(fireWave.dirY) || 0;
+        enemy.position.x += dirX * mv * dt;
+        enemy.position.y += dirY * mv * dt;
+        if (fireWave.elapsed >= dur) {
+          enemy._fireWaveBackstep = null;
+        }
+      }
       const backstep = enemy._attackBackstepChainState;
       if (backstep) {
         if (this.timer > 0.5) {
@@ -409,6 +529,7 @@ export class EnemyAttackController {
       if (this.timer <= 0) {
         // Clear pending hitbox when leaving active.
         this._pendingAnimationHitbox = null;
+        this._sameStripConeCombo = null;
         if (enemy._frameSyncedCircleHits) {
           enemy._frameSyncedCircleHits = null;
         }
@@ -417,28 +538,47 @@ export class EnemyAttackController {
         this._comboShotsCompleted++;
         const total = Math.max(1, Math.floor(Number(this._comboShotTotal) || 1));
         if (this._comboShotsCompleted < total) {
-          this._attackWindupCycle = (this._attackWindupCycle ?? 0) + 1;
-          this.state = "windup";
-          this.timer = (this.currentAttack.telegraph?.windup ?? 0.5) / (this.rageUntil && game.time < this.rageUntil ? 1.2 : 1);
-          this._windupTotal = this.timer;
-          if (this.currentAttack?.kind === "projectile") {
-            this._projectileWindupTotal = this.timer;
-            this._projectileWindupExecuteDone = false;
-          }
-          if (game.player) {
-            const px = game.player.position.x + game.player.size / 2;
-            const py = game.player.position.y + game.player.size / 2;
-            this.targetSnapshot = { x: px, y: py };
+          if (this.currentAttack?.execute?.comboNoWindup === true) {
+            // Continue combo swings immediately after active ends (no extra windup).
+            if (game.player) {
+              const px = game.player.position.x + game.player.size / 2;
+              const py = game.player.position.y + game.player.size / 2;
+              this.targetSnapshot = { x: px, y: py };
+            }
+            this._execute(game);
+            this.state = "active";
+            this.timer = this._activeDurationOverride ?? 0.05;
+            this._activeDurationOverride = null;
+          } else {
+            this._attackWindupCycle = (this._attackWindupCycle ?? 0) + 1;
+            this.state = "windup";
+            this.timer = (this.currentAttack.telegraph?.windup ?? 0.5) / (this.rageUntil && game.time < this.rageUntil ? 1.2 : 1);
+            this._windupTotal = this.timer;
+            if (this.currentAttack?.kind === "projectile") {
+              this._projectileWindupTotal = this.timer;
+              this._projectileWindupExecuteDone = false;
+            }
+            if (game.player) {
+              const px = game.player.position.x + game.player.size / 2;
+              const py = game.player.position.y + game.player.size / 2;
+              this.targetSnapshot = { x: px, y: py };
+            }
           }
         } else {
-          this.state = "recover";
-          const recoverTime = this.currentAttack?.execute?.chainRecover ?? this.currentAttack?.recover ?? 0.2;
-          this.timer = recoverTime * (this.attackScale > 1.2 ? 0.9 : 1);
+          const recoverTime = 0;
           this.cooldowns[this.currentAttack.id] = (this.currentAttack.cooldown ?? 1.5) * (this.rageUntil && game.time < this.rageUntil ? 0.7 : 1);
-          this.recoveringAttackId = this.currentAttack?.id ?? null;
+          this.recoveringAttackId = null;
           this.currentAttack = null;
           this._comboShotsCompleted = 0;
           this._comboShotTotal = 1;
+          this._applyGlobalAttackCooldown(game);
+          if (recoverTime > 0) {
+            this.state = "recover";
+            this.timer = recoverTime;
+          } else {
+            this.state = "idle";
+            this.timer = 0;
+          }
         }
       }
       return;
@@ -457,7 +597,15 @@ export class EnemyAttackController {
     const enemy = this.enemy;
     const a = this.currentAttack;
     const exec = a?.execute || {};
-    if (!a || (a.kind !== "cone" && a.kind !== "circle" && a.kind !== "whirlwind")) return;
+    if (
+      !a ||
+      (a.kind !== "cone" &&
+        a.kind !== "circle" &&
+        a.kind !== "whirlwind" &&
+        a.kind !== "summon" &&
+        a.kind !== "projectile")
+    )
+      return;
 
     const player = game.player;
     const ex = enemy.position.x + enemy.size / 2;
@@ -487,6 +635,10 @@ export class EnemyAttackController {
     const trigger = Math.max(0, Math.min(totalFrames - 1, Math.floor(Number(hitboxTrigger) || 0)));
     const remainingFrames = Math.max(1, totalFrames - trigger);
     this._activeDurationOverride = Math.max(0.06, remainingFrames / animFps);
+    if (exec?.effect === "fire_thrower") {
+      const dur = Math.max(0.01, Number(exec.fireThrowerDurationSec) || 2.0);
+      this._activeDurationOverride = Math.max(0.06, dur + remainingFrames / animFps);
+    }
 
     let payload = null;
     if (a.kind === "cone") {
@@ -534,6 +686,28 @@ export class EnemyAttackController {
         circleDurationMs: Math.max(1, Number(exec?.circleDurationMs) || 100),
         attack: a
       };
+    } else if (a.kind === "summon") {
+      payload = {
+        kind: "summon",
+        attackId: a.id,
+        ex,
+        ey,
+        dirX,
+        dirY,
+        attack: a
+      };
+    } else if (a.kind === "projectile") {
+      payload = {
+        kind: "projectile",
+        attackId: a.id,
+        ex,
+        ey,
+        dirX,
+        dirY,
+        dirAngle,
+        baseDmg,
+        attack: a
+      };
     }
     if (!payload) return;
 
@@ -570,6 +744,106 @@ export class EnemyAttackController {
     const player = game.player;
     if (!payload) return;
     const k = payload.kind;
+    if (k === "summon") {
+      const a = payload.attack;
+      const exec = a?.execute || {};
+      const spawnType = exec.spawnType ?? "m_3a_small_slime";
+      const count = Math.max(1, Math.floor(Number(exec.count ?? exec.spawnCount) || 1));
+      const ex = payload.ex;
+      const ey = payload.ey;
+      const dirX = payload.dirX;
+      const dirY = payload.dirY;
+      if (typeof game.spawnEnemyMinion !== "function") return;
+      const delayedSummon = exec.hitboxTrigger != null && Number.isInteger(Number(exec.hitboxTrigger));
+      const forwardDist = Number.isFinite(Number(exec.spawnForward)) ? Number(exec.spawnForward) : 260;
+      if (delayedSummon && count === 1 && exec.spawnRing !== true) {
+        const typeDef = ENEMY_TYPES.find((t) => t.id === spawnType) || ENEMY_TYPES[0];
+        const sz = Math.max(16, Number(typeDef?.size) || 160);
+        const cx = ex + dirX * forwardDist;
+        const cy = ey + dirY * forwardDist;
+        game.spawnEnemyMinion(cx - sz / 2, cy - sz / 2, spawnType);
+      } else {
+        for (let i = 0; i < count; i++) {
+          const angle = (i / count) * Math.PI * 2 + Math.random() * 0.5;
+          const off = 40 + Math.random() * 30;
+          const sx = ex + Math.cos(angle) * off - 43;
+          const sy = ey + Math.sin(angle) * off - 43;
+          game.spawnEnemyMinion(sx, sy, spawnType);
+        }
+      }
+      return;
+    }
+    if (k === "projectile") {
+      const a = payload.attack;
+      const exec = a?.execute || {};
+      const ex = payload.ex;
+      const ey = payload.ey;
+      const dirAngle = payload.dirAngle;
+      const baseDmg = payload.baseDmg;
+      const speed = (exec.speed ?? 280) * (this.attackScale > 1.2 ? 1.1 : 1);
+      const size = exec.size ?? 12;
+      const color = exec.color ?? "#a855f7";
+      const useHitbox = exec.useHitbox === true && typeof game.spawnEnemyProjectileHitbox === "function";
+      const random360 = exec.random360 === true;
+      const burstCount = Math.max(1, Math.floor(Number(exec.count ?? 1) || 1));
+      if (random360) {
+        for (let i = 0; i < burstCount; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          if (useHitbox) {
+            game.spawnEnemyProjectileHitbox(ex, ey, Math.cos(ang), Math.sin(ang), baseDmg, a.execute, enemy);
+          } else if (typeof game.spawnEnemyProjectile === "function") {
+            game.spawnEnemyProjectile(
+              ex,
+              ey,
+              Math.cos(ang) * speed,
+              Math.sin(ang) * speed,
+              baseDmg,
+              size,
+              color,
+              a.execute,
+              enemy
+            );
+          }
+        }
+        return;
+      }
+      if (exec.effect === "fire_wave") {
+        const backstepSpeed = Math.max(0, Number(exec.backstepSpeed) || 400);
+        const backstepDuration = Math.max(0.01, Number(exec.backstepDuration) || 0.5);
+        // Move opposite the shot direction starting on the spawn tick.
+        enemy._fireWaveBackstep = {
+          dirX: -Math.cos(dirAngle),
+          dirY: -Math.sin(dirAngle),
+          speed: backstepSpeed,
+          duration: backstepDuration,
+          elapsed: 0
+        };
+      }
+      if (useHitbox) {
+        game.spawnEnemyProjectileHitbox(
+          ex,
+          ey,
+          Math.cos(dirAngle),
+          Math.sin(dirAngle),
+          baseDmg,
+          a.execute,
+          enemy
+        );
+      } else if (typeof game.spawnEnemyProjectile === "function") {
+        game.spawnEnemyProjectile(
+          ex,
+          ey,
+          Math.cos(dirAngle) * speed,
+          Math.sin(dirAngle) * speed,
+          baseDmg,
+          size,
+          color,
+          a.execute,
+          enemy
+        );
+      }
+      return;
+    }
     if (k === "cone") {
       const attackId = payload.attackId;
       const ex = payload.ex;
@@ -582,6 +856,41 @@ export class EnemyAttackController {
       const arcRad = payload.arcRad;
       const baseDmg = payload.baseDmg;
       const a = payload.attack;
+      const effect = a?.execute?.effect;
+
+      if (effect === "fire_thrower") {
+        const intervalSec = Math.max(0.01, Number(a?.execute?.fireThrowerIntervalSec) || 0.2);
+        const durationSec = Math.max(0.01, Number(a?.execute?.fireThrowerDurationSec) || 2.0);
+        const pulses = Math.max(1, Math.ceil(durationSec / intervalSec));
+
+        // Freeze the strike sheet on trigger frame during the thrower duration (handled in Enemy sprite FSM).
+        enemy._fireThrowerFreezeUntil = (game.time || 0) + durationSec;
+
+        if (typeof game.spawnEnemyConeHitbox === "function") {
+          game.spawnEnemyConeHitbox(enemy, ex, ey, dirX, dirY, range, arc, baseDmg, attackId);
+          this._applyDebuffs(game, a);
+        }
+
+        const startAt = game.time || 0;
+        enemy._fireThrowerState = {
+          remainingPulses: pulses - 1,
+          nextAt: startAt + intervalSec,
+          intervalSec,
+          untilAt: startAt + durationSec,
+          ex,
+          ey,
+          dirX,
+          dirY,
+          dirAngle,
+          range,
+          arc,
+          arcRad,
+          baseDmg,
+          attackId
+        };
+        enemy._fireThrowerUntil = enemy._fireThrowerState.untilAt;
+        return;
+      }
 
       const coneImpactSprite = getConeAttackImpactAnimatedSprite(attackId, range);
       if (coneImpactSprite && Array.isArray(game.skillEffects)) {
@@ -631,9 +940,249 @@ export class EnemyAttackController {
       const a = payload.attack;
       const effect = a?.execute?.effect;
 
+      if (effect === "fire_cleanse") {
+        // Small self-centered hit + flat heal.
+        const healFlat = Math.max(0, Math.floor(Number(a?.execute?.healFlat) || 50));
+        if (healFlat > 0 && Number.isFinite(enemy.health) && Number.isFinite(enemy.maxHealth)) {
+          enemy.health = Math.min(enemy.maxHealth, enemy.health + healFlat);
+        }
+        const vfx = getAnimatedSpritePreset(a?.execute?.impactVfxPreset || "smokeBurstSoft", {
+          drawWidth: Math.max(56, r * 2.2),
+          drawHeight: Math.max(56, r * 2.2)
+        });
+        if (vfx && Array.isArray(game.skillEffects)) {
+          game.skillEffects.push({
+            type: "animatedSpriteImpact",
+            x: impactX,
+            y: impactY,
+            t: 0,
+            animatedSprite: vfx
+          });
+        }
+        if (typeof game.spawnEnemyCircleHitbox === "function") {
+          game.spawnEnemyCircleHitbox(enemy, impactX, impactY, r, baseDmg, attackId);
+          this._applyDebuffs(game, a);
+        } else if (player) {
+          const px = player.position.x + player.size / 2;
+          const py = player.position.y + player.size / 2;
+          if ((px - impactX) ** 2 + (py - impactY) ** 2 <= r * r) {
+            game.onPlayerDamaged(baseDmg, true);
+            game.lastDamagingEnemy = enemy;
+            this._applyDebuffs(game, a);
+          }
+        }
+        return;
+      }
+
+      if (effect === "necro_explosion_burst") {
+        if (typeof game.spawnEnemyCircleHitbox === "function") {
+          game.spawnEnemyCircleHitbox(enemy, impactX, impactY, r, baseDmg, attackId);
+        } else if (player) {
+          const px = player.position.x + player.size / 2;
+          const py = player.position.y + player.size / 2;
+          if ((px - impactX) ** 2 + (py - impactY) ** 2 <= r * r) {
+            game.onPlayerDamaged(baseDmg, true);
+            game.lastDamagingEnemy = enemy;
+          }
+        }
+
+        const count = Math.max(1, Math.floor(Number(a?.execute?.burstProjectileCount) || 8));
+        const speed = Math.max(80, Number(a?.execute?.burstProjectileSpeed) || 280);
+        const projSize = Math.max(4, Number(a?.execute?.burstProjectileSize) || 12);
+        const projColor = a?.execute?.burstProjectileColor ?? "#7c3aed";
+        const useHitbox = a?.execute?.burstUseHitbox !== false && typeof game.spawnEnemyProjectileHitbox === "function";
+        const projExec = {
+          ...(a?.execute || {}),
+          speed,
+          size: projSize,
+          color: projColor,
+          useHitbox,
+          hitboxTrigger: undefined,
+          projectileSpawnWindupT: undefined
+        };
+        for (let i = 0; i < count; i++) {
+          const ang = (i / count) * Math.PI * 2;
+          const dirX = Math.cos(ang);
+          const dirY = Math.sin(ang);
+          if (useHitbox) {
+            game.spawnEnemyProjectileHitbox(impactX, impactY, dirX, dirY, baseDmg, projExec, enemy);
+          } else if (typeof game.spawnEnemyProjectile === "function") {
+            game.spawnEnemyProjectile(
+              impactX,
+              impactY,
+              dirX * speed,
+              dirY * speed,
+              baseDmg,
+              projSize,
+              projColor,
+              projExec,
+              enemy
+            );
+          }
+        }
+        this._applyDebuffs(game, a);
+        return;
+      }
+
+      if (effect === "darkfire_pillar") {
+        const n = Math.max(1, Math.floor(Number(a?.execute?.pillarCount) || 5));
+        const ring = Math.max(8, Number(a?.execute?.pillarRingOffset) || 72);
+        const pr = Math.max(4, Number(a?.execute?.pillarHitRadius) || 28);
+        const durMs = Math.max(1, Math.round(Number(a?.execute?.pillarDurationMs) || 140));
+        const multRaw = Number(a?.execute?.pillarDamageMult);
+        const mult = Number.isFinite(multRaw) && multRaw > 0 ? multRaw : 0.35;
+        const dmgEach = Math.max(1, Math.round(baseDmg * mult));
+        const vfxId = a?.execute?.pillarImpactVfxPreset || "soulSiphonSpiritFireballImpact";
+        const vfxCfg = getAnimatedSpritePreset(vfxId, a?.execute?.pillarImpactVfxOverrides || null);
+        for (let i = 0; i < n; i++) {
+          const ang = (i / n) * Math.PI * 2;
+          const px = impactX + Math.cos(ang) * ring;
+          const py = impactY + Math.sin(ang) * ring;
+          if (vfxCfg && Array.isArray(game.skillEffects)) {
+            game.skillEffects.push({
+              type: "animatedSpriteImpact",
+              x: px,
+              y: py,
+              t: 0,
+              animatedSprite: { ...vfxCfg }
+            });
+          }
+          if (typeof game.spawnEnemyCircleHitbox === "function") {
+            game.spawnEnemyCircleHitbox(enemy, px, py, pr, dmgEach, attackId, { durationMs: durMs });
+          } else if (player) {
+            const pcx = player.position.x + player.size / 2;
+            const pcy = player.position.y + player.size / 2;
+            if ((pcx - px) ** 2 + (pcy - py) ** 2 <= pr * pr) {
+              game.onPlayerDamaged(dmgEach, true);
+              game.lastDamagingEnemy = enemy;
+            }
+          }
+        }
+        this._applyDebuffs(game, a);
+        return;
+      }
+
+      if (effect === "arrow_rain") {
+        const intervalSec = Math.max(0.01, Number(a?.execute?.rainIntervalSec) || 0.2);
+        const durationSec = Math.max(0.01, Number(a?.execute?.rainDurationSec) || 2.0);
+        const pulses = Math.max(1, Math.ceil(durationSec / intervalSec));
+        const pulseDurationMs = Math.max(1, Math.round(intervalSec * 1000));
+
+        // First pulse happens immediately on the animation hitbox trigger frame.
+        const px = impactX;
+        const py = impactY;
+        if (typeof game.spawnEnemyCircleHitbox !== "function") return;
+        game.spawnEnemyCircleHitbox(enemy, px, py, r, baseDmg, attackId, { durationMs: pulseDurationMs });
+
+        this._applyDebuffs(game, a);
+
+        const startAt = game.time || 0;
+        enemy._arrowRainState = {
+          remainingPulses: pulses - 1,
+          nextAt: startAt + intervalSec,
+          intervalSec,
+          untilAt: startAt + durationSec,
+          centerX: px,
+          centerY: py,
+          radius: r,
+          baseDmg,
+          attackId,
+          pulseDurationMs
+        };
+        enemy._arrowRainUntil = enemy._arrowRainState.untilAt;
+        return;
+      }
+
+      if (effect === "earthquake") {
+        if (typeof game.spawnEnemyCircleHitbox !== "function") return;
+        const gapSec = Math.max(0.01, Number(a?.execute?.earthquakeGapSec) || 0.3);
+        const radii = Array.isArray(a?.execute?.earthquakeRadii)
+          ? a.execute.earthquakeRadii
+              .map((v) => Math.max(4, Number(v) || 0))
+              .filter((v) => Number.isFinite(v) && v > 0)
+          : [50, 100, 150];
+        const pulseDurationMs = Math.max(1, Math.round(Number(a?.execute?.earthquakePulseDurationMs) || 140));
+        const vfxPreset = a?.execute?.earthquakeImpactVfxPreset || "smokeBurstRing";
+        const spawnWave = (waveRadius) => {
+          const exNow = enemy.position.x + enemy.size / 2;
+          const eyNow = enemy.position.y + enemy.size / 2;
+          if (Array.isArray(game.skillEffects)) {
+            const vfxCfg = getAnimatedSpritePreset(vfxPreset, {
+              drawWidth: Math.max(64, waveRadius * 2.2),
+              drawHeight: Math.max(64, waveRadius * 2.2)
+            });
+            if (vfxCfg) {
+              game.skillEffects.push({
+                type: "animatedSpriteImpact",
+                x: exNow,
+                y: eyNow,
+                t: 0,
+                animatedSprite: vfxCfg
+              });
+            }
+          }
+          game.spawnEnemyCircleHitbox(enemy, exNow, eyNow, waveRadius, baseDmg, attackId, { durationMs: pulseDurationMs });
+        };
+
+        spawnWave(radii[0] || 50);
+        this._applyDebuffs(game, a);
+
+        const startAt = game.time || 0;
+        enemy._earthquakeState = {
+          radii,
+          nextIndex: 1,
+          nextAt: startAt + gapSec,
+          gapSec,
+          untilAt: startAt + gapSec * Math.max(0, radii.length - 1),
+          baseDmg,
+          attackId,
+          pulseDurationMs,
+          vfxPreset
+        };
+        enemy._earthquakeUntil = enemy._earthquakeState.untilAt;
+        return;
+      }
+
+      if (effect === "volcano_eruption") {
+        const hits = Math.max(1, Math.floor(Number(a?.execute?.eruptionHits) || 10));
+        const gapSec = Math.max(0.001, Number(a?.execute?.eruptionGapSec) || 0.05);
+        const spawnRadius = Math.max(0, Number(a?.execute?.eruptionSpawnRadius) || 400);
+        const pulseDurationMs = Math.max(1, Math.round(Number(a?.execute?.eruptionPulseDurationMs) || 120));
+        if (typeof game.spawnEnemyCircleHitbox !== "function") return;
+        const spawnOne = () => {
+          const exNow = enemy.position.x + enemy.size / 2;
+          const eyNow = enemy.position.y + enemy.size / 2;
+          const ang = Math.random() * Math.PI * 2;
+          const rr = Math.sqrt(Math.random()) * spawnRadius;
+          const px = exNow + Math.cos(ang) * rr;
+          const py = eyNow + Math.sin(ang) * rr;
+          game.spawnEnemyCircleHitbox(enemy, px, py, r, baseDmg, attackId, { durationMs: pulseDurationMs });
+        };
+
+        // First hit lands on trigger frame; remaining hits are scheduled.
+        spawnOne();
+        this._applyDebuffs(game, a);
+
+        const startAt = game.time || 0;
+        enemy._volcanoEruptionState = {
+          remainingHits: hits - 1,
+          nextAt: startAt + gapSec,
+          gapSec,
+          untilAt: startAt + gapSec * Math.max(0, hits - 1),
+          radius: r,
+          baseDmg,
+          attackId,
+          pulseDurationMs,
+          spawnRadius
+        };
+        enemy._volcanoEruptionUntil = enemy._volcanoEruptionState.untilAt;
+        return;
+      }
+
       if (effect === "warcry") {
         const speedMult = Math.max(0, Number(a?.execute?.speedMult) || 1.2);
         const buffDuration = Math.max(0, Number(a?.execute?.buffDuration) || 3);
+        const healAmount = Math.max(0, Number(a?.execute?.healAmount) || 20);
         if (game?.enemySystem?.enemies && Array.isArray(game.enemySystem.enemies)) {
           const src = enemy;
           const sx = src.position.x + src.size / 2;
@@ -648,6 +1197,9 @@ export class EnemyAttackController {
               other._warcrySpeedUntil = Math.max(Number(other._warcrySpeedUntil) || 0, until);
               // (speedMult is currently fixed at 1.2 via Enemy.update; keep values in sync.)
               other._warcrySpeedMult = speedMult;
+              if (healAmount > 0 && Number.isFinite(other.health) && Number.isFinite(other.maxHealth)) {
+                other.health = Math.min(other.maxHealth, other.health + healAmount);
+              }
             }
           }
         }
@@ -785,6 +1337,157 @@ export class EnemyAttackController {
     }
   }
 
+  _tickArrowRain(game) {
+    const enemy = this.enemy;
+    const st = enemy._arrowRainState;
+    if (!st) return;
+    if (enemy?.isDead) {
+      enemy._arrowRainState = null;
+      enemy._arrowRainUntil = null;
+      return;
+    }
+    if (typeof game.spawnEnemyCircleHitbox !== "function") return;
+
+    const now = game.time || 0;
+    const intervalSec = Math.max(0.01, Number(st.intervalSec) || 0.2);
+    const pulseDurationMs = Math.max(1, Number(st.pulseDurationMs) || Math.round(intervalSec * 1000));
+
+    // Spawn multiple pulses if dt skips ahead.
+    while (st.remainingPulses > 0 && now >= st.nextAt) {
+      const px = st.centerX;
+      const py = st.centerY;
+      game.spawnEnemyCircleHitbox(
+        enemy,
+        px,
+        py,
+        st.radius,
+        st.baseDmg,
+        st.attackId,
+        { durationMs: pulseDurationMs }
+      );
+      st.remainingPulses--;
+      st.nextAt += intervalSec;
+    }
+
+    if (st.remainingPulses <= 0 || (Number.isFinite(st.untilAt) && now >= st.untilAt)) {
+      enemy._arrowRainState = null;
+      enemy._arrowRainUntil = null;
+    }
+  }
+
+  _tickFireThrower(game) {
+    const enemy = this.enemy;
+    const st = enemy._fireThrowerState;
+    if (!st) return;
+    if (enemy?.isDead) {
+      enemy._fireThrowerState = null;
+      enemy._fireThrowerUntil = null;
+      enemy._fireThrowerFreezeUntil = null;
+      return;
+    }
+    if (typeof game.spawnEnemyConeHitbox !== "function") return;
+
+    const now = game.time || 0;
+    const intervalSec = Math.max(0.01, Number(st.intervalSec) || 0.2);
+
+    while (st.remainingPulses > 0 && now >= st.nextAt) {
+      game.spawnEnemyConeHitbox(enemy, st.ex, st.ey, st.dirX, st.dirY, st.range, st.arc, st.baseDmg, st.attackId);
+      // (Debuffs for this kit are fine to apply repeatedly; this matches other repeated-hit patterns.)
+      const a = this.currentAttack;
+      if (a && a.id === st.attackId) this._applyDebuffs(game, a);
+      st.remainingPulses--;
+      st.nextAt += intervalSec;
+    }
+
+    if (st.remainingPulses <= 0 || (Number.isFinite(st.untilAt) && now >= st.untilAt)) {
+      enemy._fireThrowerState = null;
+      enemy._fireThrowerUntil = null;
+      // Keep freezeUntil as-is; sprite FSM will unfreeze based on time.
+    }
+  }
+
+  _tickEarthquake(game) {
+    const enemy = this.enemy;
+    const st = enemy._earthquakeState;
+    if (!st) return;
+    if (enemy?.isDead) {
+      enemy._earthquakeState = null;
+      enemy._earthquakeUntil = null;
+      return;
+    }
+    if (typeof game.spawnEnemyCircleHitbox !== "function") return;
+
+    const now = game.time || 0;
+    const gapSec = Math.max(0.01, Number(st.gapSec) || 0.3);
+    const pulseDurationMs = Math.max(1, Number(st.pulseDurationMs) || 140);
+    while (st.nextIndex < st.radii.length && now >= st.nextAt) {
+      const waveRadius = Math.max(4, Number(st.radii[st.nextIndex]) || 4);
+      const exNow = enemy.position.x + enemy.size / 2;
+      const eyNow = enemy.position.y + enemy.size / 2;
+      if (Array.isArray(game.skillEffects)) {
+        const vfxCfg = getAnimatedSpritePreset(st.vfxPreset || "smokeBurstRing", {
+          drawWidth: Math.max(64, waveRadius * 2.2),
+          drawHeight: Math.max(64, waveRadius * 2.2)
+        });
+        if (vfxCfg) {
+          game.skillEffects.push({
+            type: "animatedSpriteImpact",
+            x: exNow,
+            y: eyNow,
+            t: 0,
+            animatedSprite: vfxCfg
+          });
+        }
+      }
+      game.spawnEnemyCircleHitbox(enemy, exNow, eyNow, waveRadius, st.baseDmg, st.attackId, {
+        durationMs: pulseDurationMs
+      });
+      st.nextIndex++;
+      st.nextAt += gapSec;
+    }
+
+    if (st.nextIndex >= st.radii.length || (Number.isFinite(st.untilAt) && now >= st.untilAt + gapSec)) {
+      enemy._earthquakeState = null;
+      enemy._earthquakeUntil = null;
+    }
+  }
+
+  _tickVolcanoEruption(game) {
+    const enemy = this.enemy;
+    const st = enemy._volcanoEruptionState;
+    if (!st) return;
+    if (enemy?.isDead) {
+      enemy._volcanoEruptionState = null;
+      enemy._volcanoEruptionUntil = null;
+      return;
+    }
+    if (typeof game.spawnEnemyCircleHitbox !== "function") return;
+
+    const now = game.time || 0;
+    const gapSec = Math.max(0.001, Number(st.gapSec) || 0.05);
+    const pulseDurationMs = Math.max(1, Number(st.pulseDurationMs) || 120);
+    const spawnRadius = Math.max(0, Number(st.spawnRadius) || 400);
+
+    while (st.remainingHits > 0 && now >= st.nextAt) {
+      const exNow = enemy.position.x + enemy.size / 2;
+      const eyNow = enemy.position.y + enemy.size / 2;
+      const ang = Math.random() * Math.PI * 2;
+      const rr = Math.sqrt(Math.random()) * spawnRadius;
+      const px = exNow + Math.cos(ang) * rr;
+      const py = eyNow + Math.sin(ang) * rr;
+      game.spawnEnemyCircleHitbox(enemy, px, py, st.radius, st.baseDmg, st.attackId, {
+        durationMs: pulseDurationMs
+      });
+      st.remainingHits--;
+      st.nextAt += gapSec;
+    }
+
+    if (st.remainingHits <= 0 || (Number.isFinite(st.untilAt) && now >= st.untilAt + gapSec)) {
+      enemy._volcanoEruptionState = null;
+      enemy._volcanoEruptionUntil = null;
+    }
+  }
+
   _execute(game) {
     const a = this.currentAttack;
     const enemy = this.enemy;
@@ -908,6 +1611,57 @@ export class EnemyAttackController {
           const animDur = Number(a.execute?.activeAnimDuration);
           if (Number.isFinite(animDur) && animDur > 0) {
             this._activeDurationOverride = Math.max(0.06, animDur);
+          }
+        }
+        {
+          const projDelay = Number(a.execute?.followupProjectileDelay);
+          if (
+            Number.isFinite(projDelay) &&
+            projDelay >= 0 &&
+            typeof game.addDelayedEnemyProjectile === "function"
+          ) {
+            const projSpeed = Math.max(40, Number(a.execute?.followupProjectileSpeed) || 240);
+            const projDamage = Math.max(1, Math.round(Number(a.execute?.followupProjectileDamage) || baseDmg));
+            const projSize = Math.max(8, Number(a.execute?.followupProjectileSize) || 28);
+            const projColor = a.execute?.followupProjectileColor || "#94a3b8";
+            const projOpts = {
+              speed: projSpeed,
+              size: projSize,
+              color: projColor,
+              useHitbox: true
+            };
+            game.addDelayedEnemyProjectile(
+              (game.time || 0) + projDelay,
+              ex,
+              ey,
+              dirX * projSpeed,
+              dirY * projSpeed,
+              projDamage,
+              projSize,
+              projColor,
+              projOpts,
+              enemy,
+              { useHitbox: true }
+            );
+          }
+        }
+        {
+          const sameStripHits = Math.max(1, Math.floor(Number(a.execute?.sameStripComboHits) || 1));
+          if (sameStripHits > 1) {
+            const sameStripGap = Math.max(0, Number(a.execute?.sameStripComboGap) || 0.05);
+            this._sameStripConeCombo = {
+              remaining: sameStripHits - 1,
+              nextAt: (game.time || 0) + sameStripGap,
+              gap: sameStripGap,
+              range,
+              arc,
+              dirX,
+              dirY,
+              baseDmg,
+              attackId: a.id,
+              knockback: kb,
+              attackRef: a
+            };
           }
         }
         break;
@@ -1110,6 +1864,14 @@ export class EnemyAttackController {
         break;
       }
       case "projectile": {
+        const execProj = a.execute || {};
+        if (
+          execProj.hitboxTrigger != null &&
+          Number.isInteger(Number(execProj.hitboxTrigger)) &&
+          execProj.projectileSpawnWindupT == null
+        ) {
+          break;
+        }
         const speed = (a.execute?.speed ?? 280) * (this.attackScale > 1.2 ? 1.1 : 1);
         const count = a.execute?.count ?? 1;
         const spread = (a.execute?.spread ?? 0) * (Math.PI / 180);
@@ -1123,6 +1885,37 @@ export class EnemyAttackController {
         const spiralOpposite = a.execute?.spiralOpposite;
         const spiralSpreadDeg = a.execute?.spiralSpreadDeg;
         const backstepChain = a.execute?.backstepChain;
+        const spinSequence8Way = a.execute?.spinSequence8Way === true;
+
+        if (spinSequence8Way) {
+          const shotCount = Math.max(1, Math.floor(Number(a.execute?.spinCount) || 8));
+          const startDeg = Number(a.execute?.spinStartDeg) || 45;
+          const stepDeg = Number(a.execute?.spinStepDeg) || 45;
+          const interval = Math.max(0, Number(a.execute?.spinFrameInterval) || (1 / 14));
+          const useHitbox = a.execute?.useHitbox === true && typeof game.spawnEnemyProjectileHitbox === "function";
+          for (let i = 0; i < shotCount; i++) {
+            const ang = (startDeg + stepDeg * i) * (Math.PI / 180);
+            const vx = Math.cos(ang) * speed;
+            const vy = Math.sin(ang) * speed;
+            const shotAt = interval * i;
+            if (i === 0) {
+              if (useHitbox) {
+                game.spawnEnemyProjectileHitbox(ex, ey, Math.cos(ang), Math.sin(ang), baseDmg, a.execute, enemy);
+              } else {
+                game.spawnEnemyProjectile(ex, ey, vx, vy, baseDmg, size, color, a.execute, enemy);
+              }
+            } else if (typeof game.addDelayedEnemyProjectile === "function") {
+              game.addDelayedEnemyProjectile(game.time + shotAt, ex, ey, vx, vy, baseDmg, size, color, a.execute, enemy, { useHitbox });
+            } else {
+              if (useHitbox) {
+                game.spawnEnemyProjectileHitbox(ex, ey, Math.cos(ang), Math.sin(ang), baseDmg, a.execute, enemy);
+              } else {
+                game.spawnEnemyProjectile(ex, ey, vx, vy, baseDmg, size, color, a.execute, enemy);
+              }
+            }
+          }
+          break;
+        }
 
         if (backstepChain) {
           enemy._attackBackstepChainState = {
@@ -1247,8 +2040,12 @@ export class EnemyAttackController {
         break;
       }
       case "summon": {
-        const spawnCount = a.execute?.count ?? 2;
-        const spawnType = a.execute?.spawnType ?? "m_3a_small_slime";
+        const exec = a.execute || {};
+        if (exec.hitboxTrigger != null && Number.isInteger(Number(exec.hitboxTrigger))) {
+          break;
+        }
+        const spawnCount = exec.count ?? 2;
+        const spawnType = exec.spawnType ?? "m_3a_small_slime";
         for (let i = 0; i < spawnCount; i++) {
           const angle = (i / spawnCount) * Math.PI * 2 + Math.random() * 0.5;
           const off = 40 + Math.random() * 30;
@@ -1749,6 +2546,40 @@ export class EnemyAttackController {
       }
       this._applyDebuffs(game, this.currentAttack);
     }
+  }
+
+  _tickSameStripConeCombo(game) {
+    if (this.state !== "active") return;
+    const combo = this._sameStripConeCombo;
+    if (!combo || combo.remaining <= 0) return;
+    const enemy = this.enemy;
+    const now = game.time || 0;
+    while (combo.remaining > 0 && now >= combo.nextAt) {
+      const ex = enemy.position.x + enemy.size / 2;
+      const ey = enemy.position.y + enemy.size / 2;
+      if (typeof game.spawnEnemyConeHitbox === "function") {
+        const coneOpts =
+          combo.knockback != null && Number.isFinite(Number(combo.knockback))
+            ? { knockback: Number(combo.knockback) }
+            : {};
+        game.spawnEnemyConeHitbox(
+          enemy,
+          ex,
+          ey,
+          combo.dirX,
+          combo.dirY,
+          combo.range,
+          combo.arc,
+          combo.baseDmg,
+          combo.attackId,
+          coneOpts
+        );
+        if (combo.attackId !== "banshee_scream") this._applyDebuffs(game, combo.attackRef);
+      }
+      combo.remaining -= 1;
+      combo.nextAt += combo.gap;
+    }
+    if (combo.remaining <= 0) this._sameStripConeCombo = null;
   }
 
   draw(ctx, camera) {

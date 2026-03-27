@@ -364,57 +364,27 @@ describe("Elemental Shot – evolution state and profile wiring", () => {
     assert.strictEqual(p1.formId, "storm_circle");
   });
 
-  it("progression-backed projectile capstones hydrate into the expected evolution form", async () => {
+  it("progression-backed projectile boards hydrate placed upgrades without evolution state", async () => {
     const progression = await import("../src/data/basic-attack-progression.js");
-    const evolution = await import("../src/data/elemental-shot-evolution.js");
-    progression.addBasicAttackXp("projectile", progression.getXpForBasicAttackLevel(30));
-    for (let i = 0; i < 5; i += 1) {
-      assert.strictEqual(
-        progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:elemental_damage"),
-        true
-      );
+    const def = progression.getWeaponArtBoardDefinition("projectile");
+    progression.addBasicAttackXp("projectile", progression.getXpForBasicAttackLevel(def.maxLevel));
+    let state = progression.getWeaponArtBoardState("projectile");
+    let unlockable = progression.getUnlockableBoardCells("projectile", state);
+    while (unlockable.length > 0 && state.pendingUnlockCount > 0) {
+      progression.unlockWeaponArtBoardCell("projectile", unlockable[0].key);
+      state = progression.getWeaponArtBoardState("projectile");
+      unlockable = progression.getUnlockableBoardCells("projectile", state);
     }
-    for (let i = 0; i < 4; i += 1) {
-      assert.strictEqual(
-        progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:burning_power"),
-        true
-      );
-    }
-    for (let i = 0; i < 4; i += 1) {
-      assert.strictEqual(
-        progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:burn_hunter"),
-        true
-      );
-    }
-    for (let i = 0; i < 5; i += 1) {
-      assert.strictEqual(
-        progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:attack_speed"),
-        true
-      );
-    }
-    for (let i = 0; i < 2; i += 1) {
-      assert.strictEqual(
-        progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:projectile_speed"),
-        true
-      );
-    }
-    assert.strictEqual(
-      progression.purchaseBasicAttackNode("projectile", "projectile:evolution:first:damage"),
-      true
-    );
-    assert.strictEqual(
-      progression.purchaseBasicAttackNode("projectile", "projectile:evolution:second:damage:damage"),
-      true
-    );
+    const damageAnchor = def.maskKeys.find((cellKey) => progression.canPlaceUpgradePiece("projectile", "elemental_damage", cellKey).ok);
+    progression.placeWeaponArtUpgradePiece("projectile", "elemental_damage", damageAnchor);
+    const burnAnchor = def.maskKeys.find((cellKey) => progression.canPlaceUpgradePiece("projectile", "burning_power", cellKey).ok);
+    if (burnAnchor) progression.placeWeaponArtUpgradePiece("projectile", "burning_power", burnAnchor);
 
     const runtime = progression.buildRunAttackStateFromProgress("projectile");
-    const state = evolution.getElementalShotEvolutionState(runtime);
-    const profile = evolution.getElementalShotProfile(state);
-
-    assert.strictEqual(state.first, "damage");
-    assert.strictEqual(state.second, "damage");
-    assert.strictEqual(state.formId, "damage_damage");
-    assert.strictEqual(profile.formId, "meteorfall");
-    assert.strictEqual(profile.attackMode, "meteor");
+    assert.strictEqual(runtime.elementalShotEvolutionFirst, null);
+    assert.strictEqual(runtime.elementalShotEvolutionSecond, null);
+    assert.ok(runtime.categoryCounts.damage >= 1);
+    assert.ok(runtime.runAttackUpgrades.some((upgrade) => upgrade.id === "elemental_damage"));
+    if (burnAnchor) assert.ok(runtime.runAttackUpgrades.some((upgrade) => upgrade.id === "burning_power"));
   });
 });

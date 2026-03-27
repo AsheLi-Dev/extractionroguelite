@@ -921,59 +921,27 @@ describe("Soul Siphon – evolution state / profile", () => {
     assert.deepStrictEqual(evolution.getSpiritAbilityListFromPool("fireball_and_slam"), ["fireball", "ground_slam"]);
   });
 
-  it("progression-backed soul siphon capstones hydrate into the expected evolution form", async () => {
+  it("progression-backed soul siphon boards hydrate placed upgrades without evolution state", async () => {
     const progression = await import("../src/data/basic-attack-progression.js");
-    const evolution = await import("../src/data/soul-siphon-evolution.js");
-    progression.addBasicAttackXp("soulSiphon", progression.getXpForBasicAttackLevel(30));
-    for (let i = 0; i < 5; i += 1) {
-      assert.strictEqual(
-        progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:upgrade:soul_pressure"),
-        true
-      );
+    const def = progression.getWeaponArtBoardDefinition("soulSiphon");
+    progression.addBasicAttackXp("soulSiphon", progression.getXpForBasicAttackLevel(def.maxLevel));
+    let state = progression.getWeaponArtBoardState("soulSiphon");
+    let unlockable = progression.getUnlockableBoardCells("soulSiphon", state);
+    while (unlockable.length > 0 && state.pendingUnlockCount > 0) {
+      progression.unlockWeaponArtBoardCell("soulSiphon", unlockable[0].key);
+      state = progression.getWeaponArtBoardState("soulSiphon");
+      unlockable = progression.getUnlockableBoardCells("soulSiphon", state);
     }
-    for (let i = 0; i < 4; i += 1) {
-      assert.strictEqual(
-        progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:upgrade:condensed_beam"),
-        true
-      );
-    }
-    for (let i = 0; i < 3; i += 1) {
-      assert.strictEqual(
-        progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:upgrade:execution_drain"),
-        true
-      );
-      assert.strictEqual(
-        progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:upgrade:energy_recycling"),
-        true
-      );
-    }
-    for (let i = 0; i < 4; i += 1) {
-      assert.strictEqual(
-        progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:upgrade:spiritual_conduit"),
-        true
-      );
-    }
-    assert.strictEqual(
-      progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:upgrade:rhythmic_siphon"),
-      true
-    );
-    assert.strictEqual(
-      progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:evolution:first:spiritcraft"),
-      true
-    );
-    assert.strictEqual(
-      progression.purchaseBasicAttackNode("soulSiphon", "soulSiphon:evolution:second:spiritcraft:rhythm"),
-      true
-    );
-
+    const pressureAnchor = def.maskKeys.find((cellKey) => progression.canPlaceUpgradePiece("soulSiphon", "soul_pressure", cellKey).ok);
+    progression.placeWeaponArtUpgradePiece("soulSiphon", "soul_pressure", pressureAnchor);
+    const conduitAnchor = def.maskKeys.find((cellKey) => progression.canPlaceUpgradePiece("soulSiphon", "spiritual_conduit", cellKey).ok);
+    if (conduitAnchor) progression.placeWeaponArtUpgradePiece("soulSiphon", "spiritual_conduit", conduitAnchor);
     const runtime = progression.buildRunAttackStateFromProgress("soulSiphon");
-    const state = evolution.getSoulSiphonEvolutionState(runtime);
-    const profile = evolution.getSoulSiphonProfile(state);
-
-    assert.strictEqual(state.first, "spiritcraft");
-    assert.strictEqual(state.second, "rhythm");
-    assert.strictEqual(state.formId, "spiritcraft_rhythm");
-    assert.strictEqual(profile.spiritTrigger.mode, "cast_all_three");
-    assert.strictEqual(profile.spiritTrigger.chargeThreshold, 2);
+    assert.strictEqual(runtime.soulSiphonEvolutionFirst, null);
+    assert.strictEqual(runtime.soulSiphonEvolutionSecond, null);
+    assert.ok(runtime.categoryCounts.damage >= 1);
+    if (conduitAnchor) assert.ok(runtime.categoryCounts.rhythm >= 1);
+    assert.ok(runtime.runAttackUpgrades.some((upgrade) => upgrade.id === "soul_pressure"));
+    if (conduitAnchor) assert.ok(runtime.runAttackUpgrades.some((upgrade) => upgrade.id === "spiritual_conduit"));
   });
 });

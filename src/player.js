@@ -24,6 +24,8 @@ export class Player {
     this.turn180Duration = 0.12;
     this.turn180MoveMult = 0.55;
     this.isMoving = false; // Track movement state
+    this.moveEaseDuration = 0.05;
+    this.moveAxis = new Vec2(0, 0);
     this.facingDirection = "down"; // down/up/left/right/left_down/left_up/right_down/right_up
     this.lastVerticalPreference = "down"; // used when moving horizontally only
     this.lastMoveDirection = this.facingDirection;
@@ -599,7 +601,7 @@ export class Player {
   
   /**
    * Gets the movement speed multiplier based on current attack phase.
-   * First 20%: smooth ramp 1.0 -> 0.7; middle 35%: 0.7; last 45%: smooth ramp 0.7 -> 1.0.
+   * First 20%: smooth ramp 1.0 -> 0.3; middle 35%: 0.3; last 45%: smooth ramp 0.3 -> 1.0.
    * @returns {number} Movement multiplier (1.0 = normal speed)
    */
   getAttackMoveMult() {
@@ -614,7 +616,7 @@ export class Player {
     const t = state.t;
     const q1 = 0.20 * d;
     const q2 = 0.55 * d;
-    const midMult = this.characterId === 'wind_archer' ? 0.85 : 0.7;
+    const midMult = this.characterId === 'wind_archer' ? 0.85 : 0.3;
     if (t <= q1) return 1 - (1 - midMult) * (t / q1);
     if (t < q2) return midMult;
     return midMult + (1 - midMult) * (t - q2) / (d - q2);
@@ -1554,6 +1556,13 @@ export class Player {
     };
   }
 
+  _updateMoveAxisTowards(targetX, targetY, dt) {
+    const easeDuration = Math.max(0.0001, this.moveEaseDuration || 0.05);
+    const maxDelta = dt / easeDuration;
+    this.moveAxis.x += clamp(targetX - this.moveAxis.x, -maxDelta, maxDelta);
+    this.moveAxis.y += clamp(targetY - this.moveAxis.y, -maxDelta, maxDelta);
+  }
+
   update(dt, input, world, obstacles = [], walls = [], cursorWorld = null) {
     const axis = input.getAxis();
 
@@ -1619,16 +1628,19 @@ export class Player {
     
     // Compute movement with attack slowdown multiplier
     const moveMult = this.getAttackMoveMult();
-    const sprintMult = this.isSprinting ? 1.3 : 1.0;
+    const sprintMult = this.isSprinting ? 1.5 : 1.0;
     const castMoveMult = this.getCastMoveMult();
     const turnMoveMult = this.turnState?.active ? this.turn180MoveMult : 1.0;
     const effectiveSpeed = this.speed * moveMult * sprintMult * castMoveMult * turnMoveMult;
-    const dx = axis.x * effectiveSpeed * dt;
-    const dy = axis.y * effectiveSpeed * dt;
+    this._updateMoveAxisTowards(axis.x, axis.y, dt);
+    const moveAxisLen = Math.min(1, Math.hypot(this.moveAxis.x, this.moveAxis.y));
+    const currentMoveSpeed = effectiveSpeed * moveAxisLen;
+    const dx = this.moveAxis.x * effectiveSpeed * dt;
+    const dy = this.moveAxis.y * effectiveSpeed * dt;
 
     // Check if player is moving
     const wasMoving = this.isMoving;
-    this.isMoving = Math.abs(axis.x) > 0.01 || Math.abs(axis.y) > 0.01;
+    this.isMoving = Math.abs(this.moveAxis.x) > 0.01 || Math.abs(this.moveAxis.y) > 0.01;
 
     // Facing: when moving use movement direction so run animation always plays; when idle use cursor angle if valid
     if (!this.attackState?.active && !this.castState?.active) {
@@ -1671,8 +1683,13 @@ export class Player {
           ? 'crouchRun'
           : (this.isSprinting && this._getDirectionalSprite('run', this.facingDirection) ? 'run' : 'walk');
         const moveFrames = this._getLoopFrameCount(moveState, this.facingDirection);
-        while (this.animationTimer >= this.walkingAnimationSpeed) {
-          this.animationTimer -= this.walkingAnimationSpeed;
+        const animationSpeedBaseline = moveState === 'run'
+          ? 120
+          : (moveState === 'walk' ? 100 : 80);
+        const speedScale = Math.max(0.0001, Math.min(1.6, currentMoveSpeed / animationSpeedBaseline));
+        const moveAnimationStep = this.walkingAnimationSpeed / speedScale;
+        while (this.animationTimer >= moveAnimationStep) {
+          this.animationTimer -= moveAnimationStep;
           this.animationFrame = (this.animationFrame + 1) % moveFrames;
         }
       } else {

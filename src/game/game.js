@@ -2571,7 +2571,7 @@ export class Game {
   }
 
   // --- Hitbox system world adapter (for updateHitboxes(dt, this)) ---
-  getTargetsByFaction(faction) {
+  getTargetsByFaction(faction, hitbox = null) {
     const out = [];
     if (faction === 'player') {
       const list = [...(this.enemySystem?.enemies ?? [])];
@@ -2587,7 +2587,10 @@ export class Game {
         out.push({ id: e.id, x: cx, y: cy, radius: e.size / 2 });
       }
     } else if (faction === 'enemy') {
-      if (this.player && this.currentHealth > 0) {
+      const ignoreSlidingPlayerForProjectile =
+        (this.slideMoveActive || this.knightSlideActive) &&
+        hitbox?.tags?.includes('enemy_projectile');
+      if (this.player && this.currentHealth > 0 && !ignoreSlidingPlayerForProjectile) {
         const px = this.player.position.x + this.player.size / 2;
         const py = this.player.position.y + this.player.size / 2;
         const pi = PLAYER_WALL_COLLISION_INSET;
@@ -3033,6 +3036,12 @@ export class Game {
         this.applyStatusToEntity('player', 'slow', {
           duration: 1.5,
           magnitude: 1 - 0.3,
+          sourceId: source?.id ?? null,
+          sourceType: 'enemy_attack'
+        });
+      } else if (hitbox?.defId === 'ud_dark_lord_shield_bash') {
+        this.applyStatusToEntity('player', 'stun', {
+          duration: 0.3,
           sourceId: source?.id ?? null,
           sourceType: 'enemy_attack'
         });
@@ -9139,7 +9148,7 @@ export class Game {
           : { position: { x: enemy.position.x, y: enemy.position.y }, size: enemy.size || player.size };
         const crouchDetMult =
           this.input.isCrouchHeld() && !this.slideMoveActive ? PLAYER_CROUCH_DETECTION_RANGE_MULT : 1;
-        enemy.update(dt, enemyTarget, this.time, globalSlow, 400 * crouchDetMult, this);
+        enemy.update(dt, enemyTarget, this.time, globalSlow, (this.viewWidth / 2) * crouchDetMult, this);
         this.updateSmallMimicBehavior(enemy, dt);
         this.updateLargeMimicBehavior(enemy, dt);
         this.updateGhostBehavior(enemy, dt);
@@ -9297,7 +9306,7 @@ export class Game {
         : { position: { x: enemy.position.x, y: enemy.position.y }, size: enemy.size || player.size };
       const crouchDetMult =
         this.input.isCrouchHeld() && !this.slideMoveActive ? PLAYER_CROUCH_DETECTION_RANGE_MULT : 1;
-      enemy.update(dt, enemyTarget, this.time, globalSlow, (this.viewWidth / 4) * crouchDetMult, this);
+      enemy.update(dt, enemyTarget, this.time, globalSlow, (this.viewWidth / 2) * crouchDetMult, this);
       this.updateSmallMimicBehavior(enemy, dt);
       this.updateLargeMimicBehavior(enemy, dt);
       this.updateGhostBehavior(enemy, dt);
@@ -14221,7 +14230,8 @@ export class Game {
       enemy.position.x = Math.max(margin, Math.min(enemy.position.x, this.world.width - margin - enemy.size));
       enemy.position.y = Math.max(margin, Math.min(enemy.position.y, this.world.height - margin - enemy.size));
 
-      if (!flight.hitApplied && enemy.intersects(this.player)) {
+      const ignorePlayerWhileSliding = this.slideMoveActive || this.knightSlideActive;
+      if (!ignorePlayerWhileSliding && !flight.hitApplied && enemy.intersects(this.player)) {
         flight.hitApplied = true;
         this.applyDamage({
           targetType: "player",
@@ -17175,6 +17185,7 @@ export class Game {
 
   updateProjectiles(dt) {
     updateHitboxes(dt, this);
+    this.tickEnemyProjectileEmitters?.(dt);
     updateHitboxProjectileVisualTrails(this.getProjectileVisualState(), getActiveHitboxes(), dt);
     if (this.attackType === "projectile") {
       this.checkElementalShotHitboxesVsBreakables?.();

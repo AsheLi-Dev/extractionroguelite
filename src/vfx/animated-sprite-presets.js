@@ -177,6 +177,22 @@ export const ANIMATED_SPRITE_PRESETS = {
     drawWidth: 28,
     drawHeight: 22
   },
+  /** Large slow bolt: row 2 (down) of 8Necromancer directional strip, 128×128 × 15 frames. */
+  necromancerDarkBoltLarge: {
+    path: 'assets/Enemies/8Necromancer/Special2.png',
+    frameWidth: 128,
+    frameHeight: 128,
+    frameCount: 15,
+    startFrame: 30,
+    columns: 15,
+    fps: 14,
+    loop: true,
+    rotateWithVelocity: true,
+    anchorX: 0.5,
+    anchorY: 0.5,
+    drawWidth: 52,
+    drawHeight: 52
+  },
   volatileFireball: {
     path: 'assets/Projectiles/longFireBall.png',
     frameWidth: 256,

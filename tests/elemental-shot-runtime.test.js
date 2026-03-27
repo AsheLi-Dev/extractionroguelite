@@ -145,17 +145,19 @@ describe("Elemental Shot – upgrade effects (deterministic)", () => {
 
   it("progression-backed burning_power purchases hydrate into the same burn DPS bonus", async () => {
     const progression = await import("../src/data/basic-attack-progression.js");
-    progression.addBasicAttackXp("projectile", progression.getXpForBasicAttackLevel(7));
-    for (let i = 0; i < 5; i += 1) {
-      assert.strictEqual(
-        progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:elemental_damage"),
-        true
-      );
+    const def = progression.getWeaponArtBoardDefinition("projectile");
+    progression.addBasicAttackXp("projectile", progression.getXpForBasicAttackLevel(def.maxLevel));
+    let state = progression.getWeaponArtBoardState("projectile");
+    let unlockable = progression.getUnlockableBoardCells("projectile", state);
+    while (unlockable.length > 0 && state.pendingUnlockCount > 0) {
+      progression.unlockWeaponArtBoardCell("projectile", unlockable[0].key);
+      state = progression.getWeaponArtBoardState("projectile");
+      unlockable = progression.getUnlockableBoardCells("projectile", state);
     }
-    assert.strictEqual(
-      progression.purchaseBasicAttackNode("projectile", "projectile:upgrade:burning_power"),
-      true
-    );
+
+    const burnAnchor = def.maskKeys.find((cellKey) => progression.canPlaceUpgradePiece("projectile", "burning_power", cellKey).ok);
+    assert.ok(burnAnchor);
+    progression.placeWeaponArtUpgradePiece("projectile", "burning_power", burnAnchor);
 
     const runtime = progression.buildRunAttackStateFromProgress("projectile");
     const log = createEventLog();

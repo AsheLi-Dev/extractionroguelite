@@ -25,6 +25,7 @@ import {
   getHeroPackLoopLength,
   mapHeroPackColumn,
 } from './hero-pack-enemy-sprites.js';
+import { createDirectionalSpritesheetProfile } from '../data/playable-characters.js';
 
 const DISABLE_ENEMY_SHEET_PRELOADS =
   typeof window !== "undefined" && !!window.__DISABLE_ENEMY_SHEET_PRELOADS__;
@@ -53,6 +54,161 @@ const DROP_BAND_MAP = {
   "mid": { dropChanceMult: 1.1, minDrop: 1, maxDrop: 2 },
   "high": { dropChanceMult: 1.8, minDrop: 2, maxDrop: 3 }
 };
+
+const ARCHER_5_SPRITE_PROFILE = createDirectionalSpritesheetProfile('5Archer', {
+  baseRoot: 'assets/Enemies',
+  states: {
+    attack3: 'Attack3',
+    special1: 'ArrowRain',
+    kick: 'Kick'
+  },
+  frames: {
+    attack3: 15,
+    special1: 15,
+    kick: 15
+  },
+  enemySpecialSheets: [
+    { animKey: 'attackSpinShot', profileKey: 'attack3', fps: 14 },
+    { animKey: 'attackArrowRain', profileKey: 'special1', fps: 14 },
+    { animKey: 'attackKick', profileKey: 'kick', fps: 14 }
+  ]
+});
+const BERSERKER_4_SPRITE_PROFILE = createDirectionalSpritesheetProfile('4Berserker', {
+  baseRoot: 'assets/Enemies',
+  states: {
+    attack2: 'Attack2',
+    attack3: 'Attack3',
+    castSpell: 'CastSpell',
+    pummel: 'Pummel',
+    special1: 'Special1'
+  },
+  frames: {
+    attack2: 15,
+    attack3: 15,
+    castSpell: 15,
+    pummel: 15,
+    special1: 14
+  },
+  enemySpecialSheets: [
+    { animKey: 'attackDown', profileKey: 'attack2', fps: 14 },
+    { animKey: 'attackSpin', profileKey: 'attack3', fps: 14 },
+    { animKey: 'attackCast', profileKey: 'castSpell', fps: 14 },
+    { animKey: 'attackQuickSlash', profileKey: 'pummel', fps: 14 },
+    { animKey: 'attackEmpoweredCircle', profileKey: 'special1', fps: 14 }
+  ]
+});
+const DARK_ARCHER_7_SPRITE_PROFILE = createDirectionalSpritesheetProfile('7DarkArcher', {
+  baseRoot: 'assets/Enemies',
+  states: {
+    attack3: 'Attack3',
+    special1: 'Special1',
+    kick: 'Kick'
+  },
+  frames: {
+    attack3: 15,
+    special1: 15,
+    kick: 15
+  },
+  enemySpecialSheets: [
+    { animKey: 'attackSpinShot', profileKey: 'attack3', fps: 14 },
+    { animKey: 'attackArrowRain', profileKey: 'special1', fps: 14 },
+    { animKey: 'attackKick', profileKey: 'kick', fps: 14 }
+  ]
+});
+const NECROMANCER_8_SPRITE_PROFILE = createDirectionalSpritesheetProfile('8Necromancer', {
+  baseRoot: 'assets/Enemies',
+  states: {
+    attack2: 'Attack2',
+    attack3: 'Attack3',
+    kick: 'Kick',
+    special1: 'Special1',
+    special2: 'Special2'
+  },
+  frames: {
+    attack2: 15,
+    attack3: 15,
+    kick: 15,
+    special1: 15,
+    special2: 15
+  },
+  enemySpecialSheets: [
+    { animKey: 'attackDarkfirePillar', profileKey: 'cast', fps: 14 },
+    { animKey: 'attackDarkWave', profileKey: 'kick', fps: 14 },
+    { animKey: 'attackSummonWarrior', profileKey: 'special1', fps: 14 },
+    { animKey: 'attackDarkBolt', profileKey: 'special2', fps: 14 },
+    { animKey: 'attackAlt', profileKey: 'attack2', fps: 14 },
+    { animKey: 'attackExplosion', profileKey: 'attack3', fps: 14 }
+  ]
+});
+const WIZARD_9_SPRITE_PROFILE = createDirectionalSpritesheetProfile('9Wizard', {
+  baseRoot: 'assets/Enemies',
+  states: {
+    attack: 'Attack1',
+    attack2: 'Attack2',
+    frontFlip: 'FrontFlip',
+    kick: 'Kick',
+    quickShot: 'QuickShot',
+    special1: 'Special1'
+  },
+  frames: {
+    attack2: 15,
+    frontFlip: 15,
+    kick: 15,
+    quickShot: 15,
+    special1: 15
+  },
+  enemySpecialSheets: [
+    { animKey: 'attackAlt', profileKey: 'attack2', fps: 14 },
+    { animKey: 'attackCast', profileKey: 'cast', fps: 14 },
+    { animKey: 'attackFireDance', profileKey: 'frontFlip', fps: 14 },
+    { animKey: 'attackFireThrower', profileKey: 'kick', fps: 14 },
+    { animKey: 'attackFireWave', profileKey: 'quickShot', fps: 14 },
+    { animKey: 'attackFireCleanse', profileKey: 'special1', fps: 14 },
+    { animKey: 'attackFireLeap', profileKey: 'special1', fps: 14 }
+  ]
+});
+const DARK_LORD_2_SPRITE_PROFILE = createDirectionalSpritesheetProfile('2DarkLord', {
+  baseRoot: 'assets/Enemies',
+  states: {
+    attack2: 'Attack2',
+    attack3: 'Attack3',
+    pummel: 'Pummel',
+    warcry: 'Warcry',
+    doubleStrike: 'double strike'
+  },
+  frames: {
+    attack2: 15,
+    attack3: 15,
+    pummel: 15,
+    warcry: 15,
+    doubleStrike: 15
+  },
+  enemySpecialSheets: [
+    { animKey: 'attackSpin', profileKey: 'attack2', fps: 14 },
+    { animKey: 'attackSwift', profileKey: 'attack3', fps: 14 },
+    { animKey: 'attackShieldBash', profileKey: 'pummel', fps: 14 },
+    { animKey: 'attackWarcry', profileKey: 'warcry', fps: 14 },
+    { animKey: 'attackDoubleStrike', profileKey: 'doubleStrike', fps: 14 }
+  ]
+});
+const DARK_KNIGHT_3_SPRITE_PROFILE = createDirectionalSpritesheetProfile('3DarkKnight', {
+  baseRoot: 'assets/Enemies',
+  states: {
+    attack2: 'Attack2',
+    castSpell: 'CastSpell',
+    special1: 'Special1'
+  },
+  frames: {
+    attack2: 15,
+    castSpell: 15,
+    special1: 15
+  },
+  enemySpecialSheets: [
+    { animKey: 'attackUp', profileKey: 'attack', fps: 14 },
+    { animKey: 'attackDown', profileKey: 'attack2', fps: 14 },
+    { animKey: 'attackCast', profileKey: 'castSpell', fps: 14 }
+  ]
+});
 
 // Convert new enemy data format to old format
 function convertEnemyData(enemyData) {
@@ -202,8 +358,15 @@ const NEW_ENEMY_DATA = [
   {"id":"m_13a_small_writhing_mass","name":"Small Writhing Mass","atlas":{"row":13,"col":"a"},"archetype":"Slime","base":{"size":72,"hp":40,"atk":6,"speed":60,"def":0},"attackStyle":"melee_contact","xpBand":"basic","dropBand":"mid","notes":"Creepy slime-equivalent."},
   {"id":"m_13b_large_writhing_mass","name":"Large Writhing Mass","atlas":{"row":13,"col":"b"},"archetype":"Demon","base":{"size":103,"hp":90,"atk":12,"speed":50,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Elite tank horror."},
   {"id":"m_13c_writhing_humanoid","name":"Writhing Humanoid","atlas":{"row":13,"col":"c"},"archetype":"Skeleton","base":{"size":86,"hp":60,"atk":11,"speed":70,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","notes":"Medium elite horror. Great with Weakening/Cursing."},
-  {"id":"m_ud_brute","name":"Undead Brute","atlas":{"row":5,"col":"e"},"archetype":"Skeleton","base":{"size":172,"hp":88,"atk":12,"speed":100,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","spawnPool":"default","spriteProfile":BRUTE_1_SPRITE_PROFILE,"notes":"1Brute assets; brute-sheet archetype (see brute-sheet-archetype.js, auto-enabled for this id)."},
-  {"id":"m_ud_warrior","name":"Undead Warrior","atlas":{"row":5,"col":"f"},"archetype":"Skeleton","base":{"size":160,"hp":76,"atk":11,"speed":102,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","spawnPool":"default","spriteProfile":WARRIOR_6_SPRITE_PROFILE,"notes":"6Warrior assets; brute-sheet archetype (legacy id m_ud_warrior). Attack1=up slash, Attack2=down, Attack3=double shield bash."}
+  {"id":"m_ud_archer_5","name":"Undead Archer","atlas":{"row":14,"col":"a"},"archetype":"Skeleton","base":{"size":384,"hp":62,"atk":10,"speed":98,"def":1},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"mid","spawnPool":"default","spriteProfile":ARCHER_5_SPRITE_PROFILE,"notes":"5Archer directional sheets. Uses basic/default attack behavior with Attack1 only."},
+  {"id":"m_ud_berserker_4","name":"Undead Berserker","atlas":{"row":14,"col":"b"},"archetype":"Demon","base":{"size":344,"hp":92,"atk":13,"speed":92,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","spawnPool":"default","spriteProfile":BERSERKER_4_SPRITE_PROFILE,"notes":"4Berserker directional sheets. Uses basic/default attack behavior with Attack1 only."},
+  {"id":"m_ud_dark_archer_7","name":"Undead Dark Archer","atlas":{"row":14,"col":"c"},"archetype":"Skeleton","base":{"size":192,"hp":64,"atk":11,"speed":96,"def":1},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"mid","spawnPool":"default","spriteProfile":DARK_ARCHER_7_SPRITE_PROFILE,"notes":"7DarkArcher directional sheets. Uses basic/default attack behavior with Attack1 only."},
+  {"id":"m_ud_necromancer_8","name":"Undead Necromancer","atlas":{"row":14,"col":"d"},"archetype":"Wisp","base":{"size":192,"hp":60,"atk":11,"speed":94,"def":1},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"mid","spawnPool":"default","spriteProfile":NECROMANCER_8_SPRITE_PROFILE,"notes":"8Necromancer directional sheets. Uses basic/default attack behavior with Attack1 only."},
+  {"id":"m_ud_wizard_9","name":"Undead Wizard","atlas":{"row":14,"col":"e"},"archetype":"Wisp","base":{"size":192,"hp":58,"atk":10,"speed":98,"def":1},"attackStyle":"ranged_projectile","xpBand":"elite_like","dropBand":"mid","spawnPool":"default","spriteProfile":WIZARD_9_SPRITE_PROFILE,"notes":"9Wizard directional sheets. Uses basic/default attack behavior with Attack1 only."},
+  {"id":"m_ud_dark_lord_2","name":"Undead Dark Lord","atlas":{"row":14,"col":"f"},"archetype":"Demon","base":{"size":352,"hp":96,"atk":13,"speed":84,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","spawnPool":"default","spriteProfile":DARK_LORD_2_SPRITE_PROFILE,"notes":"2DarkLord directional sheets. Uses basic/default attack behavior with Attack1 only."},
+  {"id":"m_ud_dark_knight_3","name":"Undead Dark Knight","atlas":{"row":14,"col":"g"},"archetype":"Demon","base":{"size":344,"hp":94,"atk":13,"speed":90,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"high","spawnPool":"default","spriteProfile":DARK_KNIGHT_3_SPRITE_PROFILE,"notes":"3DarkKnight directional sheets. Uses basic/default attack behavior with Attack1 only."},
+  {"id":"m_ud_brute","name":"Undead Brute","atlas":{"row":5,"col":"e"},"archetype":"Skeleton","base":{"size":344,"hp":88,"atk":12,"speed":100,"def":3},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","spawnPool":"default","spriteProfile":BRUTE_1_SPRITE_PROFILE,"notes":"1Brute assets; brute-sheet archetype (see brute-sheet-archetype.js, auto-enabled for this id)."},
+  {"id":"m_ud_warrior","name":"Undead Warrior","atlas":{"row":5,"col":"f"},"archetype":"Skeleton","base":{"size":320,"hp":76,"atk":11,"speed":102,"def":2},"attackStyle":"melee_contact","xpBand":"elite_like","dropBand":"mid","spawnPool":"default","spriteProfile":WARRIOR_6_SPRITE_PROFILE,"notes":"6Warrior assets; brute-sheet archetype (legacy id m_ud_warrior). Attack1=up slash, Attack2=down, Attack3=double shield bash."}
 ];
 
 const ENEMY_DATA_BY_ID = new Map(NEW_ENEMY_DATA.map((enemyData) => [enemyData.id, enemyData]));
@@ -2724,7 +2887,11 @@ export class Enemy {
     }
     const margin = 60;
     const corpseFrozen = !!(this.keepDeadForRevive && this.isDead);
-    const rooted = (this.rootUntil != null && gameTime < this.rootUntil) || corpseFrozen;
+    const fireThrowerFrozen =
+      this.enemyTypeId === "m_ud_wizard_9" &&
+      this._fireThrowerFreezeUntil != null &&
+      gameTime < this._fireThrowerFreezeUntil;
+    const rooted = (this.rootUntil != null && gameTime < this.rootUntil) || corpseFrozen || fireThrowerFrozen;
     const inWindup = !!(this.attackCtrl && this.attackCtrl.state === "windup");
     const inRecover = !!(this.attackCtrl && this.attackCtrl.state === "recover");
     if (!rooted) pushEnemyOutOfBlockers(this, game, margin);
@@ -2821,6 +2988,7 @@ export class Enemy {
       // Skip normal movement when performing attack (windup, dash, jump slam)
       const inAttackState = this.attackCtrl && (
         this.attackCtrl.state === "windup" ||
+        this.attackCtrl.state === "recover" ||
         this._attackDashState ||
         this._jumpSlamState ||
         this._attackRollState ||
@@ -3179,6 +3347,225 @@ export class Enemy {
         (this.attackCtrl?.currentAttack?.id === "death_lord_volley" ||
           this.attackCtrl?.recoveringAttackId === "death_lord_volley")
       );
+      const isUndeadDarkLordSpin = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_dark_lord_2" &&
+        this.spriteSheets?.attackSpin &&
+        (this.attackCtrl?.currentAttack?.id === "ud_dark_lord_spin" ||
+          this.attackCtrl?.recoveringAttackId === "ud_dark_lord_spin")
+      );
+      const isUndeadDarkLordSwift = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_dark_lord_2" &&
+        this.spriteSheets?.attackSwift &&
+        (this.attackCtrl?.currentAttack?.id === "ud_dark_lord_swift_strikes" ||
+          this.attackCtrl?.recoveringAttackId === "ud_dark_lord_swift_strikes")
+      );
+      const isUndeadDarkLordShieldBash = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_dark_lord_2" &&
+        this.spriteSheets?.attackShieldBash &&
+        (this.attackCtrl?.currentAttack?.id === "ud_dark_lord_shield_bash" ||
+          this.attackCtrl?.recoveringAttackId === "ud_dark_lord_shield_bash")
+      );
+      const isUndeadDarkLordWarcry = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_dark_lord_2" &&
+        this.spriteSheets?.attackWarcry &&
+        (this.attackCtrl?.currentAttack?.id === "ud_dark_lord_warcry" ||
+          this.attackCtrl?.recoveringAttackId === "ud_dark_lord_warcry")
+      );
+      const isUndeadDarkLordDoubleStrike = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_dark_lord_2" &&
+        this.spriteSheets?.attackDoubleStrike &&
+        (this.attackCtrl?.currentAttack?.id === "ud_dark_lord_double_strike" ||
+          this.attackCtrl?.recoveringAttackId === "ud_dark_lord_double_strike")
+      );
+      const isUndeadDarkKnightDownslash = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_dark_knight_3" &&
+        this.spriteSheets?.attackDown &&
+        (this.attackCtrl?.currentAttack?.id === "ud_dark_knight_downslash" ||
+          this.attackCtrl?.recoveringAttackId === "ud_dark_knight_downslash")
+      );
+      const isUndeadArcherSpinShot = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_archer_5" &&
+        this.spriteSheets?.attackSpinShot &&
+        (this.attackCtrl?.currentAttack?.id === "ud_archer_spin_shot" ||
+          this.attackCtrl?.recoveringAttackId === "ud_archer_spin_shot")
+      );
+      const isUndeadArcherKick = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_archer_5" &&
+        this.spriteSheets?.attackKick &&
+        (this.attackCtrl?.currentAttack?.id === "ud_archer_kick" ||
+          this.attackCtrl?.recoveringAttackId === "ud_archer_kick")
+      );
+      const isUndeadArcherArrowRain = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_archer_5" &&
+        this.spriteSheets?.attackArrowRain &&
+        (this.attackCtrl?.currentAttack?.id === "ud_archer_arrow_rain" ||
+          this.attackCtrl?.recoveringAttackId === "ud_archer_arrow_rain")
+      );
+      const isUndeadDarkArcherSpinShot = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_dark_archer_7" &&
+        this.spriteSheets?.attackSpinShot &&
+        (this.attackCtrl?.currentAttack?.id === "ud_archer_spin_shot" ||
+          this.attackCtrl?.recoveringAttackId === "ud_archer_spin_shot")
+      );
+      const isUndeadDarkArcherKick = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_dark_archer_7" &&
+        this.spriteSheets?.attackKick &&
+        (this.attackCtrl?.currentAttack?.id === "ud_archer_kick" ||
+          this.attackCtrl?.recoveringAttackId === "ud_archer_kick")
+      );
+      const isUndeadDarkArcherArrowRain = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_dark_archer_7" &&
+        this.spriteSheets?.attackArrowRain &&
+        (this.attackCtrl?.currentAttack?.id === "ud_archer_arrow_rain" ||
+          this.attackCtrl?.recoveringAttackId === "ud_archer_arrow_rain")
+      );
+      const isUndeadNecromancerBasicAlt = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_necromancer_8" &&
+        this.spriteSheets?.attackAlt &&
+        (this.attackCtrl?.currentAttack?.id === "ud_necromancer_basic_orb" ||
+          this.attackCtrl?.recoveringAttackId === "ud_necromancer_basic_orb") &&
+        ((this.attackCtrl?._attackWindupCycle ?? 0) % 2 === 0)
+      );
+      const isUndeadWizardBasicAlt = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_wizard_9" &&
+        this.spriteSheets?.attackAlt &&
+        (this.attackCtrl?.currentAttack?.id === "ud_wizard_basic_bolt" ||
+          this.attackCtrl?.recoveringAttackId === "ud_wizard_basic_bolt") &&
+        ((this.attackCtrl?._attackWindupCycle ?? 0) % 2 === 0)
+      );
+      const isUndeadWizardEarthquakeCast = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_wizard_9" &&
+        this.spriteSheets?.attackCast &&
+        (this.attackCtrl?.currentAttack?.id === "ud_wizard_earthquake" ||
+          this.attackCtrl?.recoveringAttackId === "ud_wizard_earthquake")
+      );
+      const isUndeadWizardFireDanceFlip = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_wizard_9" &&
+        this.spriteSheets?.attackFireDance &&
+        (this.attackCtrl?.currentAttack?.id === "ud_wizard_fire_dance" ||
+          this.attackCtrl?.recoveringAttackId === "ud_wizard_fire_dance")
+      );
+      const isUndeadWizardFireThrowerKick = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_wizard_9" &&
+        this.spriteSheets?.attackFireThrower &&
+        (this.attackCtrl?.currentAttack?.id === "ud_wizard_fire_thrower" ||
+          this.attackCtrl?.recoveringAttackId === "ud_wizard_fire_thrower")
+      );
+      const isUndeadWizardFireWave = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_wizard_9" &&
+        this.spriteSheets?.attackFireWave &&
+        (this.attackCtrl?.currentAttack?.id === "ud_wizard_fire_wave" ||
+          this.attackCtrl?.recoveringAttackId === "ud_wizard_fire_wave")
+      );
+      const isUndeadWizardFireCleanse = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_wizard_9" &&
+        this.spriteSheets?.attackFireCleanse &&
+        (this.attackCtrl?.currentAttack?.id === "ud_wizard_fire_cleanse" ||
+          this.attackCtrl?.recoveringAttackId === "ud_wizard_fire_cleanse")
+      );
+      const isUndeadWizardFireLeap = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_wizard_9" &&
+        this.spriteSheets?.attackFireLeap &&
+        (this.attackCtrl?.currentAttack?.id === "ud_wizard_fire_leap" ||
+          this.attackCtrl?.recoveringAttackId === "ud_wizard_fire_leap")
+      );
+      const isUndeadNecromancerDarkfirePillar = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_necromancer_8" &&
+        this.spriteSheets?.attackDarkfirePillar &&
+        (this.attackCtrl?.currentAttack?.id === "ud_necromancer_darkfire_pillar" ||
+          this.attackCtrl?.recoveringAttackId === "ud_necromancer_darkfire_pillar")
+      );
+      const isUndeadNecromancerDarkWave = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_necromancer_8" &&
+        this.spriteSheets?.attackDarkWave &&
+        (this.attackCtrl?.currentAttack?.id === "ud_necromancer_dark_wave" ||
+          this.attackCtrl?.recoveringAttackId === "ud_necromancer_dark_wave")
+      );
+      const isUndeadNecromancerSummonWarrior = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_necromancer_8" &&
+        this.spriteSheets?.attackSummonWarrior &&
+        (this.attackCtrl?.currentAttack?.id === "ud_necromancer_summon_warrior" ||
+          this.attackCtrl?.recoveringAttackId === "ud_necromancer_summon_warrior")
+      );
+      const isUndeadNecromancerDarkBolt = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_necromancer_8" &&
+        this.spriteSheets?.attackDarkBolt &&
+        (this.attackCtrl?.currentAttack?.id === "ud_necromancer_dark_bolt" ||
+          this.attackCtrl?.recoveringAttackId === "ud_necromancer_dark_bolt")
+      );
+      const isUndeadNecromancerExplosion = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_necromancer_8" &&
+        this.spriteSheets?.attackExplosion &&
+        (this.attackCtrl?.currentAttack?.id === "ud_necromancer_circle_explosion" ||
+          this.attackCtrl?.recoveringAttackId === "ud_necromancer_circle_explosion")
+      );
+      const isUndeadDarkKnightThrowBlade = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_dark_knight_3" &&
+        this.spriteSheets?.attackCast &&
+        (this.attackCtrl?.currentAttack?.id === "ud_dark_knight_throw_blade" ||
+          this.attackCtrl?.recoveringAttackId === "ud_dark_knight_throw_blade")
+      );
+      const isUndeadBerserkerAxeSlash = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_berserker_4" &&
+        this.spriteSheets?.attackDown &&
+        (this.attackCtrl?.currentAttack?.id === "ud_berserker_axe_slash" ||
+          this.attackCtrl?.recoveringAttackId === "ud_berserker_axe_slash")
+      );
+      const isUndeadBerserkerCircleStrike = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_berserker_4" &&
+        this.spriteSheets?.attackSpin &&
+        (this.attackCtrl?.currentAttack?.id === "ud_berserker_circle_strike" ||
+          this.attackCtrl?.recoveringAttackId === "ud_berserker_circle_strike")
+      );
+      const isUndeadBerserkerFastStrike = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_berserker_4" &&
+        this.spriteSheets?.attackCast &&
+        (this.attackCtrl?.currentAttack?.id === "ud_berserker_fast_strike" ||
+          this.attackCtrl?.recoveringAttackId === "ud_berserker_fast_strike")
+      );
+      const isUndeadBerserkerQuickSlash = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_berserker_4" &&
+        this.spriteSheets?.attackQuickSlash &&
+        (this.attackCtrl?.currentAttack?.id === "ud_berserker_quickslash" ||
+          this.attackCtrl?.recoveringAttackId === "ud_berserker_quickslash")
+      );
+      const isUndeadBerserkerEmpoweredCircle = !!(
+        inAttack &&
+        this.enemyTypeId === "m_ud_berserker_4" &&
+        this.spriteSheets?.attackEmpoweredCircle &&
+        (this.attackCtrl?.currentAttack?.id === "ud_berserker_empowered_circle_strike" ||
+          this.attackCtrl?.recoveringAttackId === "ud_berserker_empowered_circle_strike")
+      );
       const isDeathBringerCast = !!(inAttack && this.attackCtrl?.currentAttack?.id === "death_bringer_ground_spell" && this.spriteSheets?.attackCast);
       const isDeathLordCleave = !!(inAttack && this.attackCtrl?.currentAttack?.id === "death_lord_cleave" && this.spriteSheets?.attack_swing);
       const isBansheeMeleeCone = !!(
@@ -3259,6 +3646,68 @@ export class Enemy {
         nextState = "idle";
       } else if (isDeathLordVolley) {
         nextState = "attack_cast";
+      } else if (isUndeadDarkLordSpin) {
+        nextState = "attackSpin";
+      } else if (isUndeadDarkLordSwift) {
+        nextState = "attackSwift";
+      } else if (isUndeadDarkLordShieldBash) {
+        nextState = "attackShieldBash";
+      } else if (isUndeadDarkLordWarcry) {
+        nextState = "attackWarcry";
+      } else if (isUndeadDarkLordDoubleStrike) {
+        nextState = "attackDoubleStrike";
+      } else if (isUndeadDarkKnightDownslash) {
+        nextState = "attackDown";
+      } else if (isUndeadDarkArcherArrowRain) {
+        nextState = "attackArrowRain";
+      } else if (isUndeadDarkArcherKick) {
+        nextState = "attackKick";
+      } else if (isUndeadDarkArcherSpinShot) {
+        nextState = "attackSpinShot";
+      } else if (isUndeadNecromancerDarkfirePillar) {
+        nextState = "attackDarkfirePillar";
+      } else if (isUndeadNecromancerDarkWave) {
+        nextState = "attackDarkWave";
+      } else if (isUndeadNecromancerSummonWarrior) {
+        nextState = "attackSummonWarrior";
+      } else if (isUndeadNecromancerDarkBolt) {
+        nextState = "attackDarkBolt";
+      } else if (isUndeadNecromancerExplosion) {
+        nextState = "attackExplosion";
+      } else if (isUndeadNecromancerBasicAlt) {
+        nextState = "attackAlt";
+      } else if (isUndeadWizardBasicAlt) {
+        nextState = "attackAlt";
+      } else if (isUndeadWizardEarthquakeCast) {
+        nextState = "attackCast";
+      } else if (isUndeadWizardFireDanceFlip) {
+        nextState = "attackFireDance";
+      } else if (isUndeadWizardFireThrowerKick) {
+        nextState = "attackFireThrower";
+      } else if (isUndeadWizardFireWave) {
+        nextState = "attackFireWave";
+      } else if (isUndeadWizardFireCleanse) {
+        nextState = "attackFireCleanse";
+      } else if (isUndeadWizardFireLeap) {
+        nextState = "attackFireLeap";
+      } else if (isUndeadArcherArrowRain) {
+        nextState = "attackArrowRain";
+      } else if (isUndeadArcherKick) {
+        nextState = "attackKick";
+      } else if (isUndeadArcherSpinShot) {
+        nextState = "attackSpinShot";
+      } else if (isUndeadDarkKnightThrowBlade) {
+        nextState = "attackCast";
+      } else if (isUndeadBerserkerAxeSlash) {
+        nextState = "attackDown";
+      } else if (isUndeadBerserkerCircleStrike) {
+        nextState = "attackSpin";
+      } else if (isUndeadBerserkerFastStrike) {
+        nextState = "attackCast";
+      } else if (isUndeadBerserkerQuickSlash) {
+        nextState = "attackQuickSlash";
+      } else if (isUndeadBerserkerEmpoweredCircle) {
+        nextState = "attackEmpoweredCircle";
       } else if (isBansheeScream) {
         nextState = "attack_shout";
       } else if (isBansheeMeleeCone) {
@@ -3308,7 +3757,9 @@ export class Enemy {
         isAnyWindupHold &&
         (this.attackCtrl?.currentAttack?.kind === "cone" ||
           this.attackCtrl?.currentAttack?.kind === "circle" ||
-          this.attackCtrl?.currentAttack?.kind === "whirlwind") &&
+          this.attackCtrl?.currentAttack?.kind === "whirlwind" ||
+          this.attackCtrl?.currentAttack?.kind === "summon" ||
+          this.attackCtrl?.currentAttack?.kind === "projectile") &&
         hitboxTrigger != null &&
         hitboxTrigger >= 0 &&
         rawHitboxTrigger != null &&
@@ -3323,9 +3774,12 @@ export class Enemy {
         !isDeadWithDeathSheet &&
         !(isRockGiant && (this._rockGiantHealing || this._rockGiantHitReaction))
       ) {
+        const keepHeroPackAttackWindup =
+          this.heroPackDirectional &&
+          nextState.startsWith("attack");
         // If this attack uses an animation-synced hitboxTrigger, we want to play the attack strip during windup
         // up to (but not including) the trigger frame.
-        if (!hasAnimSyncedHitboxTrigger) {
+        if (!hasAnimSyncedHitboxTrigger && !keepHeroPackAttackWindup) {
           nextState = "idle";
         }
       } else {
@@ -3374,7 +3828,10 @@ export class Enemy {
         (this.attackCtrl.state === "windup" || this.attackCtrl.state === "active") &&
         (this.attackCtrl.currentAttack?.kind === "cone" ||
           this.attackCtrl.currentAttack?.kind === "circle" ||
-          this.attackCtrl.currentAttack?.kind === "whirlwind") &&
+          this.attackCtrl.currentAttack?.kind === "whirlwind" ||
+          this.attackCtrl.currentAttack?.kind === "summon" ||
+          (this.attackCtrl.currentAttack?.kind === "projectile" &&
+            this.attackCtrl.currentAttack?.execute?.projectileSpawnWindupT == null)) &&
         this.attackCtrl.currentAttack?.execute?.hitboxTrigger != null &&
         Number.isInteger(Number(this.attackCtrl.currentAttack.execute.hitboxTrigger)) &&
         frames > 1 &&
@@ -3398,15 +3855,27 @@ export class Enemy {
             this.spriteAnimState.timer = 0;
             this.spriteAnimState.frameIndex = trigger;
           }
-          // Continue advancing the strike strip during active.
-          this.spriteAnimState.timer += dt;
-          const frameDuration = 1 / fps;
-          while (this.spriteAnimState.timer >= frameDuration) {
-            this.spriteAnimState.timer -= frameDuration;
-            if (shouldLoop) {
-              this.spriteAnimState.frameIndex = (this.spriteAnimState.frameIndex + 1) % frames;
-            } else {
-              this.spriteAnimState.frameIndex = Math.min(frames - 1, this.spriteAnimState.frameIndex + 1);
+          // Fire thrower: freeze the strike strip on the trigger frame for the duration, then resume.
+          const isFireThrower =
+            this.enemyTypeId === "m_ud_wizard_9" &&
+            (this.attackCtrl.currentAttack?.id === "ud_wizard_fire_thrower" ||
+              this.attackCtrl.recoveringAttackId === "ud_wizard_fire_thrower");
+          const freezeUntil = Number(this._fireThrowerFreezeUntil) || 0;
+          const nowT = Number(this._gameTime) || 0;
+          if (isFireThrower && freezeUntil > nowT) {
+            this.spriteAnimState.timer = 0;
+            this.spriteAnimState.frameIndex = trigger;
+          } else {
+            // Continue advancing the strike strip during active.
+            this.spriteAnimState.timer += dt;
+            const frameDuration = 1 / fps;
+            while (this.spriteAnimState.timer >= frameDuration) {
+              this.spriteAnimState.timer -= frameDuration;
+              if (shouldLoop) {
+                this.spriteAnimState.frameIndex = (this.spriteAnimState.frameIndex + 1) % frames;
+              } else {
+                this.spriteAnimState.frameIndex = Math.min(frames - 1, this.spriteAnimState.frameIndex + 1);
+              }
             }
           }
         }

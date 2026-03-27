@@ -4,6 +4,7 @@
  * and attack controller updates.
  */
 
+import { getActiveHitboxes } from '../combat/index.js';
 import { ENEMY_TYPES, Enemy } from '../entities/enemy.js';
 import { EnemyAttackController } from '../entities/attacks/index.js';
 import { drawTile } from '../entities/tile-system.js';
@@ -201,8 +202,53 @@ export function applyGameEnemyAttacksMixin(Game) {
       hitbox.poisonDuration = executeOpts?.poisonDuration ?? null;
       hitbox.poisonDmgPerSec = executeOpts?.poisonDmgPerSec ?? null;
       hitbox.lichOrbBurst = executeOpts?.lichOrbBurst ?? null;
+      const emitIval = Number(executeOpts?.emitterInterval);
+      if (Number.isFinite(emitIval) && emitIval > 0) {
+        hitbox.emitterBurstInterval = emitIval;
+        hitbox.emitterChildExecute =
+          executeOpts.emitterChild && typeof executeOpts.emitterChild === 'object'
+            ? { ...executeOpts.emitterChild }
+            : {};
+        hitbox._emitterBurstAccum = 0;
+      }
       if (sourceMeta && typeof sourceMeta === 'object') Object.assign(hitbox, sourceMeta);
       return hitbox;
+    },
+
+    tickEnemyProjectileEmitters(dt) {
+      if (typeof this.spawnEnemyProjectileHitbox !== 'function' || !Number.isFinite(dt) || dt <= 0) return;
+      for (const h of getActiveHitboxes()) {
+        if (!h || h.destroyed || h.faction !== 'enemy') continue;
+        if (!h.tags?.includes('enemy_projectile')) continue;
+        const interval = Number(h.emitterBurstInterval);
+        if (!Number.isFinite(interval) || interval <= 0) continue;
+        const raw = h.emitterChildExecute;
+        if (!raw || typeof raw !== 'object') continue;
+        h._emitterBurstAccum = (h._emitterBurstAccum || 0) + dt;
+        while (h._emitterBurstAccum >= interval) {
+          h._emitterBurstAccum -= interval;
+          const ang = Math.random() * Math.PI * 2;
+          const dirX = Math.cos(ang);
+          const dirY = Math.sin(ang);
+          const baseDmg = Math.max(1, Math.round(Number(h.enemyProjectileDamage) || 1));
+          const mult = Number(raw.damageMult);
+          const childDmg = Math.max(1, Math.round(baseDmg * (Number.isFinite(mult) ? mult : 0.35)));
+          const spd = Math.max(40, Number(raw.speed) || 220);
+          const childOpts = {
+            speed: spd,
+            size: Math.max(4, Number(raw.size) || 10),
+            color: raw.color || '#7c3aed',
+            lifetime: Number.isFinite(Number(raw.lifetime)) ? Number(raw.lifetime) : 1.2,
+            useHitbox: raw.useHitbox !== false,
+            animatedSprite: raw.animatedSprite ?? { preset: 'darkOrb' },
+            hitboxTrigger: undefined,
+            projectileSpawnWindupT: undefined,
+            emitterInterval: undefined,
+            emitterChild: undefined
+          };
+          this.spawnEnemyProjectileHitbox(h.x, h.y, dirX, dirY, childDmg, childOpts, h.sourceEntity || h.sourceEnemy);
+        }
+      }
     },
 
     spawnEnemyProjectile(x, y, vx, vy, damage, size = 12, color = '#a855f7', executeOpts = {}, sourceEnemy = null) {

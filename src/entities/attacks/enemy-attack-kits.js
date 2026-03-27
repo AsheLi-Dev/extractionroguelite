@@ -1629,6 +1629,908 @@ export const ENEMY_ATTACK_KITS = {
     ]
   },
 
+  "Undead Archer": {
+    base: [
+      {
+        id: "ud_archer_basic_shot",
+        kind: "projectile",
+        telegraph: { shape: "line", windup: 0.5, color: "fast" },
+        execute: {
+          damage: 1.0,
+          speed: 320,
+          count: 1,
+          color: "#cbd5e1",
+          size: 12,
+          useHitbox: true,
+          hitboxTrigger: 10,
+          projectileSpawnWindupT: 0.71,
+          activeAnimDuration: 15 / 14,
+          spritePath: "assets/Enemies/Arrow.png"
+        },
+        recover: 0.3,
+        cooldown: 2.1,
+        minRange: 100,
+        maxRange: 420,
+        weight: 1,
+        flags: { fast: true },
+        rarity: "normal"
+      },
+      {
+        id: "ud_archer_charged_shot",
+        kind: "projectile",
+        telegraph: { shape: "line", windup: 1.0, color: "fast" },
+        execute: {
+          damage: 1.0,
+          speed: 520,
+          count: 1,
+          color: "#cbd5e1",
+          size: 16,
+          useHitbox: true,
+          hitboxTrigger: 11,
+          // Align projectile spawn with the charged animation frame.
+          projectileSpawnWindupT: 11 / 14,
+          activeAnimDuration: 15 / 14,
+          spritePath: "assets/Enemies/Arrow.png"
+        },
+        recover: 0.4,
+        cooldown: 3.5,
+        minRange: 100,
+        maxRange: 420,
+        weight: 0.65,
+        flags: { fast: true },
+        rarity: "rare"
+      },
+      {
+        id: "ud_archer_spin_shot",
+        kind: "projectile",
+        telegraph: { shape: "circle", windup: 1.0, color: "fast" },
+        execute: {
+          damage: 0.75,
+          speed: 300,
+          size: 14,
+          color: "#cbd5e1",
+          useHitbox: true,
+          hitboxTrigger: 6,
+          spritePath: "assets/Enemies/Arrow.png",
+          // Trigger frame 6 on a 14-fps strip (first shot), then 7..13 via per-frame delays.
+          projectileSpawnWindupT: 6 / 14,
+          spinSequence8Way: true,
+          spinStartDeg: 45,
+          spinStepDeg: -45,
+          spinCount: 8,
+          spinFrameInterval: 1 / 14,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0,
+        cooldown: 5.2,
+        minRange: 80,
+        maxRange: 430,
+        weight: 0.55,
+        flags: { fast: true, heavy: true },
+        rarity: "normal"
+      },
+      {
+        id: "ud_archer_kick",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.42, color: "heavy" },
+        execute: {
+          damage: 0.72,
+          range: 108,
+          arc: 62,
+          knockback: 70,
+          hitboxTrigger: 6,
+          activeAnimDuration: 15 / 14,
+          animFps: 14
+        },
+        recover: 0.28,
+        cooldown: 2.35,
+        minRange: 0,
+        maxRange: 128,
+        weight: 0.92,
+        flags: { heavy: false },
+        rarity: "uncommon"
+      },
+      {
+        id: "ud_archer_arrow_rain",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 1.0, color: "fast", atTarget: true },
+        execute: {
+          damage: 1.0,
+          radius: 90,
+          hitboxTrigger: 9,
+          effect: "arrow_rain",
+          atTarget: true,
+          rainIntervalSec: 0.2,
+          rainDurationSec: 2.0,
+          activeAnimDuration: 15 / 14,
+          animFps: 14
+        },
+        recover: 0,
+        cooldown: 5.8,
+        minRange: 80,
+        maxRange: 430,
+        weight: 0.7,
+        flags: { fast: true },
+        rarity: "uncommon"
+      }
+    ]
+  },
+
+  "Undead Berserker": {
+    base: [
+      {
+        id: "ud_berserker_basic_slash",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.5, color: "heavy" },
+        execute: {
+          damage: 1.15,
+          range: 190,
+          arc: 95,
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.3,
+        cooldown: 2.0,
+        minRange: 20,
+        maxRange: 150,
+        weight: 1,
+        flags: { heavy: true }
+      },
+      {
+        id: "ud_berserker_axe_slash",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.55, color: "heavy" },
+        execute: {
+          damage: 1.2,
+          range: 200,
+          arc: 120,
+          hitboxTrigger: 9,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0,
+        cooldown: 2.7,
+        minRange: 25,
+        maxRange: 170,
+        weight: 0.8,
+        flags: { heavy: true }
+      },
+      {
+        id: "ud_berserker_circle_strike",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 0.55, color: "heavy" },
+        execute: {
+          damage: 1.15,
+          radius: 170,
+          hitboxTrigger: 8,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0,
+        cooldown: 3.0,
+        minRange: 0,
+        maxRange: 140,
+        weight: 0.75,
+        flags: { heavy: true }
+      },
+      {
+        id: "ud_berserker_fast_strike",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.35, color: "heavy" },
+        execute: {
+          damage: 0.95,
+          range: 180,
+          arc: 30,
+          hitboxTrigger: 6,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0,
+        cooldown: 2.1,
+        minRange: 15,
+        maxRange: 160,
+        weight: 0.85,
+        flags: { heavy: true, fast: true }
+      },
+      {
+        id: "ud_berserker_quickslash",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.25, color: "fast" },
+        execute: {
+          damage: 0.85,
+          range: 165,
+          arc: 80,
+          hitboxTrigger: 4,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0,
+        cooldown: 1.8,
+        minRange: 10,
+        maxRange: 145,
+        weight: 0.9,
+        flags: { heavy: true, fast: true }
+      },
+      {
+        id: "ud_berserker_empowered_circle_strike",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 0.9, color: "heavy" },
+        execute: {
+          damage: 1.35,
+          radius: 190,
+          hitboxTrigger: 9,
+          activeAnimDuration: 14 / 14
+        },
+        recover: 0,
+        cooldown: 4.8,
+        minRange: 0,
+        maxRange: 150,
+        weight: 0.6,
+        flags: { heavy: true }
+      }
+    ]
+  },
+
+  "Undead Dark Archer": {
+    base: [
+      {
+        id: "ud_archer_basic_shot",
+        kind: "projectile",
+        telegraph: { shape: "line", windup: 0.5, color: "fast" },
+        execute: {
+          damage: 1.0,
+          speed: 320,
+          count: 1,
+          color: "#cbd5e1",
+          size: 12,
+          useHitbox: true,
+          hitboxTrigger: 10,
+          projectileSpawnWindupT: 0.71,
+          activeAnimDuration: 15 / 14,
+          spritePath: "assets/Enemies/Arrow.png"
+        },
+        recover: 0.3,
+        cooldown: 2.1,
+        minRange: 100,
+        maxRange: 420,
+        weight: 1,
+        flags: { fast: true },
+        rarity: "normal"
+      },
+      {
+        id: "ud_archer_charged_shot",
+        kind: "projectile",
+        telegraph: { shape: "line", windup: 1.0, color: "fast" },
+        execute: {
+          damage: 1.0,
+          speed: 520,
+          count: 1,
+          color: "#cbd5e1",
+          size: 16,
+          useHitbox: true,
+          hitboxTrigger: 11,
+          // Align projectile spawn with the charged animation frame.
+          projectileSpawnWindupT: 11 / 14,
+          activeAnimDuration: 15 / 14,
+          spritePath: "assets/Enemies/Arrow.png"
+        },
+        recover: 0.4,
+        cooldown: 3.5,
+        minRange: 100,
+        maxRange: 420,
+        weight: 0.65,
+        flags: { fast: true },
+        rarity: "rare"
+      },
+      {
+        id: "ud_archer_spin_shot",
+        kind: "projectile",
+        telegraph: { shape: "circle", windup: 1.0, color: "fast" },
+        execute: {
+          damage: 0.75,
+          speed: 300,
+          size: 14,
+          color: "#cbd5e1",
+          useHitbox: true,
+          hitboxTrigger: 6,
+          spritePath: "assets/Enemies/Arrow.png",
+          // Trigger frame 6 on a 14-fps strip (first shot), then 7..13 via per-frame delays.
+          projectileSpawnWindupT: 6 / 14,
+          spinSequence8Way: true,
+          spinStartDeg: 45,
+          spinStepDeg: -45,
+          spinCount: 8,
+          spinFrameInterval: 1 / 14,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0,
+        cooldown: 5.2,
+        minRange: 80,
+        maxRange: 430,
+        weight: 0.55,
+        flags: { fast: true, heavy: true },
+        rarity: "normal"
+      },
+      {
+        id: "ud_archer_kick",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.42, color: "heavy" },
+        execute: {
+          damage: 0.72,
+          range: 108,
+          arc: 62,
+          knockback: 70,
+          hitboxTrigger: 6,
+          activeAnimDuration: 15 / 14,
+          animFps: 14
+        },
+        recover: 0.28,
+        cooldown: 2.35,
+        minRange: 0,
+        maxRange: 128,
+        weight: 0.92,
+        flags: { heavy: false },
+        rarity: "uncommon"
+      },
+      {
+        id: "ud_archer_arrow_rain",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 1.0, color: "fast", atTarget: true },
+        execute: {
+          damage: 1.0,
+          radius: 90,
+          hitboxTrigger: 9,
+          effect: "arrow_rain",
+          rainIntervalSec: 0.2,
+          rainDurationSec: 2.0,
+          activeAnimDuration: 15 / 14,
+          animFps: 14
+        },
+        recover: 0,
+        cooldown: 5.8,
+        minRange: 80,
+        maxRange: 430,
+        weight: 0.7,
+        flags: { fast: true },
+        rarity: "uncommon"
+      }
+    ]
+  },
+
+  "Undead Necromancer": {
+    base: [
+      {
+        id: "ud_necromancer_basic_orb",
+        kind: "projectile",
+        telegraph: { shape: "circle", windup: 0.58, color: "magic" },
+        execute: {
+          damage: 1.0,
+          speed: 260,
+          count: 1,
+          color: "#7c3aed",
+          size: 13,
+          useHitbox: true,
+          hitboxTrigger: 7,
+          projectileSpawnWindupT: 7 / 14,
+          activeAnimDuration: 15 / 14,
+          animatedSprite: { preset: "darkOrb" }
+        },
+        recover: 0.32,
+        cooldown: 2.3,
+        minRange: 90,
+        maxRange: 410,
+        weight: 1,
+        flags: { magic: true }
+      },
+      {
+        id: "ud_necromancer_darkfire_pillar",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 0.65, color: "magic", atTarget: true },
+        execute: {
+          damage: 1.0,
+          atTarget: true,
+          radius: 100,
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14,
+          animFps: 14,
+          effect: "darkfire_pillar",
+          pillarCount: 5,
+          pillarRingOffset: 72,
+          pillarHitRadius: 28,
+          pillarDurationMs: 140,
+          pillarDamageMult: 0.35,
+          pillarImpactVfxPreset: "soulSiphonSpiritFireballImpact"
+        },
+        recover: 0.38,
+        cooldown: 3.6,
+        minRange: 0,
+        maxRange: 380,
+        weight: 0.75,
+        flags: { magic: true },
+        rarity: "uncommon"
+      },
+      {
+        id: "ud_necromancer_dark_wave",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.55, color: "magic" },
+        execute: {
+          damage: 1.0,
+          range: 240,
+          arc: 78,
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14,
+          animFps: 14,
+          knockback: 200
+        },
+        recover: 0.34,
+        cooldown: 2.85,
+        minRange: 0,
+        maxRange: 300,
+        weight: 0.82,
+        flags: { magic: true }
+      },
+      {
+        id: "ud_necromancer_dark_bolt",
+        kind: "projectile",
+        telegraph: { shape: "circle", windup: 0.62, color: "magic" },
+        execute: {
+          damage: 1.1,
+          speed: 40,
+          count: 1,
+          color: "#5b21b6",
+          size: 52,
+          useHitbox: true,
+          lifetime: 3,
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14,
+          animFps: 14,
+          animatedSprite: { preset: "necromancerDarkBoltLarge" },
+          trailEnabled: true,
+          emitterInterval: 0.4,
+          emitterChild: {
+            speed: 240,
+            size: 11,
+            color: "#7c3aed",
+            lifetime: 1.35,
+            damageMult: 0.38,
+            useHitbox: true,
+            animatedSprite: { preset: "darkOrb" }
+          }
+        },
+        recover: 0.4,
+        cooldown: 5.2,
+        minRange: 80,
+        maxRange: 420,
+        weight: 0.55,
+        flags: { magic: true },
+        rarity: "uncommon"
+      },
+      {
+        id: "ud_necromancer_circle_explosion",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 0.8, color: "magic" },
+        execute: {
+          damage: 1.0,
+          radius: 140,
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14,
+          animFps: 14,
+          effect: "necro_explosion_burst",
+          burstProjectileCount: 8,
+          burstProjectileSpeed: 280,
+          burstProjectileSize: 12,
+          burstProjectileColor: "#7c3aed",
+          burstProjectileAnimatedSprite: { preset: "darkOrb" },
+          burstUseHitbox: true
+        },
+        recover: 0.35,
+        cooldown: 4.8,
+        minRange: 0,
+        maxRange: 220,
+        weight: 0.7,
+        flags: { magic: true },
+        rarity: "uncommon"
+      },
+      {
+        id: "ud_necromancer_summon_warrior",
+        kind: "summon",
+        telegraph: { shape: "circle", windup: 0.72, color: "magic" },
+        execute: {
+          hitboxTrigger: 9,
+          activeAnimDuration: 15 / 14,
+          animFps: 14,
+          count: 1,
+          spawnType: "m_ud_warrior",
+          spawnForward: 280
+        },
+        recover: 0.42,
+        cooldown: 11,
+        minRange: 40,
+        maxRange: 480,
+        weight: 0.4,
+        flags: { magic: true },
+        rarity: "rare"
+      }
+    ]
+  },
+
+  "Undead Wizard": {
+    base: [
+      {
+        id: "ud_wizard_basic_bolt",
+        kind: "projectile",
+        telegraph: { shape: "circle", windup: 0.52, color: "magic" },
+        execute: {
+          damage: 0.95,
+          speed: 300,
+          count: 1,
+          color: "#60a5fa",
+          size: 11,
+          useHitbox: true,
+          hitboxTrigger: 8
+        },
+        recover: 0.28,
+        cooldown: 2.0,
+        minRange: 90,
+        maxRange: 420,
+        weight: 1,
+        flags: { magic: true }
+      },
+      {
+        id: "ud_wizard_volcano_eruption",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 0.58, color: "heavy" },
+        execute: {
+          damage: 0.65,
+          radius: 25,
+          effect: "volcano_eruption",
+          eruptionHits: 10,
+          eruptionGapSec: 0.05,
+          eruptionSpawnRadius: 400,
+          hitboxTrigger: 8,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.35,
+        cooldown: 6.5,
+        minRange: 0,
+        maxRange: 520,
+        weight: 0.35,
+        flags: { magic: true },
+        rarity: "rare"
+      },
+      {
+        id: "ud_wizard_earthquake",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 0.58, color: "heavy" },
+        execute: {
+          damage: 0.9,
+          radius: 50,
+          effect: "earthquake",
+          earthquakeRadii: [50, 100, 150],
+          earthquakeGapSec: 0.3,
+          earthquakeImpactVfxPreset: "smokeBurstRing",
+          hitboxTrigger: 8,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.4,
+        cooldown: 7.5,
+        minRange: 0,
+        maxRange: 520,
+        weight: 0.32,
+        flags: { heavy: true, magic: true },
+        rarity: "rare"
+      },
+      {
+        id: "ud_wizard_fire_dance",
+        kind: "projectile",
+        telegraph: { shape: "circle", windup: 0.58, color: "magic" },
+        execute: {
+          damage: 0.75,
+          speed: 320,
+          count: 12,
+          random360: true,
+          color: "#fb7185",
+          size: 10,
+          useHitbox: true,
+          hitboxTrigger: 14,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.35,
+        cooldown: 7.0,
+        minRange: 0,
+        maxRange: 520,
+        weight: 0.3,
+        flags: { magic: true },
+        rarity: "rare"
+      },
+      {
+        id: "ud_wizard_fire_thrower",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.58, color: "heavy" },
+        execute: {
+          damage: 0.55,
+          range: 260,
+          arc: 55,
+          effect: "fire_thrower",
+          fireThrowerIntervalSec: 0.2,
+          fireThrowerDurationSec: 2.0,
+          hitboxTrigger: 8,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.35,
+        cooldown: 8.0,
+        minRange: 0,
+        maxRange: 520,
+        weight: 0.28,
+        flags: { heavy: true, magic: true },
+        rarity: "rare"
+      },
+      {
+        id: "ud_wizard_fire_wave",
+        kind: "projectile",
+        telegraph: { shape: "circle", windup: 0.58, color: "magic" },
+        execute: {
+          damage: 1.05,
+          speed: 360,
+          count: 1,
+          effect: "fire_wave",
+          backstepSpeed: 400,
+          backstepDuration: 0.5,
+          color: "#fb923c",
+          size: 22,
+          useHitbox: true,
+          hitboxTrigger: 8,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.35,
+        cooldown: 7.5,
+        minRange: 70,
+        maxRange: 520,
+        weight: 0.3,
+        flags: { magic: true },
+        rarity: "rare"
+      },
+      {
+        id: "ud_wizard_fire_cleanse",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 0.58, color: "heavy" },
+        execute: {
+          damage: 0.35,
+          radius: 45,
+          effect: "fire_cleanse",
+          healFlat: 50,
+          impactVfxPreset: "smokeBurstSoft",
+          hitboxTrigger: 8,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.35,
+        cooldown: 9.0,
+        minRange: 0,
+        maxRange: 520,
+        weight: 0.22,
+        flags: { heavy: true, magic: true },
+        rarity: "rare"
+      },
+      {
+        id: "ud_wizard_charged_fireball",
+        kind: "projectile",
+        telegraph: { shape: "circle", windup: 0.7, color: "heavy" },
+        execute: {
+          damage: 1.35,
+          speed: 260,
+          count: 1,
+          color: "#fb923c",
+          size: 150,
+          useHitbox: true,
+          animatedSprite: { preset: "fireballSkill" },
+          hitboxTrigger: 8,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.4,
+        cooldown: 9.5,
+        minRange: 120,
+        maxRange: 560,
+        weight: 0.22,
+        flags: { heavy: true, magic: true },
+        rarity: "rare"
+      },
+      {
+        id: "ud_wizard_fire_leap",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 1.2, color: "heavy" },
+        execute: {
+          damage: 1.1,
+          radius: 60,
+          leapDistance: 240,
+          hitboxTrigger: 14,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.4,
+        cooldown: 10.0,
+        minRange: 0,
+        maxRange: 520,
+        weight: 0.18,
+        flags: { heavy: true, magic: true },
+        rarity: "rare"
+      }
+    ]
+  },
+
+  "Undead Dark Lord": {
+    base: [
+      {
+        id: "ud_dark_lord_basic_cleave",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.58, color: "heavy" },
+        execute: {
+          damage: 1.2,
+          range: 210,
+          arc: 100,
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.35,
+        cooldown: 2.3,
+        minRange: 25,
+        maxRange: 165,
+        weight: 1,
+        flags: { heavy: true }
+      },
+      {
+        id: "ud_dark_lord_spin",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 0.58, color: "heavy" },
+        execute: {
+          damage: 1.1,
+          radius: 170,
+          hitboxTrigger: 8,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.35,
+        cooldown: 3.4,
+        minRange: 0,
+        maxRange: 140,
+        weight: 0.75,
+        flags: { heavy: true }
+      },
+      {
+        id: "ud_dark_lord_swift_strikes",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 0.15, color: "heavy" },
+        execute: {
+          damage: 0.95,
+          radius: 160,
+          hitboxTrigger: 5,
+          activeAnimDuration: 15 / 14,
+          comboShots: 3
+        },
+        recover: 0.35,
+        cooldown: 4.6,
+        minRange: 20,
+        maxRange: 170,
+        weight: 0.85,
+        flags: { heavy: true }
+      },
+      {
+        id: "ud_dark_lord_shield_bash",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.45, color: "heavy" },
+        execute: {
+          damage: 0.85,
+          range: 120,
+          arc: 58,
+          hitboxTrigger: 8,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0.3,
+        cooldown: 3.0,
+        minRange: 0,
+        maxRange: 120,
+        weight: 0.8,
+        flags: { heavy: true }
+      },
+      {
+        id: "ud_dark_lord_warcry",
+        kind: "circle",
+        telegraph: { shape: "circle", windup: 0.62, color: "heavy" },
+        execute: {
+          effect: "warcry",
+          radius: 300,
+          speedMult: 1.2,
+          buffDuration: 3,
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14,
+          animFps: 14
+        },
+        recover: 0.4,
+        cooldown: 8,
+        minRange: 0,
+        maxRange: 999,
+        weight: 0.35,
+        flags: { heavy: true }
+      },
+      {
+        id: "ud_dark_lord_double_strike",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.05, color: "heavy" },
+        execute: {
+          damage: 1.0,
+          range: 180,
+          arc: 90,
+          sameStripComboHits: 2,
+          sameStripComboGap: 0.05,
+          hitboxTrigger: 4,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0,
+        cooldown: 3.1,
+        minRange: 15,
+        maxRange: 165,
+        weight: 0.8,
+        flags: { heavy: true }
+      }
+    ]
+  },
+
+  "Undead Dark Knight": {
+    base: [
+      {
+        id: "ud_dark_knight_downslash",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.5, color: "heavy" },
+        execute: {
+          damage: 1.1,
+          range: 190,
+          arc: 94,
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0,
+        cooldown: 2.5,
+        minRange: 20,
+        maxRange: 160,
+        weight: 0.85,
+        flags: { heavy: true }
+      },
+      {
+        id: "ud_dark_knight_upslash",
+        kind: "cone",
+        telegraph: { shape: "cone", windup: 0.5, color: "heavy" },
+        execute: {
+          damage: 1.1,
+          range: 190,
+          arc: 94,
+          hitboxTrigger: 7,
+          activeAnimDuration: 15 / 14
+        },
+        recover: 0,
+        cooldown: 2.5,
+        minRange: 20,
+        maxRange: 160,
+        weight: 0.85,
+        flags: { heavy: true }
+      },
+      {
+        id: "ud_dark_knight_throw_blade",
+        kind: "projectile",
+        telegraph: { shape: "circle", windup: 0.6, color: "heavy" },
+        execute: {
+          damage: 1.05,
+          speed: 240,
+          count: 1,
+          size: 28,
+          color: "#94a3b8",
+          useHitbox: true,
+          hitboxTrigger: 9,
+          // Projectile spawn timing equivalent to trigger-9 on a 15f strip.
+          projectileSpawnWindupT: 0.67
+        },
+        recover: 0,
+        cooldown: 3.6,
+        minRange: 80,
+        maxRange: 420,
+        weight: 0.7,
+        flags: { heavy: true }
+      }
+    ]
+  },
+
   RockGiant: {
     base: [
       {

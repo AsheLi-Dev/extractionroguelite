@@ -4415,3 +4415,394 @@ body {
   font-weight: 600;
   white-space: nowrap;
 }
+
+.basic-attack-tree-overlay,
+.weapon-art-draft-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: rgba(5, 6, 10, 0.94);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.basic-attack-tree-overlay.hidden,
+.weapon-art-draft-overlay.hidden {
+  display: none;
+}
+
+.basic-attack-tree-box,
+.weapon-art-draft-box {
+  width: min(1280px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #020617;
+  border: 2px solid #0ea5a8;
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.55);
+  padding: 28px 36px 32px;
+}
+
+.basic-attack-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 18px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.basic-attack-tree-title {
+  margin: 0;
+  font-size: 36px;
+  line-height: 1;
+  font-weight: 800;
+  color: #5eead4;
+}
+
+.basic-attack-tree-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.basic-attack-tree-attack-btn {
+  border: 1px solid #0e7490;
+  background: #082f49;
+  color: #d1fae5;
+  border-radius: 999px;
+  padding: 14px 22px;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.basic-attack-tree-attack-btn.selected {
+  background: #0f766e;
+  border-color: #67e8f9;
+  color: #ecfeff;
+}
+
+.basic-attack-tree-summary {
+  margin-bottom: 20px;
+}
+
+.basic-attack-tree-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.basic-attack-tree-summary-name {
+  font-size: 28px;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.basic-attack-tree-summary-stat {
+  font-size: 18px;
+  font-weight: 700;
+  color: #99f6e4;
+}
+
+.basic-attack-tree-xp-track {
+  width: 100%;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(14, 116, 144, 0.7);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.basic-attack-tree-xp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #14b8a6, #22d3ee);
+}
+
+.basic-attack-tree-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 24px;
+}
+
+.basic-attack-tree-refund-btn,
+.weapon-art-draft-token-btn {
+  border: 1px solid #0e7490;
+  background: #082f49;
+  color: #d1fae5;
+  border-radius: 12px;
+  padding: 14px 20px;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.basic-attack-tree-refund-btn:disabled,
+.weapon-art-draft-token-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.basic-attack-tree-content,
+.weapon-art-draft-body {
+  display: block;
+}
+
+.basic-attack-tree-section-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #e2e8f0;
+}
+
+.weapon-art-board-shell {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(300px, 420px);
+  gap: 20px;
+  align-items: start;
+}
+
+.weapon-art-board-panel,
+.weapon-art-board-side-card,
+.weapon-art-draft-board-card,
+.weapon-art-draft-side-card {
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.weapon-art-board-panel.art-backed,
+.weapon-art-draft-board-card.art-backed {
+  position: relative;
+  overflow: hidden;
+}
+
+.weapon-art-board-panel.art-backed::before,
+.weapon-art-draft-board-card.art-backed::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--weapon-art-board-image);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: min(78%, 520px);
+  opacity: 0.26;
+  filter: saturate(1.15) blur(0.4px);
+  pointer-events: none;
+}
+
+.weapon-art-board-panel.art-backed > *,
+.weapon-art-draft-board-card.art-backed > * {
+  position: relative;
+  z-index: 1;
+}
+
+.weapon-art-board-panel-header,
+.weapon-art-draft-header,
+.weapon-art-draft-layout,
+.weapon-art-upgrade-card-top,
+.weapon-art-upgrade-preview-row,
+.weapon-art-draft-pending,
+.weapon-art-draft-summary-line {
+  display: flex;
+}
+
+.weapon-art-board-panel-header,
+.weapon-art-draft-summary-line {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.weapon-art-board-panel-header {
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
+.weapon-art-board-hint,
+.weapon-art-board-copy,
+.weapon-art-draft-subtitle,
+.weapon-art-draft-summary-evo,
+.weapon-art-upgrade-desc,
+.weapon-art-upgrade-meta,
+.weapon-art-upgrade-remaining {
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.weapon-art-board-grid {
+  display: grid !important;
+  grid-template-columns: repeat(var(--board-cols), 32px);
+  grid-template-rows: repeat(var(--board-rows), 32px);
+  gap: 4px;
+  justify-content: center;
+  align-content: start;
+  width: 100%;
+  min-height: 520px;
+  padding: 18px 8px;
+}
+
+.weapon-art-board-cell {
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  border-radius: 8px;
+  border: 1px solid rgba(100, 116, 139, 0.4);
+  background: rgba(30, 41, 59, 0.95);
+  color: #e2e8f0;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.weapon-art-board-cell.locked {
+  background: rgba(30, 41, 59, 0.45);
+  color: rgba(148, 163, 184, 0.5);
+}
+
+.weapon-art-board-cell.unlocked {
+  background: rgba(51, 65, 85, 0.95);
+}
+
+.weapon-art-board-cell.unlockable,
+.weapon-art-board-cell.placeable {
+  border-color: #f8fafc;
+  box-shadow: 0 0 0 1px rgba(248, 250, 252, 0.35);
+}
+
+.weapon-art-board-cell.occupied {
+  background: color-mix(in srgb, var(--cell-accent, #64748b) 40%, #0f172a 60%);
+  border-color: var(--cell-accent, #64748b);
+}
+
+.weapon-art-board-cell.void {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.weapon-art-board-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.weapon-art-upgrade-list {
+  display: flex !important;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 540px;
+  overflow-y: auto;
+}
+
+.weapon-art-upgrade-card {
+  width: 100% !important;
+  text-align: left;
+  border-radius: 12px;
+  border: 1px solid rgba(71, 85, 105, 0.7);
+  background: rgba(15, 23, 42, 0.85);
+  padding: 12px;
+  display: flex !important;
+  flex-direction: column;
+  gap: 8px;
+  color: #f8fafc;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.weapon-art-upgrade-card.selected {
+  border-color: #f8fafc;
+  box-shadow: 0 0 0 1px rgba(248, 250, 252, 0.35);
+}
+
+.weapon-art-upgrade-card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.weapon-art-upgrade-card-top,
+.weapon-art-upgrade-preview-row,
+.weapon-art-draft-pending {
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.weapon-art-upgrade-name,
+.weapon-art-draft-side-title {
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.weapon-art-draft-header {
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.weapon-art-draft-title {
+  margin: 0 0 6px;
+  color: #f8fafc;
+}
+
+.weapon-art-draft-layout {
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.weapon-art-draft-main {
+  flex: 1;
+}
+
+.weapon-art-draft-sidebar {
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.weapon-art-piece-preview {
+  display: grid;
+  grid-template-columns: repeat(var(--piece-cols), 10px);
+  grid-template-rows: repeat(var(--piece-rows), 10px);
+  gap: 2px;
+}
+
+.weapon-art-piece-preview-cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: rgba(51, 65, 85, 0.35);
+}
+
+.weapon-art-piece-preview-cell.filled {
+  background: var(--piece-color, #94a3b8);
+}
+
+@media (max-width: 1100px) {
+  .weapon-art-board-shell,
+  .weapon-art-draft-layout {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .weapon-art-draft-sidebar {
+    width: auto;
+  }
+}
